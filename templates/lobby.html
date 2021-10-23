@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+   <title>狼人面杀</title>
+   <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.5">
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.js"></script>
+      <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+      <script src="./static/lobby.js"></script>
+      <link rel="stylesheet" type="text/css" href="static/style.css">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.css">
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+      <link href="./static/assets/favicon.ico" rel="icon">
+   </head>
+   <center>
+      <h3></h3>
+      <h2 class="chinese">狼人杀</h2>
+      <div class="col-md-8 form-container">
+         <form class="english" id="registration" >
+            <div class="ui segment">
+               <div class="form-group">
+                  <div class="ui icon input chinese ">
+                     <input type="number" placeholder="房间号" class="form-control" name="room" id="room" required autocomplete="off" ><i id="info" class="search icon"> </i></i>
+                  </div>
+               </div>
+               <button type="button" class="ui green button" id="enterRoom" onclick="submitRoom(id)"/>进入房间</button>
+            </div>
+            <button type="button" class="ui black button" id="createRoom" onclick="submitRoom(id)"/>创建房间</button>
+         </form>
+      </div>
+   </center>
+   </script>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<title>狼人面杀</title>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+      <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.js"></script>
+
+  <link href="./static/assets/favicon.ico" rel="icon">
+  <script src="./static/room.js"></script>
+  <link rel="stylesheet" type="text/css" href="static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.5">
+<title>Student</title>
+</head>
+  <center>
+  <h3></h3>
+      <h2 class="chinese">狼人杀</h2>
+      <div class=" form-container">
+      <form class="english" id="registration"  >
+        <h3 class="chinese">房间配置</h3>
+
+
+        <div class="form-group segments">
+            <h4 class="ui top attached block header">神职配置</h4>
+            <div class="ui internally grid here attached segment">
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="1" value="预言家" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="2" value="女巫" onclick="invert(id)"> </input>
+                </div>
+               <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="3" value="猎人" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="4" value="守卫" onclick="invert(id)"> </input>
+                </div>
+
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="5" value="白痴" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="6" value="骑士" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="7" value="禁言长老" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="8" value="摄梦人" onclick="invert(id)"> </input>
+                </div>
+
+             </div>
+
+        </div>
+
+          <div class="form-group segments">
+            <h4 class="ui top attached block header">狼人配置</h4>
+            <div class="ui internally grid here  attached segment">
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="9" value="白狼王" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="10" value="黑狼王" onclick="invert(id)"> </input>
+                </div>
+               <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="11" value="隐狼" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="12" value="恶魔" onclick="invert(id)"> </input>
+                </div>
+
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="13" value="狼美人" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="14" value="恶灵骑士" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="15" value="梦魇" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="16" value="机械狼" onclick="invert(id)"> </input>
+                </div>
+
+             </div>
+            <div class="ui  attached segment">
+
+                  <div class="inline fields ">
+                      <label>普通狼人</label>
+
+                            <div class="ui form buttons">
+                                <div class="field">
+                                <button type="button" class="ui icon button side" value="down" onclick="updateNum(this,'普通狼人');"> <i class="down chevron icon"></i></button>
+                                <input class="smallIn" value=0 id="普通狼人">
+                                <button type="button" class="ui icon button side" value="up" onclick="updateNum(this,'普通狼人');"> <i class="up chevron icon"></i></button>
+                            </div>
+                      </div>
+                  </div>
+            </div>
+        </div>
+
+        <div class="form-group segments">
+            <h4 class="ui top attached block header">村民配置</h4>
+            <div class="ui internally grid here  attached segment">
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="17" value="高级村民" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="18" value="老流氓" onclick="invert(id)"> </input>
+                </div>
+             </div>
+            <div class="ui attached segment">
+
+                  <div class="inline fields ">
+                      <label>普通村民</label>
+
+                            <div class="ui form buttons">
+                                <div class="field">
+                                <button type="button" class="ui icon button side" value="down" onclick="updateNum(this,'普通村民');"> <i class="down chevron icon"></i></button>
+                                <input class="smallIn" value=0  id="普通村民">
+                                <button type="button" class="ui icon button side" value="up" onclick="updateNum(this,'普通村民');"> <i class="up chevron icon"></i></button>
+                            </div>
+                      </div>
+                  </div>
+            </div>
+        </div>
+
+          <div class="form-group segments">
+            <h4 class="ui top attached block header">特殊配置</h4>
+            <div class="ui internally grid here  attached segment">
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="19" value="丘比特" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="20" value="盗贼" onclick="invert(id)"> </input>
+                </div>
+                <div class="four wide column" data-toggle="buttons">
+                  <input type="button" class="ui black basic button" id="21" value="野孩子" onclick="invert(id)"> </input>
+                </div>
+             </div>
+        </div>
+
+
+        <button type="button" class="btn btn-success" id="enterRoom" onclick="handleData()"/>完成配置</button>
+
+      </form>
+      </div>
+  </center>
+</script>
+
+</html>

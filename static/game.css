@@ -1,0 +1,41 @@
+.english {
+  font-family:  monospace;
+}
+
+html, body {
+    height: 100%;
+}
+
+html {
+    display: table;
+    margin: auto;
+}
+
+body {
+    display: table-cell;
+    vertical-align: middle;
+}
+
+
+html {
+    -ms-touch-action: manipulation;
+        touch-action: manipulation;
+}
+
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+ #myModal {
+     height: auto !important;
+     text-align: center !important;
+ }
+
+
+.squareButton {
+    width:100px !important;
+    overflow-wrap: break-word;
+}

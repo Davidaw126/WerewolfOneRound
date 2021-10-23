@@ -1,0 +1,57 @@
+.english {
+  font-family:  monospace;
+}
+
+html, body {
+    height: 100%;
+}
+
+html {
+    display: table;
+    margin: auto;
+}
+
+body {
+    display: table-cell;
+    vertical-align: middle;
+}
+
+.button {
+  padding: 11px 9px !important;
+  font-size: 15px !important;
+}
+
+
+.here {
+  padding-right: 10px !important;
+  padding-left: 10px !important;
+}
+.column {
+  padding-right: 2px !important;
+  padding-left: 2px !important;
+}
+
+.smallIn {
+     width: 60px !important;
+}
+
+html {
+    -ms-touch-action: manipulation;
+        touch-action: manipulation;
+}
+
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+
+.modal {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-height: 100vh;
+}

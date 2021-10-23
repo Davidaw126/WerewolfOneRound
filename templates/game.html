@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+   <title>狼人面杀</title>
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.5">
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+      <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.14/semantic.min.js"></script>
+      <script src="./static/game.js"></script>
+      <link rel="stylesheet" type="text/css" href="static/game.css">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.14/semantic.min.css">
+      <link href="./static/assets/favicon.ico" rel="icon">
+      <title>Student</title>
+   </head>
+   <center>
+      <h3></h3>
+      <h2 class="chinese">狼人杀</h2>
+      <div class="form-container">
+         <form class="english" id="registration" >
+
+            <div class="form-group segments">
+               <h4 class="ui top attached block header" id="roomTitleNumber"></h4>
+               <div class="ui internally grid here attached segment" id="dynamic_insert">
+               </div>
+               <div class="ui internally grid here bottom attached header">
+                   <div class="four wide column" data-toggle="buttons">
+                     <button type="button" class="ui  button" onclick="reveal(id)"><i class="question circle icon"></i>身份配置</button>
+                   </div>
+                  <div class="four wide column" data-toggle="buttons">
+                     <button type="button" class="ui  button" onclick="power(id)"><i class="eye icon"></i>使用技能</button>
+                   </div>
+                  <div class="four wide column" data-toggle="buttons">
+                     <button type="button" class="ui  button" onclick="shuffleCard(id)"><i class="random icon"></i>重新发牌</button>
+                   </div>
+                  <div class="four wide column" data-toggle="buttons">
+                     <button type="button" class="ui  button" onclick="startGame(id)"><i class="play icon"></i>开始游戏</button>
+                   </div>
+               </div>
+
+            </div>
+
+
+         </form>
+      </div>
+
+      <div class="ui modal" id="myModal">
+              <div class="ui header">
+                  <div class="ui header">身份配置</div>
+                  <div class="ui shape" id="rotate">
+                         <div class="sides">
+                              <div class="active side" id="first">
+                                    <div class="ui inverted card segment circular">
+                                        <h1 class="ui">点击显示</h1>
+                                    </div>
+                              </div>
+                              <div class="side" id="second">
+                                <div class="ui inverted card segment circular">
+                                          <h1 class="ui" id="insertRole">Empty</h1>
+                                    </div>
+                              </div>
+                         </div>
+                  </div>
+          </div>
+               <div class="content">
+                        <div class="ui meta" id="roles"></div>
+               </div>
+              <div class="actions">
+                <div class="ui approve button">好滴</div>
+              </div>
+            </div>
+   </center>
+   </script>
+
+</html>
