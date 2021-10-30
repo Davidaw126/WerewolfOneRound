@@ -30,7 +30,7 @@
                      <button type="button" class="ui  button" onclick="reveal(id)"><i class="question circle icon"></i>身份配置</button>
                    </div>
                   <div class="four wide column" data-toggle="buttons">
-                     <button type="button" class="ui  button" onclick="power(id)"><i class="eye icon"></i>使用技能</button>
+                     <button type="button" class="ui  button" onclick="power()"><i class="eye icon"></i>使用技能</button>
                    </div>
                   <div class="four wide column" data-toggle="buttons">
                      <button type="button" class="ui  button" onclick="shuffleCard(id)"><i class="random icon"></i>重新发牌</button>
@@ -46,7 +46,7 @@
          </form>
       </div>
 
-      <div class="ui modal" id="myModal">
+      <div class="ui modal" id="reveal">
               <div class="ui header">
                   <div class="ui header">身份配置</div>
                   <div class="ui shape" id="rotate">
@@ -70,7 +70,28 @@
               <div class="actions">
                 <div class="ui approve button">好滴</div>
               </div>
-            </div>
+      </div>
+
+
+       <div class="ui modal" id="power">
+              <div class="ui header">
+                  <div class="ui header">释放技能</div>
+              </div>
+               <div class="content">
+                        <div class="ui meta" id="powerSelect">
+
+                            <div class="ui toggle checkbox">
+                                <input type="checkbox" name="newsletter">
+                                <label>是否选择猎杀</label>
+                            </div>
+                        </div>
+               </div>
+              <div class="actions">
+                <div class="ui approve button">好滴</div>
+              </div>
+      </div>
+
+
    </center>
    </script>
 
