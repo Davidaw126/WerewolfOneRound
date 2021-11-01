@@ -28,3 +28,4 @@ class Room(db.Document):
     identities = db.DictField()
     roomSettings = db.DictField()
     numberOfSeats =  db.IntField()
+    currentStage = db.StringField()

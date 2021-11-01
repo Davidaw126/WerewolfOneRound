@@ -14,7 +14,7 @@ $(document).ready(function(){
         }else{
             $.ajax({
 						type: "POST",
-						url: "http://192.168.1.205:5000/room/check",
+						url: "http://172.31.42.104:5000/room/check",
 						data: $('#registration').serialize(),
 						dataType: "html",
 						cache: false,
@@ -44,7 +44,7 @@ function submitRoom(createEnter){
 
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/room/add",
+	  url: "http://172.31.42.104:5000/room/add",
 	  data: formData,
 	  dataType: "json",
 	  cache: false

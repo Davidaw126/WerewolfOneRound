@@ -140,11 +140,16 @@ def seat_refresh():
 def seat_take():
     newSeatNumber = request.form['seatNumber']
 
+    roomNumber = session['roomNumber']
+    room = Room.objects(roomNumber=roomNumber)
+    identities = room.first().identities
+    role = identities[newSeatNumber]
+
     if request.method == 'POST':
         username = session['currentUser']
         user = User.objects(name=username)
         oldSeatNumber = user.first().seat
-        user.update(seat=newSeatNumber)
+        user.update(seat=newSeatNumber,role=role)
 
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
@@ -203,6 +208,39 @@ def game_checkRole():
     resp = jsonify(role)
     resp.status_code = 200
     return resp
+
+@app.route('/game/check', methods=['POST'])
+def game_check():
+
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        stage = room.first().currentStage
+
+        username = session['currentUser']
+        user = User.objects(name=username)
+        role = user.first().role
+
+        condition = stage if stage == role else "Not Ready"
+
+    resp = jsonify(condition)
+    resp.status_code = 200
+    return resp
+
+
+@app.route('/game/update', methods=['POST'])
+def game_update():
+    currentStage = request.form['currentStage']
+
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        room.update(currentStage=currentStage)
+
+    resp = jsonify(True)
+    resp.status_code = 200
+    return resp
+
 
 def write_to_file(data):
     with open('database.txt', mode='a') as database:

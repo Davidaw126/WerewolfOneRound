@@ -1,8 +1,8 @@
-
+var interval;
 $(document).ready(function(){
-	buildUp(false)
+	buildUp("initial")
 	resetCard()
-	setInterval(refreshSeat,500);
+	interval = setInterval(refreshSeat,500);
 
 	$('.shape').shape();
 	$(".shape").click(function(){
@@ -26,7 +26,7 @@ function refreshSeat(){
 	let numberOfSeats = 0
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.31.42.104:5000/seat/refresh",
 	  data: formData,
 	  dataType: "json",
 	  cache: false
@@ -54,7 +54,7 @@ function refreshSeat(){
 function shuffleCard(){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/shuffle",
+	  url: "http://172.31.42.104:5000/game/shuffle",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -66,7 +66,7 @@ function shuffleCard(){
 function reveal(){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/checkRole",
+	  url: "http://172.31.42.104:5000/game/checkRole",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -81,10 +81,10 @@ function reveal(){
 function takeSeat(id){
 	let formData = {};
 	formData['seatNumber'] = id
-
+    formData['role'] =
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/take",
+	  url: "http://172.31.42.104:5000/seat/take",
 	  data: formData,
 	  dataType: "json",
 	  cache: false
@@ -93,10 +93,10 @@ function takeSeat(id){
 
 }
 
-function buildUp(lock){
+function buildUp(gate){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.31.42.104:5000/seat/refresh",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -110,12 +110,13 @@ function buildUp(lock){
 			newdiv.id = i;                      //add an id
 			newdiv.className = 'four wide column'
 
-			let labeled_button = document.createElement('dev');
+			let labeled_button = document.createElement('div');
 			labeled_button.type = 'button'
-			if(!lock) {
-				labeled_button.setAttribute('onclick', 'takeSeat(' + i + ')')
-			}else{
+			if(gate == "lock") {
 				labeled_button.setAttribute('onclick', 'select(' + i + ')')
+			}else{
+				labeled_button.setAttribute('onclick', 'takeSeat(' + i + ')')
+
 			}
 			labeled_button.className = 'ui left labeled button'
 
@@ -126,8 +127,12 @@ function buildUp(lock){
 			let right_icon = document.createElement('i')
 			right_icon.className = "user icon"
 
-			let right_button = document.createElement('div')
+			let right_button = document.createElement('button')
 			right_button.className ="ui button squareButton"
+			if(gate=='kill'){
+				right_button.className +=" inverted red"
+				right_button.type ="button"
+			}
 			right_button.appendChild(right_icon)
 
 			let right_text = document.createElement('i')
@@ -149,11 +154,11 @@ function buildUp(lock){
 
 }
 
-function startGame(){
+async function startGame(){
 	let roomSettingList = []
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.31.42.104:5000/seat/refresh",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -176,7 +181,77 @@ function startGame(){
 		  music.play();
 		  lockSeat()
 		  console.log(data)
+			game()
+
 	});
+
+
+}
+async function game() {
+
+	    await new Promise((resolve, reject) => {
+			setTimeout(() => resolve(updateGame('普通狼人')), 500)
+		  });
+		let ans = await new Promise((resolve, reject) => {
+			setTimeout(() => resolve(checkGame()), 500)
+		  });
+
+
+		gameProgress(ans)
+
+
+}
+function updateGame(stage){
+	let formData = {}
+	formData['currentStage'] = stage
+	return $.ajax({
+	  type: "POST",
+	  url: "http://172.31.42.104:5000/game/update",
+	  dataType: "json",
+	  data: formData,
+	  cache: false
+	}).done(function (data) {
+	});
+
+
+
+}
+function checkGame(){ /* return  普通狼人/... or Not Ready*/
+	return $.ajax({
+	  type: "POST",
+	  url: "http://172.31.42.104:5000/game/check",
+	  dataType: "json",
+	  cache: false
+	}).done(function (data) {
+	});
+}
+
+function gameProgress(stage){
+	let body = document.getElementById('powerSelect');
+	body.innerHTML = '';
+
+	let power1 = document.createElement('div');
+	power1.className = 'ui toggle checkbox'
+	let input1 = document.createElement('input')
+	input1.name = 'power1'
+	input1.type = 'checkbox'
+	let label1 =  document.createElement('label')
+	console.log(stage)
+	switch(stage){
+		case "普通狼人":
+			label1.innerHTML = "是否选择猎杀"
+			buildUp("kill")
+			break;
+		default:
+			power1.className = ''
+			input1 = document.createElement('div')
+			label1.innerHTML = "不是使用技能的环节"
+			break;
+	}
+
+	power1.appendChild(input1)
+	power1.appendChild(label1)
+	body.appendChild(power1)
 
 
 }
@@ -187,5 +262,5 @@ function power(){
 }
 
 function lockSeat(){
-	buildUp(true)
+	buildUp("lock")
 }

@@ -10,7 +10,7 @@ $(document).ready(function(){
         }else{
             $.ajax({
 						type: "POST",
-						url: "http://192.168.1.205:5000/username/check",
+						url: "http://172.31.42.104:5000/username/check",
 						data: $('#registration').serialize(),
 						dataType: "html",
 						cache: false,
@@ -25,7 +25,7 @@ $(document).ready(function(){
 							}
         $.ajax({
 				  type: "GET",
-				  url: "http://192.168.1.205:5000/lobby",
+				  url: "http://172.31.42.104:5000/lobby",
 				}).done(function( o ) {
 				   console.log(123)
 				});
@@ -49,7 +49,7 @@ function submitName(){
 
 		$.ajax({
 		  type: "POST",
-		  url: "http://192.168.1.205:5000/username/submit",
+		  url: "http://172.31.42.104:5000/username/submit",
 		  data: formData,
 		  dataType: "json",
 		}).done(function (data) {
