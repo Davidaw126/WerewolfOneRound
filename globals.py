@@ -27,5 +27,7 @@ class Room(db.Document):
     seats = db.DictField()
     identities = db.DictField()
     roomSettings = db.DictField()
-    numberOfSeats =  db.IntField()
+    numberOfSeats = db.IntField()
     currentStage = db.StringField()
+    stageOrder = db.ListField()
+    gameResult = db.DictField()

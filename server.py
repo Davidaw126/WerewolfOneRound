@@ -1,6 +1,7 @@
 import copy
 import csv
 import random
+import json
 
 from flask import render_template, request, jsonify, session
 
@@ -209,38 +210,103 @@ def game_checkRole():
     resp.status_code = 200
     return resp
 
-@app.route('/game/check', methods=['POST'])
-def game_check():
-
+@app.route('/game/checkMatch', methods=['POST'])
+def game_checkMatch():
     if request.method == 'POST':
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
-        stage = room.first().currentStage
+        stage = room.first().stageOrder
 
         username = session['currentUser']
         user = User.objects(name=username)
         role = user.first().role
 
-        condition = stage if stage == role else "Not Ready"
+        condition = stage[0] if stage and stage[0] == role else "Not Ready"
 
     resp = jsonify(condition)
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/checkCurrentStage', methods=['POST'])
+def game_checkCurrentStage():
+    stage = ""
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        stage = room.first().stageOrder
+
+    resp = jsonify(stage[0]) if stage else jsonify(True)
     resp.status_code = 200
     return resp
 
 
 @app.route('/game/update', methods=['POST'])
 def game_update():
-    currentStage = request.form['currentStage']
+    next = request.form['next']
 
     if request.method == 'POST':
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
-        room.update(currentStage=currentStage)
+        if next == 'NEXT':
+            stageOrder = copy.copy(room.first().stageOrder)
+            if len(stageOrder) > 0:
+                stageOrder.pop(0)
+            room.update(stageOrder=stageOrder)
+
+
 
     resp = jsonify(True)
     resp.status_code = 200
     return resp
 
+@app.route('/game/select', methods=['POST'])
+def game_select():
+    select = request.form['select']
+
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        currentStage = room.first().stageOrder[0]
+
+        gameResult = {}
+        if room.first().gameResult:
+            gameResult = copy.copy(room.first().gameResult)
+        if select == "MEDICAL":
+            gameResult["解药"] = room.first().gameResult['普通狼人']
+        else:
+            gameResult[currentStage] = select
+
+        room.update(gameResult=gameResult)
+
+    resp = jsonify(True)
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/order', methods=['POST'])
+def stage_order():
+    order = json.loads(request.form['stageOrder'])
+
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+
+        room.update(stageOrder=order)
+
+    resp = jsonify(room.first().stageOrder)
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/checkGameResult', methods=['POST'])
+def game_checkGameResult():
+    resp = jsonify(False)
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        gameResult = room.first().gameResult
+        resp = jsonify(gameResult)
+
+    resp.status_code = 200
+    return resp
 
 def write_to_file(data):
     with open('database.txt', mode='a') as database:
