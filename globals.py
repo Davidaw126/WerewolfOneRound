@@ -22,7 +22,7 @@ class User(db.Document):
 
 
 class Room(db.Document):
-    roomNumber = db.IntField()
+    roomNumber = db.StringField()
     readyStatus = db.BooleanField()
     seats = db.DictField()
     identities = db.DictField()

@@ -47,7 +47,7 @@ def add_user():
 
 @app.route('/username/submit', methods=['POST'])
 def submit():
-    form_data = request.form.to_dict()
+    form_data = request.form
     insertData = User(name=form_data['username'])
     insertData.save()
     session['currentUser'] = form_data['username']
@@ -76,7 +76,7 @@ def check_room():
 
 @app.route('/room/add', methods=['POST'])
 def add_room():
-    roomNumber = "%06d" % random.randint(0,999999) if request.form['createEnter'] ==  'createRoom' else request.form['room']
+    roomNumber = "%06d" % random.randint(0,100000) if request.form['createEnter'] ==  'createRoom' else request.form['room']
 
     if roomNumber and request.method == 'POST':
 

@@ -6,7 +6,7 @@
 5. Run following command:
     set FLASK_APP=server.py
     set FLASK_ENV=development
-    flask run --host=192.168.1.205
+    flask run --host=172.30.24.194
 
 
 

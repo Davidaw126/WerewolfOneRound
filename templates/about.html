@@ -16,23 +16,31 @@
    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.css">
 <title>Student</title>
 </head>
-  <center>
-  <h3></h3>
-      <h2 class="chinese">狼人杀</h2>
-      <div class="col-md-8 form-container">
-      <form class="english" id="registration" >
+
+<div id="my-container" class="ui grid middle aligned center aligned">
+  <div class="row">
+    <div class="four wide column">
+      <div class="ui text  segment">
+             <p class="chinese">狼人杀</p>
+      <div class=" form-container">
+      <form class="english" id="registration" onsubmit="submitName()">
 
         <div class="form-group">
-          <label >用户名</label>
-          <input type="text" class="form-control" name="username" id="username" required autocomplete="off" >
-          <div id="msg">Username exists</div>
+            <div class="ui icon input ">
+          <input type="text" class="form-control" name="username" id="username" required autocomplete="off" placeholder="用户名"><i id="info" class="user circle icon"> </i>
+            </div>
+                <div id="msg">Username exists</div>
         </div>
-          <button  type="submit" class="ui blue button" id="register" onclick="submitName()"/>提交 </button>
+          <button type="button" class="ui black button" id="register" onclick="submitName()"/>提交 </button>
 
 
       </form>
       </div>
-  </center>
+      </div>
+    </div>
+  </div>
+</div>
+
 </script>
 
 </html>

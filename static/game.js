@@ -28,7 +28,7 @@ function refreshSeat(){
 	let numberOfSeats = 0
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.30.24.194:5000/seat/refresh",
 	  data: formData,
 	  dataType: "json",
 	  cache: false
@@ -55,7 +55,7 @@ function refreshSeat(){
 function shuffleCard(){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/shuffle",
+	  url: "http://172.30.24.194:5000/game/shuffle",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -67,7 +67,7 @@ function shuffleCard(){
 function reveal(){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/checkRole",
+	  url: "http://172.30.24.194:5000/game/checkRole",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -84,7 +84,7 @@ function takeSeat(id){
 	formData['seatNumber'] = id
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/take",
+	  url: "http://172.30.24.194:5000/seat/take",
 	  data: formData,
 	  dataType: "json",
 	  cache: false
@@ -96,7 +96,7 @@ function takeSeat(id){
 function buildUp(gate){
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.30.24.194:5000/seat/refresh",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -164,7 +164,7 @@ async function startGame(){
 	let roomSettingList = []
 	$.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/seat/refresh",
+	  url: "http://172.30.24.194:5000/seat/refresh",
 	  dataType: "json",
 	  cache: false
 	}).done(async function (data) {
@@ -221,7 +221,7 @@ function updateGameOrder(stageOrder){
 	formData['stageOrder'] = JSON.stringify(stageOrder)
 	 $.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/order",
+	  url: "http://172.30.24.194:5000/game/order",
 	  dataType: "json",
 	  data: formData,
 	  cache: false
@@ -235,7 +235,7 @@ function updateGame(next){
 	formData['next'] = next
 	return $.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/update",
+	  url: "http://172.30.24.194:5000/game/update",
 	  dataType: "json",
 	  data: formData,
 	  cache: false
@@ -248,7 +248,7 @@ function checkGame(){ /* check is role match with currentStage, return  普通�
 
 	return $.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/checkMatch",
+	  url: "http://172.30.24.194:5000/game/checkMatch",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -258,7 +258,7 @@ function checkGame(){ /* check is role match with currentStage, return  普通�
 function checkGameRepeat(){ /*check currentStage */
 	 $.ajax({
 	  type: "POST",
-	  url: "http://192.168.1.205:5000/game/checkCurrentStage",
+	  url: "http://172.30.24.194:5000/game/checkCurrentStage",
 	  dataType: "json",
 	  cache: false
 	}).done(function (data) {
@@ -340,7 +340,7 @@ function select(id) {
 		formData['select'] = id
 		$.ajax({
 			type: "POST",
-			url: "http://192.168.1.205:5000/game/select",
+			url: "http://172.30.24.194:5000/game/select",
 			data: formData,
 			dataType: "json",
 			cache: false
@@ -393,7 +393,7 @@ console.log(checked2)
 function checkGameResult(){
 		return $.ajax({
 			type: "POST",
-			url: "http://192.168.1.205:5000/game/checkGameResult",
+			url: "http://172.30.24.194:5000/game/checkGameResult",
 			dataType: "json",
 			cache: false
 		}).done(function (data) {

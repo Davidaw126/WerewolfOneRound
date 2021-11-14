@@ -15,22 +15,35 @@
       <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
       <link href="./static/assets/favicon.ico" rel="icon">
    </head>
-   <center>
-      <h3></h3>
-      <h2 class="chinese">狼人杀</h2>
-      <div class="col-md-8 form-container">
-         <form class="english" id="registration" >
-            <div class="ui segment">
+<div id="my-container" class="ui grid middle aligned center aligned">
+  <div class="row">
+    <div class="four wide column">
+      <div class="ui text container segment">
+           <h1 class="chinese">狼人杀</h1>
+
+           <div class="ui segments">
+
+      <div class=" ui segment ">
+         <form class="english" id="registration" onsubmit="submitRoom('enterRoom')">
+            <div class="">
                <div class="form-group">
                   <div class="ui icon input chinese ">
-                     <input type="number" placeholder="房间号" class="form-control" name="room" id="room" required autocomplete="off" ><i id="info" class="search icon"> </i></i>
+                     <input type="number" placeholder="房间号" class="form-control" name="room" id="room" required autocomplete="off" ><i id="info" class="search icon"> </i>
                   </div>
                </div>
                <button type="button" class="ui green button" id="enterRoom" onclick="submitRoom(id)"/>进入房间</button>
             </div>
-            <button type="button" class="ui black button" id="createRoom" onclick="submitRoom(id)"/>创建房间</button>
+
          </form>
+
       </div>
-   </center>
+               <div class="ui segment">            <button type="button" class="ui black button" id="createRoom" onclick="submitRoom(id)"/>创建房间</button>
+</div>
+           </div>
+      </div>
+    </div>
+  </div>
+</div>
+
    </script>
 </html>

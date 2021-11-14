@@ -38,7 +38,7 @@ function handleData()
 
             $.ajax({
 			  type: "POST",
-			  url: "http://192.168.1.205:5000/room/settings",
+			  url: "http://172.30.24.194:5000/room/settings",
 			  data: formData,
 			  dataType: "json",
 			  encode: true,
