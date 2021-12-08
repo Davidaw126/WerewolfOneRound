@@ -18,13 +18,14 @@ $(document).ready(function() {
         } else {
             $.ajax({
                 type: "POST",
-                url: "http://172.30.24.194:5000/room/check",
+                url: "http://192.168.1.205:5000/room/check",
                 data: $('#registration').serialize(),
                 dataType: "html",
                 cache: false,
                 success: function(msg) {
                     let result = JSON.parse(msg)
                     exists = result.exists
+                    console.log(exists)
                     if (result.exists) {
                         msgBtn.className = "green check icon"
                         enterRoomBtn.disabled = false;
@@ -46,7 +47,7 @@ function submitRoom(createEnter) {
         };
         $.ajax({
             type: "POST",
-            url: "http://172.30.24.194:5000/room/add",
+            url: "http://192.168.1.205:5000/room/add",
             data: formData,
             dataType: "json",
             cache: false

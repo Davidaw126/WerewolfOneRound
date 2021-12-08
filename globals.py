@@ -15,15 +15,16 @@ app.secret_key = 'BAD_SECRET_KE'
 class User(db.Document):
     name = db.StringField(required=True)
     _id = db.StringField()
-    room = db.IntField()
+    room = db.StringField()
     role = db.StringField()
     inputBool = db.StringField()
     seat = db.IntField()
+    admin = db.BooleanField()
 
 
 class Room(db.Document):
     roomNumber = db.StringField()
-    readyStatus = db.BooleanField()
+    lockStatus = db.BooleanField()
     seats = db.DictField()
     identities = db.DictField()
     roomSettings = db.DictField()
@@ -31,3 +32,4 @@ class Room(db.Document):
     currentStage = db.StringField()
     stageOrder = db.ListField()
     gameResult = db.DictField()
+    cardStatus = db.ListField()

@@ -2,20 +2,13 @@
   font-family:  monospace;
 }
 
-html, body {
-    height: 100%;
-}
 
-html {
-    display: table;
-    margin: auto;
+#my-container {
+  height: 100vh;
 }
-
-body {
-    display: table-cell;
-    vertical-align: middle;
+.x-scroll{
+      overflow-x: hidden !important;
 }
-
 
 html {
     -ms-touch-action: manipulation;
@@ -34,8 +27,64 @@ input::-webkit-inner-spin-button {
      text-align: center !important;
  }
 
+.short {
+  padding: 11px 9px !important;
+  font-size: 15px !important;
+    width: 100px !important;
+}
+
+
+.here {
+  padding-right: 10px !important;
+  padding-left: 10px !important;
+}
+
+.column {
+  padding: 5px 5px 5px 5px !important;
+
+}
+
+.nextline{
+    display: block !important;
+    width: 100% !important;
+    margin-top: 5px !important;
+    margin-bottom: 5px !important;
+
+}
+
+.thiefMargin{
+     margin-top: 20px !important;
+    margin-bottom: 20px !important;
+}
 
 .squareButton {
-    width:100px !important;
+    font-weight: normal !important;
+    color: black !important;
+    height: 90px !important;
+    width: 90px !important;
+    margin: auto !important;
     overflow-wrap: break-word;
 }
+
+
+.ui.corner.label, .ui.corner.label:hover{
+    border-radius: 0px 4px 0px 0px !important;
+     overflow: hidden;
+    background-size: 150px !important;
+}
+
+.corner{
+    padding-left: 25px !important;
+    padding-top: 6px  !important;
+}
+
+.sticky {
+  position: fixed !important;
+  bottom: 1px !important;
+    margin: 2px !important;
+    width: 100% !important;
+
+background-color: white !important;
+}
+
+

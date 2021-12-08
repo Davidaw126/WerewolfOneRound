@@ -26,7 +26,7 @@ function checkName(){
 			formData["username"] = $("#username").val()
             return $.ajax({
 						type: "POST",
-						url: "http://172.30.24.194:5000/username/check",
+						url: "http://192.168.1.205:5000/username/check",
 						data: formData,
 						dataType: "json",
 						cache: false,
@@ -61,7 +61,7 @@ async function submitName() {
 
 		return $.ajax({
 			type: "POST",
-			url: "http://172.30.24.194:5000/username/submit",
+			url: "http://192.168.1.205:5000/username/submit",
 			data: formData,
 			cache: false,
 			dataType: "json",

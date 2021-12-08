@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="x-scroll">
 
 <title>狼人面杀</title>
 <head>
@@ -15,15 +15,22 @@
   <script src="./static/room.js"></script>
   <link rel="stylesheet" type="text/css" href="static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.13/semantic.min.css">
-<meta name="viewport" content="width=device-width, initial-scale=1.5">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
 <title>Student</title>
 </head>
-  <center>
-  <h3></h3>
-      <h2 class="chinese">狼人杀</h2>
-      <div class=" form-container">
-      <form class="english" id="registration"  >
-        <h3 class="chinese">房间配置</h3>
+<body class="x-scroll">
+<div id="my-container" class="ui one column middle aligned center aligned grid">
+
+  <div class="row">
+    <div class="column">
+      <div class="ui text segment">
+
+
+
+      <p class="chinese">房间配置</p>
+      <div class="">
+      <div class="english" id="registration"  >
 
 
         <div class="form-group segments">
@@ -149,9 +156,14 @@
 
         <button type="button" class="btn btn-success" id="enterRoom" onclick="handleData()"/>完成配置</button>
 
-      </form>
       </div>
-  </center>
-</script>
+      </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
 
 </html>

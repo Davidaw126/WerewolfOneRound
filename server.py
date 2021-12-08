@@ -3,7 +3,7 @@ import csv
 import random
 import json
 
-from flask import render_template, request, jsonify, session
+from flask import render_template, request, jsonify, session, redirect, url_for
 
 from globals import User, app, Room
 
@@ -23,11 +23,17 @@ def main_page():
 @app.route('/<page_name>', methods=['GET'])
 def page(page_name):
     print(session)
-    # if 'currentUser' in session:
-    return render_template(page_name + ".html")
-    # else:
-    # return render_template("about.html")
+    if 'currentUser' in session:
+        return render_template(page_name + ".html")
+    else:
+        return redirect(url_for('main_page'))
 
+@app.route('/database/reset')
+def reset_database():
+    User.drop_collection()
+    Room.drop_collection()
+    resp = jsonify(exists=False)
+    return resp
 
 @app.route('/username/check', methods=['POST'])
 def add_user():
@@ -48,7 +54,7 @@ def add_user():
 @app.route('/username/submit', methods=['POST'])
 def submit():
     form_data = request.form
-    insertData = User(name=form_data['username'])
+    insertData = User(name=form_data['username'],admin=False)
     insertData.save()
     session['currentUser'] = form_data['username']
     print(session)
@@ -64,7 +70,7 @@ def check_room():
 
         ins = Room.objects(roomNumber= room)
         print(ins)
-        if ins and ins.first().readyStatus:
+        if ins:
             resp = jsonify(exists=True)
             resp.status_code = 200
             return resp
@@ -73,6 +79,20 @@ def check_room():
     resp.status_code = 200
     return resp
 
+def check_room():
+    room = request.form['room']
+    if room and request.method == 'POST':
+
+        ins = Room.objects(roomNumber= room)
+        print(ins)
+        if ins:
+            resp = jsonify(exists=True)
+            resp.status_code = 200
+            return resp
+
+    resp = jsonify(exists=False)
+    resp.status_code = 200
+    return resp
 
 @app.route('/room/add', methods=['POST'])
 def add_room():
@@ -85,13 +105,13 @@ def add_room():
 
         # Update room number in user data
         user = User.objects(name=username)
-        user.update(room=roomNumber)
+        user.update(room=roomNumber,admin=False)
 
         # If room number not exists, create a new room
         roomExists=Room.objects(roomNumber=roomNumber)
 
         if not roomExists:
-            roomInsert = Room(roomNumber=roomNumber,readyStatus=False)
+            roomInsert = Room(roomNumber=roomNumber,lockStatus=False)
             roomInsert.save()
 
 
@@ -103,13 +123,21 @@ def add_room():
 @app.route('/room/settings', methods=['POST'])
 def settings_room():
     roomSettings = request.form.to_dict()
+    print(roomSettings)
 
     username = session['currentUser']
     user = User.objects(name=username)
     roomNumber = user.first().room
+    user.update(admin=True)
 
     room = Room.objects(roomNumber=roomNumber)
-    room.update(roomSettings=roomSettings,readyStatus=True,numberOfSeats=sum(list(map(int, roomSettings.values()))))
+
+    room.update(roomSettings=roomSettings,
+                lockStatus=False,
+                seats=None,
+                stageOrder=None,
+                identities=None,
+                numberOfSeats=sum(list(map(int, roomSettings.values()))))
 
     #call game_shuffle to shuffle the cards
     game_shuffle()
@@ -118,6 +146,69 @@ def settings_room():
     resp.status_code = 200
     return resp
 
+@app.route('/room/lock', methods=['POST'])
+def room_lock():
+    lockStatus = request.form['lockStatus']
+    roomNumber = session['roomNumber']
+    room = Room.objects(roomNumber=roomNumber)
+
+    room.update(lockStatus=bool(int(lockStatus)))
+
+    resp = jsonify(exists=lockStatus)
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/cardStatus', methods=['POST'])
+def game_cardStatus():
+    roomNumber = session['roomNumber']
+    room = Room.objects(roomNumber=roomNumber)
+
+    username = session['currentUser']
+    user = User.objects(name=username)
+
+    seatNumber = user.first().seat
+    cardStatus = copy.copy(room.first().cardStatus)
+    roomSettings = copy.copy(room.first().roomSettings)
+    numberOfSeats = copy.copy(room.first().numberOfSeats)
+
+    cardStatus.append(seatNumber)
+    room.update(cardStatus=cardStatus)
+
+    if "盗贼" in roomSettings.values():
+        numberOfSeats -= 2
+
+    if len(cardStatus) == numberOfSeats:
+        game_update()
+
+    resp = jsonify(exists=True)
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/couple', methods=['POST'])
+def game_couple():
+    roomNumber = session['roomNumber']
+    room = Room.objects(roomNumber=roomNumber)
+
+    username = session['currentUser']
+    user = User.objects(name=username)
+
+    seatNumber = user.first().seat
+    coupleList = copy.copy(room.first().gameResult['丘比特'])
+    stageOrder = room.first().stageOrder
+
+    resp = jsonify("现在不是确认情侣环节")
+    if stageOrder != None and stageOrder[0] == "情侣":
+        if coupleList != None:
+            splitArray = coupleList.split(",")
+            if str(seatNumber) in splitArray:
+                resp = jsonify("你被连为情侣["+splitArray[0]+"号,"+splitArray[1]+"号]")
+            else:
+                resp = jsonify("没被连为情侣, 丘比特没眼光")
+            game_cardStatus()
+
+
+    resp.status_code = 200
+    return resp
 
 @app.route('/logout', methods=['GET'])
 def log_out():
@@ -144,13 +235,12 @@ def seat_take():
     roomNumber = session['roomNumber']
     room = Room.objects(roomNumber=roomNumber)
     identities = room.first().identities
-    role = identities[newSeatNumber]
 
     if request.method == 'POST':
         username = session['currentUser']
         user = User.objects(name=username)
         oldSeatNumber = user.first().seat
-        user.update(seat=newSeatNumber,role=role)
+        user.update(seat=newSeatNumber)
 
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
@@ -159,7 +249,7 @@ def seat_take():
         if oldSeatNumber:
             seatsDict[str(oldSeatNumber)] = "Empty"
 
-        seatsDict[newSeatNumber] = username
+        seatsDict[newSeatNumber] = username[0:12]
         room.update(seats = seatsDict)
 
     resp = jsonify(exists=False)
@@ -174,18 +264,28 @@ def game_shuffle():
 
         cardDict = {}
         roleList = []
+        thiefGate = False
+
         roomSettings = room.first().roomSettings
         for k, v in roomSettings.items():
+            if k == "盗贼":
+                thiefGate = True
             for x in range(int(v)):
                 roleList.append(k)
 
         random.shuffle(roleList)
+        length = len(roleList)
+        badList = ["普通狼人","白狼王", "黑狼王", "隐狼", "恶魔", "狼美人", "恶灵骑士", "梦魇", "机械狼"]
+        if thiefGate:
+            while roleList[length-1] in badList and roleList[length-1] in badList:
+                random.shuffle(roleList)
+
         for x in range(len(roleList)):
             cardDict[str(x+1)] = roleList[x]
 
-        print(cardDict)
+        print(roleList)
 
-        room.update(identities=cardDict)
+        room.update(identities=cardDict,gameResult=None,stageOrder=None)
 
     resp = jsonify(exists=False)
     resp.status_code = 200
@@ -219,9 +319,10 @@ def game_checkMatch():
 
         username = session['currentUser']
         user = User.objects(name=username)
-        role = user.first().role
-
-        condition = stage[0] if stage and stage[0] == role else "Not Ready"
+        seatNumber = user.first().seat
+        identities = room.first().identities
+        roleInRoom = identities[str(seatNumber)]
+        condition = stage[0] if stage and stage[0] == roleInRoom else "NOT READY"
 
     resp = jsonify(condition)
     resp.status_code = 200
@@ -235,23 +336,21 @@ def game_checkCurrentStage():
         room = Room.objects(roomNumber=roomNumber)
         stage = room.first().stageOrder
 
-    resp = jsonify(stage[0]) if stage else jsonify(True)
+    resp = jsonify(stage[0]) if stage else jsonify(False)
     resp.status_code = 200
     return resp
 
 
 @app.route('/game/update', methods=['POST'])
 def game_update():
-    next = request.form['next']
 
     if request.method == 'POST':
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
-        if next == 'NEXT':
-            stageOrder = copy.copy(room.first().stageOrder)
-            if len(stageOrder) > 0:
-                stageOrder.pop(0)
-            room.update(stageOrder=stageOrder)
+        stageOrder = copy.copy(room.first().stageOrder)
+        if len(stageOrder) > 0:
+            stageOrder.pop(0)
+        room.update(stageOrder=stageOrder)
 
 
 
@@ -262,23 +361,45 @@ def game_update():
 @app.route('/game/select', methods=['POST'])
 def game_select():
     select = request.form['select']
+    powerType = request.form['powerType']
 
+    resp = jsonify(True)
     if request.method == 'POST':
         roomNumber = session['roomNumber']
         room = Room.objects(roomNumber=roomNumber)
-        currentStage = room.first().stageOrder[0]
 
-        gameResult = {}
-        if room.first().gameResult:
-            gameResult = copy.copy(room.first().gameResult)
+        currentStage = room.first().stageOrder[0]
+        identities = copy.copy(room.first().identities)
+
+        username = session['currentUser']
+        user = User.objects(name=username)
+        seatNumber = user.first().seat
+
+        if powerType == "预言家":
+            checkIdRole = room.first().identities[select]
+            resp = jsonify(checkIdRole)
+        elif powerType == "丘比特":
+            resp = jsonify(select)
+        elif powerType == "盗贼":
+            identities[str(seatNumber)] = str(identities[select])
+            room.update(identities=identities)
+            resp = jsonify(powerType)
+
+
+        gameResult = copy.copy(room.first().gameResult) if room.first().gameResult else {}
+
+
         if select == "MEDICAL":
             gameResult["解药"] = room.first().gameResult['普通狼人']
         else:
             gameResult[currentStage] = select
 
+        gameResult['猎人'] = "False" if '女巫' in gameResult and gameResult['女巫'] != "None" and identities[str(gameResult['女巫'])] == '猎人' else "True"
+
+
         room.update(gameResult=gameResult)
 
-    resp = jsonify(True)
+
     resp.status_code = 200
     return resp
 
@@ -304,6 +425,33 @@ def game_checkGameResult():
         room = Room.objects(roomNumber=roomNumber)
         gameResult = room.first().gameResult
         resp = jsonify(gameResult)
+
+    resp.status_code = 200
+    return resp
+
+@app.route('/game/checkIdentities', methods=['POST'])
+def game_checkIdentities():
+    resp = jsonify(False)
+    if request.method == 'POST':
+        roomNumber = session['roomNumber']
+        room = Room.objects(roomNumber=roomNumber)
+        identities = room.first().identities
+        resp = jsonify(identities)
+
+    resp.status_code = 200
+    return resp
+
+
+
+@app.route('/user/checkAdmin', methods=['POST'])
+def user_checkAdmin():
+    resp = jsonify(False)
+
+    if request.method == 'POST':
+        username = session['currentUser']
+        user = User.objects(name=username)
+        admin = user.first().admin
+        resp = jsonify(admin)
 
     resp.status_code = 200
     return resp

@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="x-scroll">
    <title>狼人面杀</title>
    <head>
       <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.5">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
       <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
       <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
       <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+
       <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.14/semantic.min.js"></script>
       <script src="./static/game.js"></script>
       <link rel="stylesheet" type="text/css" href="static/game.css">
@@ -15,36 +16,33 @@
       <link href="./static/assets/favicon.ico" rel="icon">
       <title>Student</title>
    </head>
-       <center>
-          <h3></h3>
+
+   <body>
+
+<div id="my-container" class=" ui one column center aligned grid">
+
+
+  <div class="row">
+    <div class=" column">
+      <div class="ui text segment">
       <h2 class="chinese">狼人杀</h2>
       <div class="form-container">
          <form class="english" id="registration" >
 
             <div class="form-group segments">
                <h4 class="ui top attached block header" id="roomTitleNumber"></h4>
-               <div class="ui internally grid here attached segment" id="dynamic_insert">
+               <div class="ui grid attached segment" id="dynamic_insert">
                </div>
-               <div class="ui internally grid here bottom attached header">
-                   <div class="four wide column" data-toggle="buttons">
-                     <button type="button" class="ui  button" onclick="reveal(id)"><i class="question circle icon"></i>身份配置</button>
-                   </div>
-                  <div class="four wide column" data-toggle="buttons">
-                     <button type="button" class="ui  button" onclick="power()"><i class="eye icon"></i>使用技能</button>
-                   </div>
-                  <div class="four wide column" data-toggle="buttons">
-                     <button type="button" class="ui  button" onclick="shuffleCard(id)"><i class="random icon"></i>重新发牌</button>
-                   </div>
-                  <div class="four wide column" data-toggle="buttons">
-                     <button type="button" class="ui  button" onclick="startGame(id)"><i class="play icon"></i>开始游戏</button>
-                   </div>
-               </div>
+
+
 
             </div>
 
 
          </form>
       </div>
+
+
 
       <div class="ui modal" id="reveal">
               <div class="ui header">
@@ -68,7 +66,10 @@
                         <div class="ui meta" id="roles"></div>
                </div>
               <div class="actions">
-                <div class="ui approve button">好滴</div>
+                  <div  class="ui icon approve button" onclick="revealCouple()"><i class="heart icon"></i></div>
+                <div class="ui approve button">确定</div>
+
+
               </div>
       </div>
 
@@ -77,21 +78,92 @@
               <div class="ui header">
                   <div class="ui header">释放技能</div>
               </div>
-               <div class="content">
+
+               <div class="content" id="releasePower">
                         <div class="ui meta" id="powerSelect3"></div>
-                        <div class="ui meta" id="powerSelect"></div>
                         <div class="ui meta" id="powerSelect2"></div>
+                        <div class="ui meta" id="powerSelect"></div>
+               </div>
+
+
+              <div class="actions">
+                <div class="ui approve blue button" id="powerButton" onclick="confirmPower()">确定</div>
+              </div>
+      </div>
+
+      <div class="ui modal" id="check">
+              <div class="ui header">
+                  <div class="ui header" id="confirmationHeader"></div>
+              </div>
+               <div class="content">
+                        <div class="ui meta" id="confirmationMsg"></div>
 
                </div>
 
               <div class="actions">
-                <div class="ui approve button" onclick="confirmPower()">好滴</div>
+                <div class="ui approve button" onclick="closeCheckId()">确定</div>
               </div>
       </div>
 
-  <button class="ui inverted red button">Red</button>
+       <div class="ui modal" id="judgeInfo">
+              <div class="ui header">
+                  <div class="ui header"  id="judgeInfoHeader"></div>
+              </div>
+               <div class="content">
+                        <div class="ui meta" id="judgeInfoMsg"></div>
 
-   </center>
-   </script>
+               </div>
 
+              <div class="actions">
+                <div class="ui approve button">好滴</div>
+              </div>
+      </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+                <div class=" ui three column center aligned grid sticky">
+                   <div class="column" data-toggle="buttons">
+                     <button type="button" class="ui  button short" onclick="reveal(id)"><i class="question circle icon"></i>身份配置</button>
+                   </div>
+                   <div class=" column" data-toggle="buttons">
+                     <div class="ui top left pointing icon dropdown "   id="admin">
+                          <button type="button" class="ui  button short" ><i class="question circle icon"></i>法官</button>
+                          <div class="menu">
+                            <div class="item" onclick="revealLastNight(id)">
+                              <i class="attention icon"></i>
+                              昨夜信息
+                            </div>
+
+                            <div class="item" onclick="shuffleCard(id)">
+                              <i class="random icon"></i>
+                              重新发牌
+                            </div>
+                             <div class="item" onclick="startGame(id)">
+                              <i class="play icon"></i>
+                              开始游戏
+                            </div>
+
+                          </div>
+                        </div>
+                   </div>
+
+                  <div class="column" data-toggle="buttons">
+                     <button type="button" class="ui  button short" onclick="power()"><i class="eye icon"></i>使用技能</button>
+                   </div>
+
+
+               </div>
+
+
+
+
+
+
+   </body>
 </html>

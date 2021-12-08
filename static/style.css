@@ -2,17 +2,25 @@
   font-family:  monospace;
 }
 .chinese {
-    font-size: 20px;
+    font-size: 30px;
 }
 
 #my-container {
   height: 100vh;
-  width: 100%;
+}
+
+.xy-scroll{
+      overflow: hidden !important;
+}
+
+.x-scroll{
+      overflow-x: hidden !important;
 }
 
 .button {
   padding: 11px 9px !important;
   font-size: 15px !important;
+    width: 82px !important;
 }
 
 
