@@ -1,0 +1,184 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Monospace-forward stack — retro terminal feel; CJK falls back to system. */
+	--font-sans:
+		ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', 'PingFang SC',
+		'Noto Sans SC', 'Microsoft YaHei', monospace;
+	--font-display: var(--font-sans);
+
+	/* CRT Night palette (token names kept from prior pass; values retuned) */
+	--color-ink: #0d0e1a;
+	--color-surface: #191a2e;
+	--color-surface-2: #232544;
+	--color-line: #0b0b12;
+	--color-wolf: #e03131;
+	--color-wolf-deep: #7f1d1d;
+	--color-village: #f2c14e;
+	--color-moon: #8ec7ff;
+	--color-lav: #b8a1ff;
+	--color-ember: #f59e0b;
+	--color-bone: #f4f0e6;
+	--color-parch: #e8d8a8;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+html {
+	/* Renders scrollbars / native controls in dark mode (kills the white
+	   scrollbar track) and keeps the overscroll gutter on-theme. */
+	color-scheme: dark;
+	background-color: var(--color-ink);
+	scrollbar-color: var(--color-surface-2) var(--color-ink);
+}
+
+body {
+	background-color: var(--color-ink);
+	color: var(--color-bone);
+	overscroll-behavior: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* Pixel-styled scrollbar for WebKit/Blink to match the 8-bit chrome. */
+::-webkit-scrollbar {
+	width: 12px;
+	height: 12px;
+}
+::-webkit-scrollbar-track {
+	background: var(--color-ink);
+}
+::-webkit-scrollbar-thumb {
+	background: var(--color-surface-2);
+	border: 3px solid var(--color-ink);
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-ember);
+}
+::-webkit-scrollbar-corner {
+	background: var(--color-ink);
+}
+
+/* --- 8-bit component chrome -------------------------------------------- */
+
+.panel {
+	@apply border-[3px] border-line bg-surface;
+	box-shadow: 5px 5px 0 var(--color-line);
+}
+
+.btn-primary {
+	@apply border-[3px] border-line bg-village px-4 py-3 font-semibold tracking-wider text-black uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+	box-shadow: 4px 4px 0 var(--color-line);
+}
+.btn-primary:active:not(:disabled) {
+	transform: translate(4px, 4px);
+	box-shadow: 0 0 0 var(--color-line);
+}
+
+.btn-ghost {
+	@apply border-[3px] border-line bg-surface-2 px-4 py-3 font-medium tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+	box-shadow: 4px 4px 0 var(--color-line);
+}
+.btn-ghost:active:not(:disabled) {
+	transform: translate(4px, 4px);
+	box-shadow: 0 0 0 var(--color-line);
+}
+
+.btn-danger {
+	@apply border-[3px] border-line bg-wolf px-4 py-3 font-semibold tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+	box-shadow: 4px 4px 0 var(--color-line);
+}
+.btn-danger:active:not(:disabled) {
+	transform: translate(4px, 4px);
+	box-shadow: 0 0 0 var(--color-line);
+}
+
+.chip {
+	@apply border-2 border-line bg-surface px-3 py-1 text-xs text-bone;
+	box-shadow: 2px 2px 0 var(--color-line);
+}
+
+.seat-btn {
+	@apply border-[3px] border-line bg-surface-2 px-2 py-3 text-sm text-bone transition-transform disabled:cursor-not-allowed disabled:opacity-40;
+}
+.seat-btn:active:not(:disabled) {
+	transform: translate(2px, 2px);
+}
+
+.title-glow {
+	/* extruded 8-bit block depth */
+	text-shadow:
+		2px 0 0 var(--color-line),
+		2px 2px 0 var(--color-wolf-deep),
+		4px 4px 0 var(--color-wolf-deep),
+		6px 6px 0 var(--color-line);
+}
+
+/* Faction-framed role card (front of reveal card + game-over grid) */
+.role-frame {
+	@apply relative flex flex-col items-center justify-center border-[3px] text-center;
+}
+.role-frame--wolf {
+	@apply border-wolf bg-surface;
+	box-shadow: 5px 5px 0 var(--color-line);
+	border-bottom-width: 7px;
+	border-bottom-color: var(--color-wolf);
+}
+.role-frame--village {
+	@apply border-village bg-surface;
+	box-shadow: 5px 5px 0 var(--color-line);
+	border-bottom-width: 7px;
+	border-bottom-color: var(--color-village);
+}
+
+/* Crisp pixel rendering for sprite canvases */
+.pixelated {
+	image-rendering: pixelated;
+}
+
+/* Blocking full-viewport overlay - shared by RoleRevealCard, ActivityLogButton,
+   and RoomLogButton. Prevents a neighbor glancing at the screen from seeing
+   private info until explicitly dismissed. */
+.overlay-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: rgba(5, 5, 10, 0.88);
+	backdrop-filter: blur(2px);
+}
+.overlay-panel {
+	position: relative;
+	width: 100%;
+	max-width: 22rem;
+}
+
+/* CRT scanlines + vignette, mounted once in the root layout */
+.grain::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+	background: repeating-linear-gradient(
+		to bottom,
+		rgba(0, 0, 0, 0) 0,
+		rgba(0, 0, 0, 0) 2px,
+		rgba(0, 0, 0, 0.18) 3px,
+		rgba(0, 0, 0, 0) 4px
+	);
+	mix-blend-mode: multiply;
+}
+.grain::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 59;
+	pointer-events: none;
+	box-shadow: inset 0 0 160px 30px rgba(0, 0, 0, 0.6);
+}
