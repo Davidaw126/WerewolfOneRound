@@ -2,6 +2,7 @@ import type { ClientAction, AckResponse } from '../../shared/events';
 import type { RoomPublicState } from '../../shared/gameTypes';
 import { getPublicState, getRevealedRoleIfAny } from '../rooms/roomRepo';
 import { emitToSession } from './emit';
+import { checkRateLimit } from './rateLimit';
 import { ActionError, requireRoomCode, type GameSocket } from './handlers/helpers';
 import {
 	handleRoomCreate,
@@ -27,6 +28,9 @@ export async function dispatchAction(
 	socket: GameSocket,
 	action: ClientAction
 ): Promise<AckResponse & { roomCode?: string; state?: RoomPublicState }> {
+	if (!(await checkRateLimit(socket.data.sessionId))) {
+		return { ok: false, error: 'rate_limited' };
+	}
 	try {
 		switch (action.kind) {
 			case 'RoomCreate':
