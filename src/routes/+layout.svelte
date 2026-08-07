@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import '../app.css';
-	import {
-		unlockAudio,
-		sfxClick,
-		suspendAudio,
-		resumeAudio,
-		narrationWatchdog
-	} from '$lib/client/sfx';
+	import { unlockAudio, sfxClick, narrationWatchdog } from '$lib/client/sfx';
 	import { initAudioSettings } from '$lib/client/audioSettings.svelte';
 	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
 
@@ -25,35 +19,28 @@
 		};
 		window.addEventListener('pointerdown', onDown);
 
-		// Nothing used to stop the audio when the page went to the background:
-		// SPA navigation away tore the drone down, but merely hiding the tab
-		// left the AudioContext rendering and speechSynthesis talking. Lives
-		// here rather than on the room page because the AudioContext is
-		// module-global, and a hidden tab's queued narration would otherwise
-		// keep running after navigating away from the room.
-		const onHidden = () => {
-			suspendAudio();
-			// Freeze rather than cancel: cancel() fires onend, so the queue would
-			// march on while hidden - and killing an utterance before its onstart
-			// would strand every other player waiting on that relayed signal.
-			if (window.speechSynthesis) speechSynthesis.pause();
-		};
+		// Deliberately does NOT suspend the AudioContext or pause speechSynthesis
+		// when the tab/app goes to the background - the ambient drone and
+		// narration keep playing while hidden. `resume()` (harmless no-op if
+		// nothing needed it) and narrationWatchdog() still run on return, since
+		// the BROWSER itself - independent of anything this app does - may still
+		// silently kill speech synthesis while backgrounded on some mobile
+		// engines; this is just recovery from that, not anything this app
+		// initiates.
 		const onVisible = () => {
-			resumeAudio();
 			if (window.speechSynthesis) speechSynthesis.resume();
 			narrationWatchdog();
 		};
-		const onVisibilityChange = () => (document.hidden ? onHidden() : onVisible());
-
+		const onVisibilityChange = () => {
+			if (!document.hidden) onVisible();
+		};
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		// Mobile Safari's bfcache doesn't reliably fire visibilitychange.
-		window.addEventListener('pagehide', onHidden);
 		window.addEventListener('pageshow', onVisible);
 
 		return () => {
 			window.removeEventListener('pointerdown', onDown);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
-			window.removeEventListener('pagehide', onHidden);
 			window.removeEventListener('pageshow', onVisible);
 		};
 	});

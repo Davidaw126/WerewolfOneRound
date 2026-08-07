@@ -55,6 +55,46 @@ or join one with a 6-digit code from another browser tab/device.
 | `npm run check`                   | `svelte-kit sync` + `svelte-check` (type checking)                                                            |
 | `npm run lint` / `npm run format` | Prettier + ESLint                                                                                             |
 
+## Deployment
+
+The production build is two artifacts: SvelteKit's own `adapter-node` output
+(`build/`) and an esbuild bundle of the standalone Socket.IO server
+entrypoint (`build-server/index.js`, see `server/index.ts`) that wraps a bare
+Node HTTP server around SvelteKit's request handler and attaches Socket.IO to
+it. `npm run build` produces both, in the right order.
+
+```sh
+npm run build
+npm start          # node build-server/index.js
+```
+
+Required environment variables (see `.env.example`):
+
+| Variable         | Required    | Notes                                                                                                                                                                   |
+| ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SESSION_SECRET` | Yes         | HMAC key for signing session cookies. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. The server refuses to start without it. |
+| `REDIS_URL`      | No          | Defaults to `redis://127.0.0.1:6379` if unset - set this to your production Redis instance. `rediss://` enables TLS (e.g. for Upstash/Redis Cloud).                     |
+| `PORT`           | No          | Defaults to `3000`.                                                                                                                                                     |
+| `NODE_ENV`       | Recommended | Set to `production` so the session cookie is issued with the `secure` flag.                                                                                             |
+
+Node ≥22 is required (`engines` in `package.json`, enforced at install time
+via `.npmrc`'s `engine-strict`).
+
+**Choosing a host**: this app needs a persistent Node process holding
+long-lived WebSocket connections (Socket.IO) plus a reachable Redis instance
+— that rules out serverless/edge platforms (Vercel Edge Functions, Cloudflare
+Workers without Durable Objects) without a rearchitecture. **Render** or
+**Railway** are the easiest fit: both run a persistent Node web service with
+full WebSocket support and a managed Redis add-on, deploying straight from
+`package.json`'s scripts with no Dockerfile needed. A plain VPS (DigitalOcean/
+Hetzner droplet) is the cheaper always-on alternative if you'd rather avoid
+platform lock-in, at the cost of managing Node/Redis/a process manager/TLS
+yourself.
+
+Not yet set up, worth doing before a public-facing deploy: response security
+headers (CSP, `X-Frame-Options`, etc.) - `src/hooks.server.ts` currently sets
+none.
+
 ## Architecture
 
 ```

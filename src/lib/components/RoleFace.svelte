@@ -13,9 +13,10 @@
 </script>
 
 <div
-	class="role-frame h-full w-full {team === 'wolf'
-		? 'role-frame--wolf'
-		: 'role-frame--village'} {size === 'lg' ? 'gap-2 px-6 py-6' : 'gap-1 px-2 py-3'}"
+	class="role-frame w-full {team === 'wolf' ? 'role-frame--wolf' : 'role-frame--village'} {size ===
+	'lg'
+		? 'gap-2 px-6 py-6'
+		: 'gap-1 px-2 py-3'}"
 >
 	<PixelSprite {role} px={size === 'lg' ? 88 : 44} />
 	<div

@@ -1,5 +1,6 @@
 import type { ClientAction, AckResponse } from '../../shared/events';
 import type { RoomPublicState } from '../../shared/gameTypes';
+import type { ValidationIssue } from '../../game/rules/setup';
 import { getPublicState, getRevealedRoleIfAny } from '../rooms/roomRepo';
 import { emitToSession } from './emit';
 import { checkRateLimit } from './rateLimit';
@@ -23,11 +24,20 @@ import {
 } from './handlers/night';
 import { handleVoteCast, handleVoteEnd } from './handlers/vote';
 import { handleHunterShoot } from './handlers/hunter';
+import {
+	handleNextSpeaker,
+	handleBeginVote,
+	handleSelfExplode,
+	handleKnightDuel
+} from './handlers/discussion';
+import { handleHostOverride } from './handlers/hostOverride';
 
 export async function dispatchAction(
 	socket: GameSocket,
 	action: ClientAction
-): Promise<AckResponse & { roomCode?: string; state?: RoomPublicState }> {
+): Promise<
+	AckResponse & { roomCode?: string; state?: RoomPublicState; issues?: ValidationIssue[] }
+> {
 	if (!(await checkRateLimit(socket.data.sessionId))) {
 		return { ok: false, error: 'rate_limited' };
 	}
@@ -41,7 +51,8 @@ export async function dispatchAction(
 				return await handleRoomSubmitConfig(
 					socket,
 					action.roleConfig,
-					action.cupidPoisonBlocksHunter
+					action.cupidPoisonBlocksHunter,
+					action.ruleOverrides
 				);
 			case 'RoomStartGame':
 				return await handleRoomStartGame(socket);
@@ -65,15 +76,25 @@ export async function dispatchAction(
 				return await handleNightAnnounceResults(socket);
 			case 'NightNarrationStarted':
 				return await handleNightNarrationStarted(socket, action.role);
+			case 'DayNextSpeaker':
+				return await handleNextSpeaker(socket);
+			case 'DayBeginVote':
+				return await handleBeginVote(socket);
+			case 'DaySelfExplode':
+				return await handleSelfExplode(socket, action.seat);
+			case 'DayKnightDuel':
+				return await handleKnightDuel(socket, action.knightSeat, action.targetSeat);
 			case 'VoteCast':
 				return await handleVoteCast(socket, action.target);
 			case 'VoteEnd':
 				return await handleVoteEnd(socket);
 			case 'HunterShoot':
 				return await handleHunterShoot(socket, action.target);
+			case 'HostOverride':
+				return await handleHostOverride(socket, action.overrideKind, action.seat, action.role);
 			case 'ResyncRequest': {
 				const code = requireRoomCode(socket);
-				const state = await getPublicState(code);
+				const state = await getPublicState(code, socket.data.sessionId);
 				const revealedRole = await getRevealedRoleIfAny(code, socket.data.sessionId);
 				if (revealedRole) {
 					emitToSession(socket.data.sessionId, { kind: 'YourRole', role: revealedRole });

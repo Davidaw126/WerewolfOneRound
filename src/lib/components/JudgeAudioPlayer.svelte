@@ -12,6 +12,7 @@
 	let lastDayResult: unknown = null;
 	let lastHunterResult: unknown = null;
 	let lastGameOver: unknown = null;
+	let lastPendingNightAnnounce = false;
 
 	// Moderator-style call-outs, one per role with a night action.
 	const roleLines: Partial<Record<Role, string>> = {
@@ -24,6 +25,16 @@
 		盗贼: '盗贼请睁眼，请选择是否更换身份',
 		猎人: '猎人请确认你的身份'
 	};
+
+	// §8.3 LOVERS_CONFIRM - two beats, not one: Cupid needs to actually close
+	// their eyes before the two lovers are told to open theirs (privacy, same
+	// as every other night role's turn), so this is two separate narrate()
+	// calls (which queue and play in sequence) rather than one combined line.
+	// Neither is keyed in roleLines - not a Role, and no NightNarrationStarted
+	// relay for either (see the stage effect below): nothing else gates its
+	// own reveal on this line starting, unlike a real role's turn prompt.
+	const cupidCloseLine = '丘比特请闭眼';
+	const coupleRevealLine = '玩家们请睁眼，确认是否被连为情侣';
 
 	function unlockAudio() {
 		unlocked = true;
@@ -63,7 +74,6 @@
 		if (!phase || phase === lastPhase) return;
 		lastPhase = phase;
 		if (phase === 'NIGHT_ACTIONS') say('天黑请闭眼');
-		if (phase === 'DAY_VOTE') say('天亮了');
 		// A host stop-and-restart (RoomStopGame/"再来一局") resets phase to
 		// SEATING (a fresh room starts at LOBBY) - cut off whatever might
 		// still be queued rather than letting it run over the now-reset round.
@@ -72,12 +82,31 @@
 		if (phase === 'LOBBY' || phase === 'SEATING') stopNarration();
 	});
 
+	// "天亮了" fires the instant DAWN actually begins (pendingNightAnnounce
+	// flips true the moment the night's last stage resolves - before the host
+	// has tapped anything) - NOT gated on the host's own "公布夜晚结果" tap,
+	// which only reveals WHO died (the separate lastNightDeaths effect below).
+	// Self-resetting: pendingNightAnnounce naturally goes back to false once
+	// announced, so this is armed again for the next night with no extra flag.
 	$effect(() => {
-		const stage = gameStore.state?.stage;
+		const pending = gameStore.state?.pendingNightAnnounce ?? false;
+		if (pending === lastPendingNightAnnounce) return;
+		lastPendingNightAnnounce = pending;
+		if (pending) say('天亮了');
+	});
+
+	$effect(() => {
+		// S4: the shared state.stage is role-redacted for everyone - this
+		// component only ever renders for the host (see +page.svelte), who gets
+		// the real role via the private hostStage channel instead.
+		const stage = gameStore.hostStage;
 		const key = stage ? (stage.kind === 'ROLE_TURN' ? stage.role : 'COUPLE_REVEAL') : null;
 		if (key === lastStageKey) return;
 		lastStageKey = key;
-		if (key && roleLines[key as Role]) {
+		if (key === 'COUPLE_REVEAL') {
+			say(cupidCloseLine);
+			say(coupleRevealLine);
+		} else if (key && roleLines[key as Role]) {
 			// Every other client's NightActionPrompt for this role is held back
 			// until this specific line actually starts speaking (see gameStore's
 			// pendingTurnRole) - relay the moment it does, not just when it's queued.
@@ -103,13 +132,12 @@
 		if (result === lastDayResult) return;
 		lastDayResult = result;
 		if (!result) return;
-		say(
-			result.tie
-				? '投票平票，本轮无人出局'
-				: result.eliminatedSeat === null
-					? '本轮无人出局'
-					: `${result.eliminatedSeat} 号玩家被投票出局，他的身份是 ${result.identity}`
-		);
+		const base = result.tie
+			? '投票平票，本轮无人出局'
+			: result.eliminatedSeat === null
+				? '本轮无人出局'
+				: `${result.eliminatedSeat} 号玩家被投票出局，他的身份是 ${result.identity}`;
+		say(result.followDeathSeat !== null ? `${base}，${result.followDeathSeat} 号殉情身亡` : base);
 	});
 
 	$effect(() => {
@@ -117,11 +145,11 @@
 		if (result === lastHunterResult) return;
 		lastHunterResult = result;
 		if (!result) return;
-		say(
+		const base =
 			result.shotSeat === null
 				? `${result.hunterSeat} 号猎人选择不开枪`
-				: `${result.hunterSeat} 号猎人开枪，带走了 ${result.shotSeat} 号玩家`
-		);
+				: `${result.hunterSeat} 号猎人开枪，带走了 ${result.shotSeat} 号玩家`;
+		say(result.followDeathSeat !== null ? `${base}，${result.followDeathSeat} 号殉情身亡` : base);
 	});
 
 	$effect(() => {
@@ -129,6 +157,12 @@
 		if (result === lastGameOver) return;
 		lastGameOver = result;
 		if (!result) return;
-		say(result.winner === 'wolves' ? '狼人阵营胜利，游戏结束' : '好人阵营胜利，游戏结束');
+		say(
+			result.winner === 'wolves'
+				? '狼人阵营胜利，游戏结束'
+				: result.winner === 'lovers'
+					? '第三方阵营胜利，游戏结束'
+					: '好人阵营胜利，游戏结束'
+		);
 	});
 </script>

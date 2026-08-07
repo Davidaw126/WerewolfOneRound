@@ -1,10 +1,11 @@
 import type { Socket } from 'socket.io';
 import type { SocketData } from '../types';
 import { readRoomHash, seatOf } from '../../rooms/roomRepo';
+import { ActionError } from '../actionError';
 
 export type GameSocket = Socket<object, object, object, SocketData>;
 
-export class ActionError extends Error {}
+export { ActionError };
 
 export function requireRoomCode(socket: GameSocket): string {
 	if (!socket.data.roomCode) throw new ActionError('not_in_room');

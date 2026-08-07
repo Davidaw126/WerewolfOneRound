@@ -102,6 +102,11 @@ body {
 
 .seat-btn {
 	@apply border-[3px] border-line bg-surface-2 px-2 py-3 text-sm text-bone transition-transform disabled:cursor-not-allowed disabled:opacity-40;
+	/* Grid items don't shrink below their content's intrinsic width by
+	   default - a long username with no natural break points (e.g. Latin
+	   text, unlike CJK which already wraps per-character) would otherwise
+	   overflow straight out of the box instead of wrapping inside it. */
+	overflow-wrap: break-word;
 }
 .seat-btn:active:not(:disabled) {
 	transform: translate(2px, 2px);

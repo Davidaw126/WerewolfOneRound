@@ -6,17 +6,18 @@
 	import RoleFace from './RoleFace.svelte';
 	import { sfxReveal } from '$lib/client/sfx';
 
+	// S7 身份卡长按才显示，松手立即盖回，切后台立即盖回: no persisted
+	// open/closed state at all (unlike the old tap-to-toggle) - the card is
+	// visible for exactly as long as the button is actively held, and gone
+	// the instant that stops being true, from any cause (release, the
+	// pointer sliding off, the tab/app losing focus or being backgrounded).
+	let pressing = $state(false);
 	let revealing = $state(false);
-	// Purely local, client-side - the server already knows this session has
-	// revealed (so a page refresh still replays the role), but hiding it again
-	// here needs no round-trip: closing the overlay keeps a neighbor from
-	// glancing at it, without forgetting what the role was.
-	let hidden = $state(false);
 
-	// Overlay is open only when a role is known AND not locally hidden.
-	const open = $derived(!!gameStore.myRole && !hidden);
+	const open = $derived(pressing && !!gameStore.myRole);
 
-	async function handleTap() {
+	async function press() {
+		pressing = true;
 		if (!gameStore.myRole) {
 			revealing = true;
 			// Always reset, not just on failure: myRole can later be cleared by a
@@ -26,46 +27,57 @@
 			revealing = false;
 			sfxReveal();
 			gameStore.logActivity('你查看了自己的身份');
-		} else {
-			hidden = !hidden;
 		}
 	}
 
-	function close() {
-		hidden = true;
+	function release() {
+		pressing = false;
 	}
 
-	// Whenever there's no revealed role (fresh room, host reroll), keep `hidden`
-	// reset - otherwise the NEXT reveal could open straight into hidden state.
-	$effect(() => {
-		if (gameStore.myRole === null) hidden = false;
-	});
+	function handleVisibilityChange() {
+		if (document.hidden) pressing = false;
+	}
 </script>
 
+<!-- Window-level, not just the button's own pointerup/pointerleave: a touch
+     that drags off the button, a tab switch, or losing focus entirely must
+     all still close the card - relying only on the button's own handlers
+     would miss cases where the release/backgrounding happens elsewhere. -->
+<svelte:window
+	onpointerup={release}
+	onpointercancel={release}
+	onblur={release}
+	onvisibilitychange={handleVisibilityChange}
+/>
+
 <button
-	onclick={handleTap}
-	class="btn-ghost flex flex-1 items-center justify-center gap-2 py-2 text-xs"
+	onpointerdown={press}
+	onkeydown={(e) => {
+		if ((e.key === 'Enter' || e.key === ' ') && !pressing) {
+			e.preventDefault();
+			press();
+		}
+	}}
+	onkeyup={(e) => {
+		if (e.key === 'Enter' || e.key === ' ') release();
+	}}
+	class="btn-ghost flex flex-1 touch-none items-center justify-center gap-2 py-2 text-xs select-none"
 >
 	<span>🎴</span>
-	<span>{revealing ? '翻开中…' : '查看身份'}</span>
+	<span>{revealing ? '翻开中…' : '按住查看身份'}</span>
 </button>
 
 {#if open && gameStore.myRole}
-	<div
-		class="overlay-backdrop"
-		role="presentation"
-		onclick={close}
-		transition:fade={{ duration: 150 }}
-	>
+	<div class="overlay-backdrop" role="presentation" transition:fade={{ duration: 100 }}>
 		<div
 			class="overlay-panel"
 			role="dialog"
 			aria-modal="true"
 			aria-label="你的身份"
-			transition:scale={{ duration: 200, start: 0.85 }}
+			transition:scale={{ duration: 150, start: 0.85 }}
 		>
 			<RoleFace role={gameStore.myRole} size="lg" showTeam={false} />
-			<button onclick={close} class="btn-primary mt-4 w-full">隐藏身份</button>
+			<p class="mt-3 text-center text-[11px] text-zinc-500">松手隐藏</p>
 		</div>
 	</div>
 {/if}

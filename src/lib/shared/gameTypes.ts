@@ -5,11 +5,30 @@ export type Phase =
 	| 'SEATING'
 	| 'NIGHT_ACTIONS'
 	| 'NIGHT_HUNTER_SHOT'
+	/** §9.1 - queued deaths' last words, before whatever comes next
+	 * (a hunter-shoot check, then DISCUSSION or NIGHT). M5. */
+	| 'LAST_WORDS'
+	/** §9.3 - free speech before the host opens the vote. M5. VOTE_PK/EXILE
+	 * as their own distinct phases are M5 task #36, not yet split out of
+	 * DAY_VOTE below. */
+	| 'DISCUSSION'
 	| 'DAY_VOTE'
 	| 'DAY_HUNTER_SHOT'
 	| 'GAME_OVER';
 
 export type NightStage = { kind: 'ROLE_TURN'; role: Role } | { kind: 'COUPLE_REVEAL' };
+
+/** S4: the room-wide broadcast form of NightStage - which role is acting is
+ * exactly the information a non-actor shouldn't be able to read off the
+ * wire, so this drops `role` entirely rather than just hiding it in the UI.
+ * The host still needs the real role (to narrate it) - see hostStage below. */
+export type PublicNightStage = { kind: 'ROLE_TURN' } | { kind: 'COUPLE_REVEAL' };
+
+/** 'lovers' is a 丘比特-linked couple whose two roles are on DIFFERENT teams
+ * (see checkWinWithCouple in winCondition.ts) - an independent third faction
+ * excluded from the normal wolves-vs-villagers count, winning only once
+ * every other seat is eliminated. */
+export type Winner = 'wolves' | 'villagers' | 'lovers';
 
 export interface SeatState {
 	seatNumber: number;
@@ -32,12 +51,32 @@ export interface RoomPublicState {
 	numberOfSeats: number;
 	lockStatus: boolean;
 	nightNumber: number;
-	stage: NightStage | null;
+	stage: PublicNightStage | null;
+	/** Host-only, and only ever present in a payload addressed to the host's
+	 * own session (never in the room-wide broadcast) - the real stage,
+	 * role included, so JudgeAudioPlayer can narrate it. */
+	hostStage?: NightStage | null;
 	seats: SeatState[];
 	deadSeats: number[];
-	votes: Record<number, number | 'abstain'>;
+	/** S11: WHO has voted, never who they voted for or the running tally -
+	 * that stays hidden until VoteEnd, so nobody's choice is influenced by
+	 * watching others' picks land in real time. */
+	votedSeats: number[];
+	totalVoters: number;
 	hunterSeat: number | null;
-	winner: 'wolves' | 'villagers' | null;
+	/** LAST_WORDS/DISCUSSION only - whose turn it currently is to speak, null
+	 * once the queue is empty (LAST_WORDS) or nobody's left in speechOrder
+	 * (DISCUSSION). Not itself sensitive - unlike stage/hostStage, a speaking
+	 * order never reveals a role. */
+	currentSpeaker: number | null;
+	/** DISCUSSION only - the full suggested speaking order (living seats,
+	 * ascending). Empty outside DISCUSSION. */
+	speechOrder: number[];
+	/** VOTE_PK only - the tied seats being re-voted on; empty outside it.
+	 * Candidates can't vote (§9.4) and everyone else's vote must target one
+	 * of these seats. */
+	pkCandidates: number[];
+	winner: Winner | null;
 	/** True once the night's deaths have been computed (dead seats are
 	 * already marked - voting etc. is never blocked on this) but the host
 	 * hasn't yet broadcast the "who died" narration/banner to the table. The

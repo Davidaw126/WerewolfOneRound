@@ -15,9 +15,6 @@ let effectsMuted = false;
 let ambientEnabled = true;
 /** Whether the room page currently wants a drone (i.e. is mounted). */
 let ambientRequested = false;
-/** Set only by suspendAudio(), so resumeAudio() can't resume a context that
- * was suspended for some other reason (e.g. the browser's own autoplay gate). */
-let suspendedByVisibility = false;
 
 function ac(): AudioContext | null {
 	if (typeof window === 'undefined') return null;
@@ -57,22 +54,6 @@ export function setEffectsEnabled(on: boolean): void {
 export function setAmbientEnabled(on: boolean): void {
 	ambientEnabled = on;
 	syncAmbient();
-}
-
-/** Pause everything while the page is hidden. Pairs with resumeAudio(). */
-export function suspendAudio(): void {
-	const c = ac();
-	if (c && c.state === 'running') {
-		suspendedByVisibility = true;
-		void c.suspend();
-	}
-}
-
-export function resumeAudio(): void {
-	if (!suspendedByVisibility) return;
-	suspendedByVisibility = false;
-	const c = ac();
-	if (c && c.state === 'suspended') void c.resume();
 }
 
 function blip(
@@ -255,6 +236,25 @@ let speaking = false;
 let startedFired = false;
 const NARRATION_GAP_MS = 3000;
 
+/** Ceiling on how long any single utterance is allowed to run before this
+ * module gives up on it and moves on anyway - see the timer set in
+ * speakNext() below. No line this app ever queues (role call-outs, death
+ * announcements, etc.) takes anywhere near this long to actually speak. */
+const MAX_UTTERANCE_MS = 15000;
+let stuckTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Shared by the utterance's own onend/onerror AND the stuck-timer fallback
+ * below - either way, the queue must move on exactly once per utterance. */
+function finishCurrent(): void {
+	if (stuckTimer) {
+		clearTimeout(stuckTimer);
+		stuckTimer = null;
+	}
+	speaking = false;
+	startedFired = false;
+	setTimeout(speakNext, NARRATION_GAP_MS);
+}
+
 function speakNext(): void {
 	if (speaking) return;
 	const item = narrationQueue.shift();
@@ -276,21 +276,37 @@ function speakNext(): void {
 		startedFired = true;
 		item.onStart?.();
 	};
-	utter.onend = utter.onerror = () => {
-		speaking = false;
-		startedFired = false;
-		setTimeout(speakNext, NARRATION_GAP_MS);
-	};
+	utter.onend = utter.onerror = finishCurrent;
 	speechSynthesis.speak(utter);
+
+	// Many mobile browsers silently kill speech synthesis when the tab/app is
+	// backgrounded, WITHOUT ever firing onend/onerror - pause()/resume() and
+	// narrationWatchdog() below both rely on the engine honestly reporting its
+	// own state, which is exactly what doesn't happen in that failure mode.
+	// This timer doesn't trust the engine's state at all: if an utterance has
+	// been "in flight" unreasonably long, force the queue to move on
+	// regardless of what speechSynthesis claims.
+	stuckTimer = setTimeout(() => {
+		if (speaking) finishCurrent();
+	}, MAX_UTTERANCE_MS);
 }
 
 /** speechSynthesis.pause()/resume() is unreliable across engines, and a long
  * pause can swallow the terminal onend entirely - leaving `speaking` stuck true
  * and the queue wedged for the rest of the game. Called on re-show to unstick
- * it: if we think we're speaking but the engine disagrees, move on. */
+ * it: if we think we're speaking but the engine disagrees, move on - skipping
+ * the usual NARRATION_GAP_MS pause (unlike finishCurrent) since the user was
+ * just away for who-knows-how-long already; no need to make them wait
+ * further on top of that. Faster than waiting on MAX_UTTERANCE_MS above when
+ * the engine's own state IS trustworthy - that timer is the fallback for
+ * when it isn't. */
 export function narrationWatchdog(): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return;
 	if (speaking && !speechSynthesis.speaking && !speechSynthesis.pending) {
+		if (stuckTimer) {
+			clearTimeout(stuckTimer);
+			stuckTimer = null;
+		}
 		speaking = false;
 		startedFired = false;
 		speakNext();
@@ -315,6 +331,10 @@ export function narrate(text: string, onStart?: () => void): void {
 /** Cuts off whatever narration is currently queued/speaking, if any. */
 export function stopNarration(): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return;
+	if (stuckTimer) {
+		clearTimeout(stuckTimer);
+		stuckTimer = null;
+	}
 	narrationQueue.length = 0;
 	speaking = false;
 	speechSynthesis.cancel();

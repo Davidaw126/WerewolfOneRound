@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { getSocket, sendAction } from '$lib/client/socket';
-	import { startAmbient, stopAmbient, sfxDeath } from '$lib/client/sfx';
+	import { startAmbient, stopAmbient, sfxDeath, narrate } from '$lib/client/sfx';
 	import { askConfirm, showAlert } from '$lib/client/confirmDialog.svelte';
 	import { leaveConfirmMessage } from '$lib/client/leaveRoom';
 	import type { AckResponse } from '$lib/shared/events';
@@ -15,6 +15,7 @@
 	import RoleRevealCard from '$lib/components/RoleRevealCard.svelte';
 	import NightActionPrompt from '$lib/components/NightActionPrompt.svelte';
 	import VoteBoard from '$lib/components/VoteBoard.svelte';
+	import DiscussionPanel from '$lib/components/DiscussionPanel.svelte';
 	import HunterShotPrompt from '$lib/components/HunterShotPrompt.svelte';
 	import GameOverScreen from '$lib/components/GameOverScreen.svelte';
 	import JudgeAudioPlayer from '$lib/components/JudgeAudioPlayer.svelte';
@@ -22,6 +23,7 @@
 	import DayNightTransition from '$lib/components/DayNightTransition.svelte';
 	import ActivityLogButton from '$lib/components/ActivityLogButton.svelte';
 	import RoomLogButton from '$lib/components/RoomLogButton.svelte';
+	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -124,10 +126,17 @@
 		roomState !== null && roomState !== undefined && roomState.hostSessionId === data.sessionId
 	);
 	const stage = $derived(roomState?.stage ?? null);
-	const needsHostAdvance = $derived(
-		stage !== null &&
-			(stage.kind === 'COUPLE_REVEAL' || (stage.kind === 'ROLE_TURN' && stage.role === '猎人'))
-	);
+	// S4: only ever meaningful for the host (gated by isHost at the one call
+	// site below), so it reads the host-only hostStage (real role) rather than
+	// the shared, role-redacted `stage` above.
+	const needsHostAdvance = $derived.by(() => {
+		const hostStage = gameStore.hostStage;
+		return (
+			hostStage !== null &&
+			(hostStage.kind === 'COUPLE_REVEAL' ||
+				(hostStage.kind === 'ROLE_TURN' && hostStage.role === '猎人'))
+		);
+	});
 
 	// Tints the page toward the game's own day/night rhythm - neutral before a
 	// game is underway, since LOBBY/SEATING have no "time of day" of their own.
@@ -136,13 +145,17 @@
 			case 'NIGHT_ACTIONS':
 			case 'NIGHT_HUNTER_SHOT':
 				return 'from-indigo-950 via-zinc-950 to-black';
+			case 'LAST_WORDS':
+			case 'DISCUSSION':
 			case 'DAY_VOTE':
 			case 'DAY_HUNTER_SHOT':
 				return 'from-amber-950 via-zinc-950 to-zinc-950';
 			case 'GAME_OVER':
 				return roomState.winner === 'wolves'
 					? 'from-red-950 via-zinc-950 to-black'
-					: 'from-emerald-950 via-zinc-950 to-black';
+					: roomState.winner === 'lovers'
+						? 'from-violet-950 via-zinc-950 to-black'
+						: 'from-emerald-950 via-zinc-950 to-black';
 			default:
 				return 'from-zinc-950 via-zinc-900 to-zinc-950';
 		}
@@ -163,7 +176,21 @@
 	async function rerollRoles() {
 		await sendAction<AckResponse>({ kind: 'RoomRerollRoles' });
 	}
+	let advancingCoupleReveal = $state(false);
+
 	async function advanceStage() {
+		if (stage?.kind === 'COUPLE_REVEAL') {
+			// Say the closing cue and hold for the same 3s beat used everywhere
+			// else in this app for "let that line land before moving on"
+			// (server's POST_ACTION_PAUSE_MS / sfx's NARRATION_GAP_MS) - purely
+			// local timing, since only the host's device narrates at all; other
+			// players just see the phase change whenever the request lands.
+			advancingCoupleReveal = true;
+			await new Promise<void>((resolveNarration) => {
+				narrate('所有人闭眼', () => setTimeout(resolveNarration, 3000));
+			});
+			advancingCoupleReveal = false;
+		}
 		await sendAction<AckResponse>({ kind: 'NightAdvanceStage' });
 	}
 	async function announceNightResults() {
@@ -188,8 +215,12 @@
 
 	async function playAgain() {
 		restarting = true;
-		const res = await sendAction<AckResponse>({ kind: 'RoomStopGame' });
-		if (!res.ok) restarting = false;
+		// Reset unconditionally, not just on failure - this page never remounts
+		// between games in the same room (only the phase changes), so a stale
+		// `true` left over from a SUCCESSFUL restart would make the button look
+		// permanently stuck the next time GAME_OVER is reached again.
+		await sendAction<AckResponse>({ kind: 'RoomStopGame' });
+		restarting = false;
 	}
 </script>
 
@@ -205,6 +236,7 @@
 {/if}
 
 <DayNightTransition />
+<InfoPopupHost />
 
 <div
 	class="flex h-dvh flex-col overflow-hidden bg-gradient-to-b {phaseBg} text-zinc-100 transition-colors duration-700"
@@ -234,9 +266,16 @@
 		     as tall as the visible scroll area even when its content is short -
 		     percentage heights (min-h-full) need every single ancestor to
 		     explicitly resolve a definite height, which is easy to silently
-		     break; flex-grow doesn't have that fragility. -->
-		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-			<div class="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col space-y-4 px-4 py-4">
+		     break; flex-grow doesn't have that fragility. overflow-y-auto lives
+		     on the INNER max-w-lg column, not this outer full-width one - on a
+		     wide viewport (tablet, desktop browser) the content column is
+		     narrower than the screen, and a scrollbar on the outer div would
+		     render flush against the screen's edge, visibly detached from the
+		     column it's actually scrolling. -->
+		<div class="flex min-h-0 flex-1 flex-col">
+			<div
+				class="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4"
+			>
 				{#if gameStore.lastNightDeaths !== null}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
 						{gameStore.lastNightDeaths.length === 0
@@ -246,20 +285,27 @@
 				{/if}
 
 				{#if gameStore.lastDayResult}
+					{@const dayBase = gameStore.lastDayResult.tie
+						? '投票平票，无人出局'
+						: gameStore.lastDayResult.eliminatedSeat === null
+							? '本轮无人出局'
+							: `${gameStore.lastDayResult.eliminatedSeat} 号被投票出局，身份是 ${gameStore.lastDayResult.identity}`}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{gameStore.lastDayResult.tie
-							? '投票平票，无人出局'
-							: gameStore.lastDayResult.eliminatedSeat === null
-								? '本轮无人出局'
-								: `${gameStore.lastDayResult.eliminatedSeat} 号被投票出局，身份是 ${gameStore.lastDayResult.identity}`}
+						{gameStore.lastDayResult.followDeathSeat !== null
+							? `${dayBase}，${gameStore.lastDayResult.followDeathSeat} 号殉情身亡`
+							: dayBase}
 					</div>
 				{/if}
 
 				{#if gameStore.lastHunterResult}
-					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{gameStore.lastHunterResult.shotSeat === null
+					{@const hunterBase =
+						gameStore.lastHunterResult.shotSeat === null
 							? `${gameStore.lastHunterResult.hunterSeat} 号猎人选择不开枪`
 							: `${gameStore.lastHunterResult.hunterSeat} 号猎人开枪带走了 ${gameStore.lastHunterResult.shotSeat} 号`}
+					<div class="panel px-4 py-2 text-sm text-zinc-400">
+						{gameStore.lastHunterResult.followDeathSeat !== null
+							? `${hunterBase}，${gameStore.lastHunterResult.followDeathSeat} 号殉情身亡`
+							: hunterBase}
 					</div>
 				{/if}
 
@@ -297,10 +343,12 @@
 						</p>
 					{/if}
 				{:else if roomState.phase === 'SEATING'}
-					<!-- Vertically centers the seat circle within whatever space is
-					     left after the room-code/result blocks above it, instead of
-					     it sitting flush at the top with dead space below. -->
-					<div class="flex min-h-0 flex-1 items-center justify-center">
+					<!-- Anchored to the top (not vertically centered) of whatever
+					     space is left after the room-code/result blocks above it -
+					     centering here would let an oversized seat circle overflow
+					     symmetrically and bleed its top edge up into those blocks
+					     whenever a banner (e.g. 昨晚X号死亡) shrinks the space below. -->
+					<div class="flex min-h-0 flex-1 items-start justify-center">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
@@ -310,11 +358,11 @@
 						/>
 					</div>
 				{:else if roomState.phase === 'NIGHT_ACTIONS'}
-					<!-- Same centering treatment as SEATING - the action prompt
+					<!-- Same top-anchored treatment as SEATING - the action prompt
 					     itself now lives in the pinned footer below (see there),
 					     so the circle stays fully visible instead of sharing this
 					     space with whatever the prompt's own content height is. -->
-					<div class="flex min-h-0 flex-1 items-center justify-center">
+					<div class="flex min-h-0 flex-1 items-start justify-center">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
@@ -325,7 +373,7 @@
 						/>
 					</div>
 				{:else if roomState.phase === 'NIGHT_HUNTER_SHOT' || roomState.phase === 'DAY_HUNTER_SHOT'}
-					<div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
@@ -337,8 +385,21 @@
 							<HunterShotPrompt />
 						</div>
 					</div>
+				{:else if roomState.phase === 'LAST_WORDS' || roomState.phase === 'DISCUSSION'}
+					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
+						<SeatCircle
+							seats={roomState.seats}
+							{mySeat}
+							onTake={() => {}}
+							disabled={true}
+							hostSessionId={roomState.hostSessionId}
+						/>
+						<div class="w-full">
+							<DiscussionPanel {isHost} />
+						</div>
+					</div>
 				{:else if roomState.phase === 'DAY_VOTE'}
-					<div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
@@ -407,11 +468,34 @@
 					<div class="max-h-[45vh] space-y-2 overflow-y-auto">
 						<NightActionPrompt />
 						{#if !gameStore.myTurnRole}
-							<p class="text-center text-sm text-zinc-500">等待其他玩家行动…</p>
+							{#if stage?.kind === 'COUPLE_REVEAL'}
+								<!-- Shown to EVERY player during this stage, not just the linked
+								     pair - if only the linked two had a button at all, a neighbor
+								     glancing at screens could tell who's linked just from which
+								     screens have a button, without even seeing its content. -->
+								<button
+									onclick={() =>
+										gameStore.showInfoPopup(
+											gameStore.myPartnerSeat !== null
+												? `你的情侣是 ${gameStore.myPartnerSeat} 号`
+												: '你没有被选为情侣'
+										)}
+									class="btn-primary w-full"
+								>
+									查看情侣
+								</button>
+							{:else}
+								<p class="text-center text-sm text-zinc-500">等待其他玩家行动…</p>
+							{/if}
 						{/if}
 						{#if isHost && needsHostAdvance}
-							<button onclick={advanceStage} class="btn-ghost w-full hover:bg-ember/10">继续</button
+							<button
+								onclick={advanceStage}
+								disabled={advancingCoupleReveal}
+								class="btn-ghost w-full hover:bg-ember/10"
 							>
+								{advancingCoupleReveal ? '闭眼中…' : '继续'}
+							</button>
 						{/if}
 					</div>
 				{/if}

@@ -1,12 +1,6 @@
 import { redis } from '../redis';
 import { getSession } from '../session';
-import {
-	TAKE_SEAT_LUA,
-	LEAVE_SEAT_LUA,
-	SUBMIT_ROOM_CONFIG_LUA,
-	ADVANCE_STAGE_LUA,
-	HUNTER_SHOT_LUA
-} from './lua/scripts';
+import { TAKE_SEAT_LUA, LEAVE_SEAT_LUA, SUBMIT_ROOM_CONFIG_LUA } from './lua/scripts';
 import {
 	ROOM_TTL_SECONDS,
 	roomKey,
@@ -20,8 +14,24 @@ import {
 	fixedRoomKeys
 } from './keys';
 import type { Role } from '../../shared/roles';
-import type { NightStage, Phase, RoomPublicState, SeatState } from '../../shared/gameTypes';
+import type { Phase, RoomPublicState, SeatState } from '../../shared/gameTypes';
 import type { DealResult } from '../../shared/deal';
+import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
+import { loadGameState } from '../game/gameStateRepo';
+import {
+	mapToLegacyPhase,
+	stageOf,
+	toPublicStage,
+	deadSeatsOf,
+	votedSeatsOf,
+	totalVotersOf,
+	hunterSeatOf,
+	currentSpeakerOf,
+	speechOrderOf,
+	pkCandidatesOf,
+	winnerOf,
+	identitiesOf
+} from '../game/projection';
 
 declare module 'ioredis' {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- required to match ioredis's declaration-merge signature
@@ -52,22 +62,20 @@ declare module 'ioredis' {
 			ttl: number,
 			cupidPoisonBlocksHunter: string
 		): Promise<string>;
-		advanceStage(
-			roomKey: string,
-			expectedIndex: string,
-			newIndex: string,
-			ttl: number
-		): Promise<string>;
-		hunterShotGuard(roomKey: string, ttl: number): Promise<number>;
 	}
 }
 
 redis.defineCommand('takeSeat', { numberOfKeys: 4, lua: TAKE_SEAT_LUA });
 redis.defineCommand('leaveSeat', { numberOfKeys: 2, lua: LEAVE_SEAT_LUA });
 redis.defineCommand('submitRoomConfig', { numberOfKeys: 7, lua: SUBMIT_ROOM_CONFIG_LUA });
-redis.defineCommand('advanceStage', { numberOfKeys: 1, lua: ADVANCE_STAGE_LUA });
-redis.defineCommand('hunterShotGuard', { numberOfKeys: 1, lua: HUNTER_SHOT_LUA });
 
+// M1: everything about "what stage/round/death-list/hunter-shot is in
+// progress" moved into the new engine's own GameState blob (gameStateRepo.ts) -
+// the room hash keeps only the RoomManager-scope fields (seat/config/lobby
+// lifecycle) plus `phase`/`nightNumber`, kept in sync with GameState by
+// gameSync.ts purely so phase-gated logic elsewhere (handleRoomLeave's
+// IN_PROGRESS_PHASES check, requireHost, etc.) doesn't need to know the new
+// engine exists at all.
 export interface RoomHashData {
 	phase: Phase;
 	hostSessionId: string;
@@ -75,31 +83,15 @@ export interface RoomHashData {
 	numberOfSeats: number;
 	lockStatus: boolean;
 	nightNumber: number;
-	stageIndex: number;
-	stageOrder: NightStage[];
-	hunterShotSeat: string | null;
-	hunterShotResolved: boolean;
-	phaseAfterHunterShot: 'DAY_VOTE' | 'NEXT_NIGHT' | null;
-	winner: 'wolves' | 'villagers' | null;
-	/** Last night's computed death list, held back from the public state and
-	 * revealed only when the host broadcasts it (`NightAnnounceResults`) -
-	 * null once there's nothing pending (including right after it's revealed). */
-	pendingNightDeaths: number[] | null;
-	/** Host-configurable house rule (default false): whether a hunter who dies
-	 * via Cupid follow-death (殉情) because their linked partner was poisoned
-	 * is also denied their shot, same as being poisoned directly. */
+	/** House rule captured at RoomSubmitConfig time (before seating even
+	 * starts) and folded into the engine's RuleConfig at RoomStartGame time -
+	 * one of two pieces of pre-game config that aren't themselves a role
+	 * count (the other being ruleOverrides, below). */
 	cupidPoisonBlocksHunter: boolean;
-	/** Whether the witch has spent each potion. Both are single-use for the
-	 * WHOLE GAME, not per night, so they live on the room hash rather than in
-	 * the per-night action hash. */
-	witchUsedAntidote: boolean;
-	witchUsedPoison: boolean;
-	/** Who the guard protected last night, so tonight's turn can bar a repeat.
-	 * Kept here rather than read back out of `nightActions:<n-1>`: callers
-	 * already hold the room hash (no extra round-trip), and the previous
-	 * night's key isn't re-armed by touchRoomTtl, so a long game could read a
-	 * hole. */
-	guardLastSeat: number | null;
+	/** M2's host-facing RuleConfig switches (§6), captured at RoomSubmitConfig
+	 * time the same way roleConfig is, and merged onto defaultRuleConfig() at
+	 * RoomStartGame time - see game/defaultRuleConfig.ts's mergeRuleConfig. */
+	ruleOverrides: RuleConfigOverrides;
 }
 
 export async function readRoomHash(code: string): Promise<RoomHashData | null> {
@@ -112,35 +104,9 @@ export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 		numberOfSeats: Number(data.numberOfSeats || 0),
 		lockStatus: data.lockStatus === '1',
 		nightNumber: Number(data.nightNumber || 0),
-		stageIndex: Number(data.stageIndex || 0),
-		stageOrder: data.stageOrder ? JSON.parse(data.stageOrder) : [],
-		hunterShotSeat: data.hunterShotSeat || null,
-		hunterShotResolved: data.hunterShotResolved === '1',
-		phaseAfterHunterShot:
-			(data.phaseAfterHunterShot as 'DAY_VOTE' | 'NEXT_NIGHT' | undefined) || null,
-		winner: (data.winner as 'wolves' | 'villagers') || null,
-		pendingNightDeaths: data.pendingNightDeaths ? JSON.parse(data.pendingNightDeaths) : null,
 		cupidPoisonBlocksHunter: data.cupidPoisonBlocksHunter === '1',
-		// Rooms created before these fields existed parse as "unused"/"none",
-		// which is the safe default (potions available, no guard restriction).
-		witchUsedAntidote: data.witchUsedAntidote === '1',
-		witchUsedPoison: data.witchUsedPoison === '1',
-		guardLastSeat: data.guardLastSeat ? Number(data.guardLastSeat) : null
+		ruleOverrides: data.ruleOverrides ? JSON.parse(data.ruleOverrides) : {}
 	};
-}
-
-export function currentStageOf(
-	room: Pick<RoomHashData, 'stageOrder' | 'stageIndex'>
-): NightStage | null {
-	return room.stageOrder[room.stageIndex] ?? null;
-}
-
-export async function setStageOrder(code: string, stageOrder: NightStage[]): Promise<void> {
-	await redis.hset(roomKey(code), {
-		stageOrder: JSON.stringify(stageOrder),
-		stageIndex: '0'
-	});
-	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
 }
 
 export async function roomExists(code: string): Promise<boolean> {
@@ -181,26 +147,6 @@ export async function getIdentities(code: string): Promise<Record<string, Role>>
 	return (await redis.hgetall(identitiesKey(code))) as Record<string, Role>;
 }
 
-export async function getDeadSeats(code: string): Promise<number[]> {
-	const members = await redis.smembers(deadSeatsKey(code));
-	return members.map(Number).sort((a, b) => a - b);
-}
-
-export async function getVotes(code: string): Promise<Record<number, number | 'abstain'>> {
-	const raw = await redis.hgetall(votesKey(code));
-	const out: Record<number, number | 'abstain'> = {};
-	for (const [seat, target] of Object.entries(raw)) {
-		out[Number(seat)] = target === 'abstain' ? 'abstain' : Number(target);
-	}
-	return out;
-}
-
-export async function getCoupleSeats(code: string): Promise<[number, number] | null> {
-	const members = await redis.smembers(coupleSeatsKey(code));
-	if (members.length !== 2) return null;
-	return [Number(members[0]), Number(members[1])].sort((a, b) => a - b) as [number, number];
-}
-
 /** Which seat (if any) the given session currently occupies. */
 export async function seatOf(code: string, sessionId: string): Promise<number | null> {
 	const players = await getPlayers(code);
@@ -232,18 +178,40 @@ export async function getRevealedRoleIfAny(code: string, sessionId: string): Pro
 	return identities[String(seat)] ?? null;
 }
 
-/** Assembles the full public state, e.g. for StateSnapshot/ResyncRequest. */
-export async function getPublicState(code: string): Promise<RoomPublicState | null> {
+const IN_GAME_PHASES: Phase[] = [
+	'NIGHT_ACTIONS',
+	'NIGHT_HUNTER_SHOT',
+	'LAST_WORDS',
+	'DISCUSSION',
+	'DAY_VOTE',
+	'DAY_HUNTER_SHOT',
+	'GAME_OVER'
+];
+
+/** Assembles the full public state, e.g. for StateSnapshot/ResyncRequest.
+ * Pre-game (LOBBY/SEATING) fields come from the RoomManager-scope keys, same
+ * as always; once a game is in progress, the game-specific fields (stage,
+ * deaths, votes, hunter, winner, identities) are projected fresh from the
+ * engine's own GameState blob instead - see projection.ts.
+ *
+ * `forSessionId`, when given, only ever adds the host-only `hostStage` field
+ * (and only when that session actually is the host) - it never changes the
+ * shared `stage` field itself, which stays role-redacted (S4) for everyone
+ * regardless of who's asking. Pass it whenever the resulting state is going
+ * to exactly one recipient (an ack, a resync) so a reconnecting host's
+ * narration can resume immediately instead of waiting for the next natural
+ * stage change; omit it for room-wide broadcasts. */
+export async function getPublicState(
+	code: string,
+	forSessionId?: string
+): Promise<RoomPublicState | null> {
 	const room = await readRoomHash(code);
 	if (!room) return null;
 
-	const [players, seatsMap, deadSeats, votes] = await Promise.all([
-		getPlayers(code),
-		getSeats(code),
-		getDeadSeats(code),
-		getVotes(code)
-	]);
+	const [players, seatsMap] = await Promise.all([getPlayers(code), getSeats(code)]);
+	const gameState = IN_GAME_PHASES.includes(room.phase) ? await loadGameState(code) : null;
 
+	const deadSeats = gameState ? deadSeatsOf(gameState) : [];
 	const deadSet = new Set(deadSeats);
 	const seats: SeatState[] = [];
 	for (let i = 1; i <= room.numberOfSeats; i++) {
@@ -267,28 +235,32 @@ export async function getPublicState(code: string): Promise<RoomPublicState | nu
 
 	const state: RoomPublicState = {
 		roomCode: code,
-		phase: room.phase,
+		phase: gameState ? mapToLegacyPhase(gameState) : room.phase,
 		hostUsername,
 		hostSessionId: room.hostSessionId || null,
 		roleConfig: room.roleConfig,
 		numberOfSeats: room.numberOfSeats,
 		lockStatus: room.lockStatus,
-		nightNumber: room.nightNumber,
-		stage: currentStageOf(room),
+		nightNumber: gameState ? gameState.round : room.nightNumber,
+		stage: gameState ? toPublicStage(stageOf(gameState)) : null,
 		seats,
 		deadSeats,
-		votes,
-		hunterSeat: room.hunterShotSeat ? Number(room.hunterShotSeat) : null,
-		winner: room.winner,
-		pendingNightAnnounce: room.pendingNightDeaths !== null
+		votedSeats: gameState ? votedSeatsOf(gameState) : [],
+		totalVoters: gameState ? totalVotersOf(gameState) : 0,
+		hunterSeat: gameState ? hunterSeatOf(gameState) : null,
+		currentSpeaker: gameState ? currentSpeakerOf(gameState) : null,
+		speechOrder: gameState ? speechOrderOf(gameState) : [],
+		pkCandidates: gameState ? pkCandidatesOf(gameState) : [],
+		winner: gameState ? winnerOf(gameState) : null,
+		pendingNightAnnounce: gameState ? gameState.pendingNightDeaths !== null : false
 	};
 
-	if (room.phase === 'GAME_OVER') {
-		state.identities = Object.fromEntries(
-			Object.entries(await getIdentities(code))
-				.filter(([seat]) => !seat.startsWith('buried'))
-				.map(([seat, role]) => [Number(seat), role])
-		);
+	if (room.phase === 'GAME_OVER' && gameState) {
+		state.identities = identitiesOf(gameState);
+	}
+
+	if (gameState && forSessionId && forSessionId === room.hostSessionId) {
+		state.hostStage = stageOf(gameState);
 	}
 
 	return state;
@@ -352,26 +324,6 @@ export async function submitRoomConfigAtomic(
 		cupidPoisonBlocksHunter ? '1' : '0'
 	);
 	return JSON.parse(raw);
-}
-
-export async function advanceStageAtomic(
-	code: string,
-	expectedIndex: number,
-	newIndex: number
-): Promise<{ ok: true } | { ok: false; error: string; current?: string }> {
-	const raw = await redis.advanceStage(
-		roomKey(code),
-		String(expectedIndex),
-		String(newIndex),
-		ROOM_TTL_SECONDS
-	);
-	return JSON.parse(raw);
-}
-
-/** Returns true if this call won the exclusive right to resolve the pending shot. */
-export async function claimHunterShot(code: string): Promise<boolean> {
-	const result = await redis.hunterShotGuard(roomKey(code), ROOM_TTL_SECONDS);
-	return result === 1;
 }
 
 export async function touchRoomTtl(code: string, night?: number): Promise<void> {

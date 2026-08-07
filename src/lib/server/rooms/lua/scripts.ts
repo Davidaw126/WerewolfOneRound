@@ -163,24 +163,6 @@ redis.call(
 	'0',
 	'nightNumber',
 	'0',
-	'stageIndex',
-	'0',
-	'stageOrder',
-	'[]',
-	'currentStage',
-	'',
-	'winner',
-	'',
-	'hunterShotSeat',
-	'',
-	'hunterShotResolved',
-	'0',
-	'witchUsedAntidote',
-	'0',
-	'witchUsedPoison',
-	'0',
-	'guardLastSeat',
-	'',
 	'cupidPoisonBlocksHunter',
 	cupidPoisonBlocksHunter
 )
@@ -203,45 +185,9 @@ redis.call('EXPIRE', identitiesKey, ttl)
 return cjson.encode({ ok = true })
 `;
 
-// KEYS[1] = roomKey
-// ARGV[1] = expectedCurrentStageIndex, ARGV[2] = newStageIndex, ARGV[3] = ttlSeconds
-//
-// Compare-and-set on stageIndex so an auto-trigger (all living holders acted)
-// and a host force-skip landing in the same tick can't both advance. Only
-// moves the cursor within the night's already-computed stageOrder array -
-// starting a NEW night's order is a separate, server-only operation
-// (setStageOrder), not raced by concurrent client actions.
-export const ADVANCE_STAGE_LUA = `
-local roomKey = KEYS[1]
-local expectedIndex = ARGV[1]
-local newIndex = ARGV[2]
-local ttl = tonumber(ARGV[3])
-
-local current = redis.call('HGET', roomKey, 'stageIndex')
-if current ~= expectedIndex then
-	return cjson.encode({ ok = false, error = 'stale_stage', current = current })
-end
-
-redis.call('HSET', roomKey, 'stageIndex', newIndex)
-redis.call('EXPIRE', roomKey, ttl)
-return cjson.encode({ ok = true })
-`;
-
-// KEYS[1] = roomKey
-// ARGV[1] = ttlSeconds
-// Exactly-once guard against a double-submit from a flaky reconnect. Caller
-// (TS) must verify the requesting session is actually the authorized shooter
-// BEFORE calling this - this script only prevents the same shot resolving twice.
-export const HUNTER_SHOT_LUA = `
-local roomKey = KEYS[1]
-local ttl = tonumber(ARGV[1])
-
-local resolved = redis.call('HGET', roomKey, 'hunterShotResolved')
-if resolved == '1' then
-	return 0
-end
-
-redis.call('HSET', roomKey, 'hunterShotResolved', '1')
-redis.call('EXPIRE', roomKey, ttl)
-return 1
-`;
+// ADVANCE_STAGE_LUA and HUNTER_SHOT_LUA (the old stageIndex/stageEpoch CAS
+// and the hunterShotResolved exactly-once guard) retired in M1: both
+// concerns are now handled by the new engine's own per-room lock
+// (gameStateRepo.ts's withGameLock) around every load -> reduce -> save
+// cycle, which makes both kinds of race structurally impossible rather than
+// needing a narrow, field-specific guard for each one.

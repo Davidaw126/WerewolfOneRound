@@ -19,12 +19,26 @@ import {
 	readRoomHash,
 	getRevealedRoleIfAny,
 	leaveSeatAtomic,
-	seatOf
+	seatOf,
+	getIdentities,
+	getPlayers,
+	getSeats
 } from '../../rooms/roomRepo';
 import type { Phase } from '../../../shared/gameTypes';
 import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
-import { startNight1 } from '../../game/stateMachine';
+import { startAndSaveGame, deleteGameState, clearGameActions } from '../../game/gameStateRepo';
+import { syncAndBroadcastGameStart } from '../../game/gameSync';
+import { legacyToRoleId } from '../../../game/roleBridge';
+import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
+import {
+	defaultRuleConfig,
+	mergeRuleConfig,
+	type RuleConfigOverrides
+} from '../../../game/defaultRuleConfig';
+import type { RoleId } from '../../../game/types';
+import type { DealResult as EngineDealResult } from '../../../game/rules/deal';
+import type { StartGameParams } from '../../../game/engine';
 import { deriveSeatCount, dealCards } from '../../../shared/deal';
 import type { Role } from '../../../shared/roles';
 import type { AckResponse } from '../../../shared/events';
@@ -44,7 +58,7 @@ export async function handleRoomCreate(
 	socket.data.roomCode = code;
 	socket.join(roomChannel(code));
 
-	const state = await getPublicState(code);
+	const state = await getPublicState(code, socket.data.sessionId);
 	return { ok: true, roomCode: code, state: state ?? undefined };
 }
 
@@ -54,11 +68,34 @@ export async function handleRoomJoin(
 ): Promise<AckResponse & { state?: RoomPublicState }> {
 	if (!(await roomExists(roomCode))) return { ok: false, error: 'room_not_found' };
 
-	await setSessionRoom(socket.data.sessionId, roomCode);
+	const room = await readRoomHash(roomCode);
+	const sessionId = socket.data.sessionId;
+	const alreadyInRoom =
+		room !== null &&
+		(room.hostSessionId === sessionId || (await seatOf(roomCode, sessionId)) !== null);
+
+	// S10 房间锁定: once the host locks seats (or the game has actually
+	// started), a session with no existing relationship to this room can't
+	// newly join - an anonymous room-code guesser shouldn't be able to sit in
+	// on (or eavesdrop the public broadcasts of) an in-progress game. A
+	// returning player - already seated, or the host - must always get back
+	// in regardless: RoomJoin is also this app's own full-page-reload
+	// recovery path, not just first-time joining (a socket-level reconnect
+	// after a network drop is separate again, via ResyncRequest, and never
+	// reaches this check at all).
+	if (
+		!alreadyInRoom &&
+		room &&
+		(room.lockStatus || (room.phase !== 'LOBBY' && room.phase !== 'SEATING'))
+	) {
+		return { ok: false, error: 'room_locked' };
+	}
+
+	await setSessionRoom(sessionId, roomCode);
 	socket.data.roomCode = roomCode;
 	socket.join(roomChannel(roomCode));
 
-	const state = await getPublicState(roomCode);
+	const state = await getPublicState(roomCode, socket.data.sessionId);
 
 	// If this session already tapped "reveal" before (e.g. a page refresh),
 	// replay it privately rather than leaving them stuck on the tap-to-reveal
@@ -72,12 +109,35 @@ export async function handleRoomJoin(
 export async function handleRoomSubmitConfig(
 	socket: GameSocket,
 	roleConfig: Partial<Record<Role, number>>,
-	cupidPoisonBlocksHunter: boolean
-): Promise<AckResponse> {
+	cupidPoisonBlocksHunter: boolean,
+	ruleOverrides?: RuleConfigOverrides
+): Promise<AckResponse & { issues?: ValidationIssue[] }> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
 	const numberOfSeats = deriveSeatCount(roleConfig);
 	if (numberOfSeats <= 0) return { ok: false, error: 'empty_config' };
+
+	// The new engine only knows the spec's 15-role roster (M0 plan decision 3)
+	// - RoleConfigPanel.svelte already narrows the picker to just those, so
+	// this only ever fires for a stale client/cached page. Caught here,
+	// before anyone's seated or a single card is dealt, rather than leaving a
+	// host to discover it only once they try to start the game.
+	const roleIdConfig: Partial<Record<RoleId, number>> = {};
+	for (const [role, count] of Object.entries(roleConfig)) {
+		if ((count ?? 0) === 0) continue;
+		const roleId = legacyToRoleId(role as Role);
+		if (!roleId) return { ok: false, error: 'unsupported_role_in_config' };
+		roleIdConfig[roleId] = (roleIdConfig[roleId] ?? 0) + (count ?? 0);
+	}
+
+	// §5.2 E02-E09 - the composition checks that make sense before anyone's
+	// even seated. E01 (role total vs. actual player count) is deferred to
+	// RoomStartGame, when there's a real seated headcount to check against;
+	// against numberOfSeats itself it would just trivially always pass here.
+	const validation = validateSetup(buildSetup(roleIdConfig), numberOfSeats);
+	if (!validation.ok) {
+		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
+	}
 
 	const deal = dealCards(roleConfig);
 	const result = await submitRoomConfigAtomic(
@@ -90,6 +150,8 @@ export async function handleRoomSubmitConfig(
 	);
 	if (!result.ok) return result;
 
+	await redis.hset(roomKey(code), { ruleOverrides: JSON.stringify(ruleOverrides ?? {}) });
+
 	// submitRoomConfigAtomic changes more than roleConfig - it also flips
 	// phase LOBBY -> SEATING and resets seats/deadSeats/votes/coupleSeats in
 	// the same atomic write. A full snapshot (rather than a narrower
@@ -97,15 +159,93 @@ export async function handleRoomSubmitConfig(
 	// missing any one of those fields.
 	const state = await getPublicState(code);
 	if (state) emitToRoom(code, { kind: 'StateSnapshot', state });
-	return { ok: true };
+	return { ok: true, issues: validation.warnings.length > 0 ? validation.warnings : undefined };
 }
 
-export async function handleRoomStartGame(socket: GameSocket): Promise<AckResponse> {
+/** Builds the engine's StartGameParams from everything RoomManager-scope
+ * already dealt/seated during LOBBY/SEATING (unaffected by M1 - see the
+ * module header) - the bridge point where the wire's old Role-keyed world
+ * hands off to the new RoleId-keyed engine. */
+async function buildStartGameParams(
+	code: string,
+	room: { hostSessionId: string }
+): Promise<StartGameParams> {
+	const [identities, playersMap, seatsMap] = await Promise.all([
+		getIdentities(code),
+		getPlayers(code),
+		getSeats(code)
+	]);
+
+	const roleIdIdentities: Record<string, RoleId> = {};
+	let buried: [RoleId, RoleId] | null = null;
+	const buriedRoles: RoleId[] = [];
+	for (const [seatKey, role] of Object.entries(identities)) {
+		const roleId = legacyToRoleId(role);
+		if (!roleId) continue; // already rejected at RoomSubmitConfig time - defensive only
+		if (seatKey === 'buried1' || seatKey === 'buried2') {
+			buriedRoles.push(roleId);
+			continue;
+		}
+		roleIdIdentities[seatKey] = roleId;
+	}
+	if (buriedRoles.length === 2) buried = [buriedRoles[0], buriedRoles[1]];
+
+	const roleIdConfig: Partial<Record<RoleId, number>> = {};
+	for (const role of Object.values(roleIdIdentities)) {
+		roleIdConfig[role] = (roleIdConfig[role] ?? 0) + 1;
+	}
+	if (buried) for (const role of buried) roleIdConfig[role] = (roleIdConfig[role] ?? 0) + 1;
+
+	const players: StartGameParams['players'] = [];
+	for (const [seatStr, sessionId] of Object.entries(seatsMap)) {
+		if (!sessionId) continue;
+		players.push({
+			seat: Number(seatStr),
+			sessionId,
+			nickname: playersMap[sessionId]?.username ?? `Seat ${seatStr}`,
+			isHost: sessionId === room.hostSessionId
+		});
+	}
+
+	const deal: EngineDealResult = { identities: roleIdIdentities, buried };
+	const roomHash = await readRoomHash(code);
+	return {
+		roomCode: code,
+		ruleConfig: mergeRuleConfig(
+			{
+				...defaultRuleConfig(),
+				cupidPoisonBlocksHunter: roomHash?.cupidPoisonBlocksHunter ?? false
+			},
+			roomHash?.ruleOverrides
+		),
+		setup: buildSetup(roleIdConfig),
+		deal,
+		players,
+		now: Date.now()
+	};
+}
+
+export async function handleRoomStartGame(
+	socket: GameSocket
+): Promise<AckResponse & { issues?: ValidationIssue[] }> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
 	const room = await readRoomHash(code);
 	if (!room || !room.lockStatus) return { ok: false, error: 'seats_not_locked' };
-	await startNight1(code);
+
+	const params = await buildStartGameParams(code, room);
+
+	// Re-validates the full setup against who's ACTUALLY seated now (E01's
+	// real job - catches a room locked with empty seats, which nothing else
+	// in this app, old or new, has ever checked for) plus every other §5.2
+	// rule again for defense in depth.
+	const validation = validateSetup(params.setup, params.players.length);
+	if (!validation.ok) {
+		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
+	}
+
+	const result = await startAndSaveGame(code, params);
+	await syncAndBroadcastGameStart(code, result);
 	return { ok: true };
 }
 
@@ -167,45 +307,24 @@ const IN_PROGRESS_PHASES: Phase[] = [
  * seated stays seated, the vacated-or-not seats keep whatever role was
  * already dealt to them, and the host can just re-lock and start again with
  * the exact same setup instead of reconfiguring roles from scratch. Only
- * state specific to the aborted round (deaths/votes/couple-link/night
- * progress) is cleared - restarting night 1 with someone already marked dead
- * or an aborted vote in place would be inconsistent. Shared by the host's
- * explicit RoomStopGame/GameOverScreen's "再来一局" and a non-host's mid-game
+ * state specific to the aborted round (the engine's own GameState/action log,
+ * plus the legacy deaths/votes/couple-link keys nothing writes anymore but
+ * are still cleared for tidiness) is cleared. Shared by the host's explicit
+ * RoomStopGame/GameOverScreen's "再来一局" and a non-host's mid-game
  * RoomLeave. */
 async function softResetToSeating(code: string): Promise<void> {
-	// Read the night count BEFORE the hset below resets it to '0', otherwise
-	// there's nothing left to tell us which per-night hashes to delete.
-	const previous = await readRoomHash(code);
-
 	await redis.hset(roomKey(code), {
 		phase: 'SEATING',
 		lockStatus: '0',
-		nightNumber: '0',
-		stageIndex: '0',
-		stageOrder: '[]',
-		winner: '',
-		hunterShotSeat: '',
-		hunterShotResolved: '0',
-		pendingNightDeaths: '',
-		witchUsedAntidote: '0',
-		witchUsedPoison: '0',
-		guardLastSeat: ''
+		nightNumber: '0'
 	});
 	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
 
 	await redis.del(deadSeatsKey(code));
 	await redis.del(votesKey(code));
 	await redis.del(coupleSeatsKey(code));
-
-	// Every night's action hash, not just the last one. Left behind, the next
-	// game's night 1 would re-read the aborted game's kill/poison out of
-	// `nightActions:1` and resolve phantom deaths (and show the witch a stale
-	// "who was attacked", which her self-save rule keys off).
-	if (previous && previous.nightNumber > 0) {
-		const pipeline = redis.pipeline();
-		for (let n = 1; n <= previous.nightNumber; n++) pipeline.del(nightActionsKey(code, n));
-		await pipeline.exec();
-	}
+	await deleteGameState(code);
+	await clearGameActions(code);
 
 	const state = await getPublicState(code);
 	if (state) emitToRoom(code, { kind: 'StateSnapshot', state });

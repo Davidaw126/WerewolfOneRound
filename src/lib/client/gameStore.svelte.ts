@@ -1,4 +1,4 @@
-import type { RoomPublicState } from '$lib/shared/gameTypes';
+import type { NightStage, RoomPublicState, Winner } from '$lib/shared/gameTypes';
 import type { Role } from '$lib/shared/roles';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent } from './socket';
@@ -28,17 +28,29 @@ const TURN_REVEAL_FALLBACK_MS = 8000;
  * every component re-deriving state from raw socket events independently. */
 class GameStore {
 	state = $state<RoomPublicState | null>(null);
+	/** Host-only, and only ever non-null on the host's own client - the real
+	 * current stage (role included), fed by StateSnapshot's hostStage and kept
+	 * live by HostStageChanged. Everyone's shared `state.stage` is role-redacted
+	 * (S4) - JudgeAudioPlayer reads this instead. */
+	hostStage = $state<NightStage | null>(null);
 
 	lastNightDeaths = $state<number[] | null>(null);
 	lastDayResult = $state<{
 		eliminatedSeat: number | null;
 		identity: Role | null;
 		tie: boolean;
+		followDeathSeat: number | null;
+		followDeathIdentity: Role | null;
 	} | null>(null);
-	lastHunterResult = $state<{ hunterSeat: number; shotSeat: number | null } | null>(null);
+	lastHunterResult = $state<{
+		hunterSeat: number;
+		shotSeat: number | null;
+		followDeathSeat: number | null;
+	} | null>(null);
 	gameOverResult = $state<{
-		winner: 'wolves' | 'villagers';
+		winner: Winner;
 		identities: Record<number, Role>;
+		coupleSeats: [number, number] | null;
 	} | null>(null);
 
 	myRole = $state<Role | null>(null);
@@ -49,6 +61,12 @@ class GameStore {
 	 * the prompt can show it inline (the log entry remains the lasting record).
 	 * Deliberately NOT cleared on StageChanged. */
 	lastSeerResult = $state<{ targetSeat: number; isWolf: boolean } | null>(null);
+	/** Set by CoupleRevealed, well before the COUPLE_REVEAL stage actually
+	 * begins (that private event arrives the instant 丘比特 submits; the stage
+	 * itself only starts after the usual post-action pacing pause) - held
+	 * here rather than shown immediately so the reveal happens on the
+	 * player's own tap during that stage, not the moment 丘比特 acts. */
+	myPartnerSeat = $state<number | null>(null);
 
 	/** Set by YourTurnPrompt the instant the server enters this role's turn -
 	 * held back from myTurnRole/turnContext until a StageNarrationStarted
@@ -56,6 +74,16 @@ class GameStore {
 	 * before the role's own narration line has actually started. */
 	pendingTurnRole = $state<Role | null>(null);
 	pendingTurnContext = $state<TurnContext | null>(null);
+
+	/** Centered, auto-dismissing popup for a private role result (seer check,
+	 * hunter authorization/denial, couple reveal) - same overlay treatment as
+	 * the confirm/role-reveal dialogs (a neighbor glancing at the screen
+	 * shouldn't see it either), but never blocks on a tap since it's only
+	 * information, not a decision. Separate from confirmToast/toast (the
+	 * top-of-page banners), which are easy to miss while scrolled down into a
+	 * night-action prompt. */
+	infoPopup = $state<{ message: string; tone: 'good' | 'bad' | 'neutral' } | null>(null);
+	private infoPopupToken = 0;
 
 	hunterAuthorized = $state(false);
 	thiefChoice = $state<[Role, Role] | null>(null);
@@ -116,6 +144,22 @@ class GameStore {
 		}, ms);
 	}
 
+	/** Same token-guarded auto-clear as showConfirm/showToast, for the
+	 * centered infoPopup. */
+	showInfoPopup(message: string, tone: 'good' | 'bad' | 'neutral' = 'neutral', ms = 3000): void {
+		this.infoPopup = { message, tone };
+		const token = ++this.infoPopupToken;
+		setTimeout(() => {
+			if (this.infoPopupToken === token) this.infoPopup = null;
+		}, ms);
+	}
+
+	/** Lets the popup be dismissed early (tapping the backdrop) instead of
+	 * always waiting out its auto-close timer. */
+	dismissInfoPopup(): void {
+		this.infoPopup = null;
+	}
+
 	logRoom(text: string): void {
 		this.roomLog = [...this.roomLog, { round: this.roundLabel(), text }];
 	}
@@ -124,9 +168,15 @@ class GameStore {
 	 * called either by a real StageNarrationStarted signal or the fallback
 	 * timer armed alongside pendingTurnRole - guarded so a stale call (the
 	 * stage already moved on, or this turn was already revealed) is a no-op. */
-	private revealTurn(role: Role): void {
-		if (this.pendingTurnRole !== role) return;
-		this.myTurnRole = role;
+	/** Promotes the pending night-turn to active. No role parameter needed:
+	 * StageNarrationStarted no longer carries one (S4) - pendingTurnRole is
+	 * already unique to whichever client actually has the current turn (reset
+	 * to null on every StageChanged, set only by that client's own private
+	 * YourTurnPrompt), so "am I pending on anything at all" is the only check
+	 * that was ever actually doing the work here. */
+	private revealTurn(): void {
+		if (this.pendingTurnRole === null) return;
+		this.myTurnRole = this.pendingTurnRole;
 		this.turnContext = this.pendingTurnContext;
 	}
 
@@ -191,6 +241,18 @@ class GameStore {
 		};
 	}
 
+	/** M6 上帝之手 REVIVE only - every other death is permanent, so nothing
+	 * else ever needs to undo markDead. */
+	private markAlive(seat: number): void {
+		if (!this.state) return;
+		if (!this.state.deadSeats.includes(seat)) return;
+		this.state = {
+			...this.state,
+			deadSeats: this.state.deadSeats.filter((s) => s !== seat),
+			seats: this.state.seats.map((s) => (s.seatNumber === seat ? { ...s, isDead: false } : s))
+		};
+	}
+
 	/** Applies a full state snapshot - shared by the `StateSnapshot` broadcast
 	 * event and by callers that received a `state` field directly in an
 	 * action's ack response (e.g. `RoomJoin`/`ResyncRequest`), which is never
@@ -205,27 +267,25 @@ class GameStore {
 	applyState(state: RoomPublicState): void {
 		const isNewRoom = this.state?.roomCode !== state.roomCode;
 		this.state = state;
+		// Present only when this snapshot was addressed to the host's own
+		// session (see getPublicState's forSessionId) - undefined for everyone
+		// else, which correctly resolves to "no host-only stage info here".
+		this.hostStage = state.hostStage ?? null;
 		if (isNewRoom) {
-			this.myRole = null;
-			this.thiefChoice = null;
-			this.gameOverResult = null;
-			this.activityLog = [];
-			this.roomClosed = false;
-			this.roomClosedMessage = null;
+			// Everything resetPrivateState clears (lastNightDeaths/lastDayResult/
+			// myRole/etc.) is exactly as stale as it would be on a same-room
+			// GameReset - see that method's own comment. roomLog is the one
+			// thing it deliberately leaves alone, since a genuinely different
+			// room has no relationship to the old one's log at all.
+			this.resetPrivateState();
 			this.roomLog = [];
-			// A toast (e.g. the host-destroyed-room notice) can still be within
-			// its auto-clear window when a brand new room is created right after -
-			// without this it would keep showing a stale message about the OLD
-			// room on top of the new one.
-			this.toast = null;
-			this.confirmToast = null;
 		}
 	}
 
-	/** Wipes every transient per-round field. Used when a host stop-and-restart
-	 * (`GameReset`) resets the room back to SEATING without changing its room
-	 * code - `applyState`'s isNewRoom check wouldn't fire for that, but all of
-	 * this is just as stale as it would be after switching rooms entirely. */
+	/** Wipes every transient per-round field. Used both when a host
+	 * stop-and-restart (`GameReset`) resets the room back to SEATING without
+	 * changing its room code, and by `applyState` when the room code DOES
+	 * change - either way, all of this is equally stale. */
 	resetPrivateState(): void {
 		this.lastNightDeaths = null;
 		this.lastDayResult = null;
@@ -234,10 +294,13 @@ class GameStore {
 		this.myRole = null;
 		this.myTurnRole = null;
 		this.turnContext = null;
+		this.hostStage = null;
 		this.lastSeerResult = null;
+		this.myPartnerSeat = null;
 		this.pendingTurnRole = null;
 		this.pendingTurnContext = null;
 		this.hunterAuthorized = false;
+		this.infoPopup = null;
 		this.thiefChoice = null;
 		this.toast = null;
 		this.confirmToast = null;
@@ -284,7 +347,13 @@ class GameStore {
 				// server-side transition, so clearing on PhaseChanged would make the result
 				// banner flash and vanish before anyone could read it. They persist as "last
 				// known result" until overwritten by the next occurrence of that event.
-				this.state = { ...this.state, phase: event.phase, nightNumber: event.nightNumber };
+				this.state = {
+					...this.state,
+					phase: event.phase,
+					nightNumber: event.nightNumber,
+					currentSpeaker: null,
+					speechOrder: []
+				};
 				this.myTurnRole = null;
 				this.turnContext = null;
 				// A new phase means a new night's checks - the seer's last result
@@ -300,8 +369,6 @@ class GameStore {
 				this.pendingTurnRole = null;
 				this.pendingTurnContext = null;
 				break;
-			case 'NightActionAck':
-				break;
 			case 'NightResolved':
 				this.lastNightDeaths = event.deaths;
 				this.state = { ...this.state, pendingNightAnnounce: false };
@@ -316,44 +383,87 @@ class GameStore {
 				}
 				break;
 			case 'VoteUpdated':
-				this.state = { ...this.state, votes: event.votes };
+				this.state = {
+					...this.state,
+					votedSeats: event.votedSeats,
+					totalVoters: event.totalVoters
+				};
 				break;
 			case 'DayResolved':
 				this.lastDayResult = {
 					eliminatedSeat: event.eliminatedSeat,
 					identity: event.identity,
-					tie: event.tie
+					tie: event.tie,
+					followDeathSeat: event.followDeathSeat,
+					followDeathIdentity: event.followDeathIdentity
 				};
+				this.state = { ...this.state, pkCandidates: event.pkCandidates ?? [] };
 				if (event.eliminatedSeat !== null) this.markDead(event.eliminatedSeat);
+				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				{
-					const text = event.tie
+					const base = event.tie
 						? '投票平票，无人出局'
 						: event.eliminatedSeat === null
 							? '本轮无人出局'
 							: `${event.eliminatedSeat} 号被投票出局，身份是 ${event.identity}`;
+					const text =
+						event.followDeathSeat !== null ? `${base}，${event.followDeathSeat} 号殉情身亡` : base;
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
 				break;
+			case 'LastWordsSpeakerChanged':
+				this.state = { ...this.state, currentSpeaker: event.seat };
+				break;
+			case 'DiscussionSpeakerChanged':
+				this.state = { ...this.state, currentSpeaker: event.seat, speechOrder: event.order };
+				break;
+			case 'SelfExploded': {
+				const text = `${event.seat} 号玩家自爆身份为狼人`;
+				this.logActivity(text, { public: true });
+				this.logRoom(text);
+				this.markDead(event.seat);
+				break;
+			}
+			case 'KnightDuelResolved': {
+				const text = event.targetWasWolf
+					? `骑士 ${event.knightSeat} 号决斗 ${event.targetSeat} 号，对方是狼人，${event.targetSeat} 号出局`
+					: `骑士 ${event.knightSeat} 号决斗 ${event.targetSeat} 号，对方是好人，骑士出局`;
+				this.logActivity(text, { public: true });
+				this.logRoom(text);
+				this.markDead(event.targetWasWolf ? event.targetSeat : event.knightSeat);
+				break;
+			}
 			case 'HunterPending':
 				this.state = { ...this.state, hunterSeat: event.hunterSeat };
 				break;
 			case 'HunterResolved':
-				this.lastHunterResult = { hunterSeat: event.hunterSeat, shotSeat: event.shotSeat };
+				this.lastHunterResult = {
+					hunterSeat: event.hunterSeat,
+					shotSeat: event.shotSeat,
+					followDeathSeat: event.followDeathSeat
+				};
 				this.hunterAuthorized = false;
 				this.state = { ...this.state, hunterSeat: null };
 				if (event.shotSeat !== null) this.markDead(event.shotSeat);
+				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				{
-					const text =
+					const base =
 						event.shotSeat === null
 							? `${event.hunterSeat} 号猎人选择不开枪`
 							: `${event.hunterSeat} 号猎人开枪，带走了 ${event.shotSeat} 号`;
+					const text =
+						event.followDeathSeat !== null ? `${base}，${event.followDeathSeat} 号殉情身亡` : base;
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
 				break;
 			case 'GameOver':
-				this.gameOverResult = { winner: event.winner, identities: event.identities };
+				this.gameOverResult = {
+					winner: event.winner,
+					identities: event.identities,
+					coupleSeats: event.coupleSeats
+				};
 				this.state = {
 					...this.state,
 					phase: 'GAME_OVER',
@@ -361,7 +471,12 @@ class GameStore {
 					identities: event.identities
 				};
 				{
-					const text = event.winner === 'wolves' ? '狼人阵营胜利' : '好人阵营胜利';
+					const text =
+						event.winner === 'wolves'
+							? '狼人阵营胜利'
+							: event.winner === 'lovers'
+								? '第三方阵营胜利'
+								: '好人阵营胜利';
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
@@ -377,8 +492,17 @@ class GameStore {
 				this.roomClosed = true;
 				break;
 			case 'StageNarrationStarted':
-				this.revealTurn(event.role);
+				this.revealTurn();
 				break;
+			case 'HostOverrideApplied': {
+				if (event.overrideKind === 'KILL') this.markDead(event.seat);
+				if (event.overrideKind === 'REVIVE') this.markAlive(event.seat);
+				const label = { KILL: '击杀', REVIVE: '复活', SET_ROLE: '改变身份' }[event.overrideKind];
+				const text = `房主使用上帝之手对 ${event.seat} 号${label}`;
+				this.logActivity(text, { public: true });
+				this.logRoom(text);
+				break;
+			}
 		}
 	}
 
@@ -389,12 +513,25 @@ class GameStore {
 				break;
 			case 'SeerResult':
 				this.lastSeerResult = { targetSeat: event.targetSeat, isWolf: event.isWolf };
+				// '坏人'/'好人', not the specific role - the seer only ever learns
+				// good/bad (isWolf is the only thing the server ever sends), so the
+				// wording shouldn't imply anything more specific than that either.
 				this.logActivity(
-					`你查验了 ${event.targetSeat} 号，结果是${event.isWolf ? '狼人' : '好人'}`
+					`你查验了 ${event.targetSeat} 号，结果是${event.isWolf ? '坏人' : '好人'}`
+				);
+				// lastSeerResult above is the lasting record (shown inline in the
+				// prompt/activity log) - the popup is just the "here's the answer"
+				// moment, same treatment as the role-reveal card.
+				this.showInfoPopup(
+					`${event.targetSeat} 号是${event.isWolf ? '坏人' : '好人'}`,
+					event.isWolf ? 'bad' : 'good'
 				);
 				break;
 			case 'CoupleRevealed':
 				this.logActivity(`你的情侣是 ${event.partnerSeat} 号`);
+				// Held for the COUPLE_REVEAL stage's own reveal button, not shown
+				// right away - see myPartnerSeat's own comment.
+				this.myPartnerSeat = event.partnerSeat;
 				break;
 			case 'ThiefChoice':
 				this.thiefChoice = event.buried;
@@ -405,15 +542,23 @@ class GameStore {
 				this.pendingTurnContext = event.context;
 				// Fallback in case narration never relays a start signal (muted,
 				// unsupported browser, no host connected) - see revealTurn.
-				setTimeout(() => this.revealTurn(role), TURN_REVEAL_FALLBACK_MS);
+				setTimeout(() => this.revealTurn(), TURN_REVEAL_FALLBACK_MS);
 				break;
 			}
 			case 'HunterAuthorized':
 				this.hunterAuthorized = true;
+				this.showInfoPopup('你可以开枪反击', 'good');
 				break;
 			case 'HunterDenied':
-				this.showToast('你身中剧毒，无法开枪反击');
 				this.logActivity('你身中剧毒，无法开枪反击');
+				this.showInfoPopup('你身中剧毒，无法开枪反击', 'bad');
+				break;
+			case 'HostStageChanged':
+				this.hostStage = event.stage;
+				break;
+			case 'NightActionAck':
+				// Host-only (S4) - nothing reads this yet; kept for a possible
+				// future host-side "who's acted" checklist.
 				break;
 		}
 	}

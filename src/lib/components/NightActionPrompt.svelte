@@ -69,7 +69,9 @@
 		no_kill_to_save: '今晚无人被袭击，无法使用解药',
 		guard_repeat_target: '不能连续两晚守护同一位玩家',
 		already_submitted: '你今晚已经行动过了',
-		not_your_role: '这不是你的身份'
+		not_your_role: '这不是你的身份',
+		feared: '你被恐惧了，今晚无法行动',
+		thief_must_take_wolf: '两张底牌都是狼人，必须选择一张'
 	};
 
 	async function submit(action: ClientAction, description: string) {
@@ -104,13 +106,13 @@
 						class="font-semibold {gameStore.lastSeerResult.isWolf ? 'text-wolf' : 'text-village'}"
 					>
 						{gameStore.lastSeerResult.targetSeat} 号是{gameStore.lastSeerResult.isWolf
-							? '狼人'
+							? '坏人'
 							: '好人'}
 					</span>
 				</p>
 			{/if}
-		{:else if role === '普通狼人' || role === '预言家' || role === '守卫' || role === '狼美人'}
-			{#if role === '普通狼人' || role === '狼美人'}
+		{:else if role === '普通狼人' || role === '预言家' || role === '守卫' || role === '狼美人' || role === '野孩子' || role === '摄梦人' || role === '恶灵骑士'}
+			{#if role === '普通狼人' || role === '狼美人' || role === '恶灵骑士'}
 				<p class="text-sm text-wolf">
 					{wolfTeammates.length > 0
 						? `你的狼队友：${wolfTeammates.map((s) => `${s} 号`).join('、')}`
@@ -127,6 +129,9 @@
 				{role === '预言家' ? '选择要查验的玩家：' : ''}
 				{role === '守卫' ? '选择要守护的玩家：' : ''}
 				{role === '狼美人' ? '选择要魅惑的玩家：' : ''}
+				{role === '野孩子' ? '选择你的榜样（不可选自己）：' : ''}
+				{role === '摄梦人' ? '选择今晚要摄梦的玩家：' : ''}
+				{role === '恶灵骑士' ? '选择要恐惧的玩家：' : ''}
 			</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats as seat (seat.seatNumber)}
