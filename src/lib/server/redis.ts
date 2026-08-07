@@ -32,10 +32,22 @@ const RESILIENCE_OPTIONS = {
 export const redis = new Redis(REDIS_URL, RESILIENCE_OPTIONS);
 redis.on('error', logRedisError('primary'));
 
+const duplicates: Redis[] = [];
+
 /** A second connection dedicated to Socket.IO's pub/sub adapter (ioredis
  * connections used for SUBSCRIBE can't also run normal commands). */
 export function createRedisDuplicate() {
 	const duplicate = redis.duplicate();
 	duplicate.on('error', logRedisError('duplicate'));
+	duplicates.push(duplicate);
 	return duplicate;
+}
+
+/** Every ioredis connection stays open (for reconnect) until explicitly
+ * closed, which otherwise keeps the process alive indefinitely - called on
+ * graceful shutdown (server/index.ts) so the process can exit as soon as
+ * everything else has drained instead of always waiting out the forced-exit
+ * backstop. */
+export async function closeRedisConnections(): Promise<void> {
+	await Promise.all([redis, ...duplicates].map((conn) => conn.quit().catch(() => {})));
 }
