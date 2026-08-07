@@ -45,3 +45,20 @@ export async function checkRateLimit(sessionId: string): Promise<boolean> {
 	);
 	return allowed === 1;
 }
+
+// Registration has no sessionId yet - that's what's being created - so it's
+// limited by client IP instead, with its own (tighter, longer-window) budget.
+// Shares the same underlying Lua command as the socket-action limiter above.
+const REGISTER_RATE_LIMIT_WINDOW_SECONDS = 60;
+const REGISTER_RATE_LIMIT_MAX_ATTEMPTS = 10;
+
+/** True if this client IP is still within its registration-attempt budget
+ * for the current window. */
+export async function checkRegisterRateLimit(clientAddress: string): Promise<boolean> {
+	const allowed = await redis.rateLimitHit(
+		`wolf:ratelimit:register:${clientAddress}`,
+		String(REGISTER_RATE_LIMIT_WINDOW_SECONDS),
+		String(REGISTER_RATE_LIMIT_MAX_ATTEMPTS)
+	);
+	return allowed === 1;
+}

@@ -1,12 +1,14 @@
 # 狼人杀助手 · Werewolf Judge Helper
 
-A mobile-first web app that runs a game of 狼人杀 (Werewolf/Mafia) without a
-human host: it deals roles, walks each player through their night action in
-the correct order, resolves deaths, runs the day vote, and announces the
+A mobile-first web app that runs a full game of 狼人杀 (Werewolf/Mafia)
+without a human host: it deals all 15 spec roles, walks each player through
+their night action in the correct order, resolves deaths, runs the full day
+phase (last words, discussion, vote, PK re-vote on ties), and announces the
 winner — everything a human "judge" would normally do out loud.
 
-This is a ground-up rewrite of an earlier Flask/jQuery/MongoDB version. The
-game rules are the same; the stack, architecture, and UI are new.
+This is a ground-up rewrite of an earlier Flask/jQuery/MongoDB version,
+itself later rebuilt again around a pure functional game engine (see
+Architecture below) — same rules, several stacks since.
 
 ## Stack
 
@@ -14,15 +16,19 @@ game rules are the same; the stack, architecture, and UI are new.
 - **Socket.IO** for realtime play, attached to the same HTTP server SvelteKit runs on
 - **Redis** as the only data store — rooms are short-lived (6h TTL), so there's
   no need for a persistent database. Atomic multi-step operations (taking a
-  seat, submitting the room config, advancing a night stage, resolving a
-  hunter's shot) are implemented as Lua scripts to stay race-free under
-  concurrent players.
-- **TypeScript** throughout, with a `src/lib/shared/` layer imported by both
-  client and server so the Socket.IO event contract (`ClientAction` /
-  `ServerEvent`, validated at runtime with **Zod**) can't drift out of sync.
-- **Vitest** for the pure game-logic modules (night resolution, win
-  condition, dealing) — the exact rules are easy to get subtly wrong, so
-  these are unit-tested directly rather than only through the UI.
+  seat, submitting the room config) are implemented as Lua scripts to stay
+  race-free under concurrent players; `@socket.io/redis-adapter` is already
+  wired up, so the socket layer itself can run as multiple horizontally
+  scaled instances behind a load balancer without breaking cross-instance
+  broadcast.
+- **TypeScript** throughout. A pure `src/lib/game/` engine (no Svelte/
+  Socket.IO/Redis imports, using **immer** for copy-on-write state updates)
+  is the source of truth for game rules; `src/lib/shared/` is the Socket.IO
+  event contract (`ClientAction`/`ServerEvent`, validated at runtime with
+  **Zod**) imported by both client and server so it can't drift out of sync.
+- **Vitest** for the pure game engine (night resolution, win condition,
+  dealing, every role's edge cases) — the exact rules are easy to get subtly
+  wrong, so these are unit-tested directly rather than only through the UI.
 
 ## Getting started
 
@@ -51,7 +57,7 @@ or join one with a 6-digit code from another browser tab/device.
 | `npm run dev`                     | Dev server (Vite + a Socket.IO dev plugin attached to the same HTTP server)                                   |
 | `npm run build`                   | Production build: SvelteKit's own build, plus an esbuild bundle of the standalone Socket.IO server entrypoint |
 | `npm start`                       | Run the production build (`node build-server/index.js`)                                                       |
-| `npm test`                        | Run the Vitest suite for `src/lib/shared/**`                                                                  |
+| `npm test`                        | Run the Vitest suite (mostly `src/lib/game/**`)                                                               |
 | `npm run check`                   | `svelte-kit sync` + `svelte-check` (type checking)                                                            |
 | `npm run lint` / `npm run format` | Prettier + ESLint                                                                                             |
 
@@ -91,61 +97,75 @@ Hetzner droplet) is the cheaper always-on alternative if you'd rather avoid
 platform lock-in, at the cost of managing Node/Redis/a process manager/TLS
 yourself.
 
-Not yet set up, worth doing before a public-facing deploy: response security
-headers (CSP, `X-Frame-Options`, etc.) - `src/hooks.server.ts` currently sets
-none.
+Response security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Permissions-Policy`, HSTS in production) are set in
+`src/hooks.server.ts`/`vite.config.ts`'s `csp` option. `GET /health` returns
+`{ ok: true }` (200) if Redis is reachable, `{ ok: false }` (503) otherwise —
+point your platform's readiness/liveness probe at it. `server/index.ts`
+handles `SIGTERM`/`SIGINT` by draining connections before exiting, so a
+redeploy doesn't hard-kill live games.
 
 ## Architecture
 
 ```
 src/
   lib/
-    shared/    # roles, game types, night-resolution/win-condition logic, the
-               # Socket.IO event contract - zero server-only deps, safe to
-               # import from both client and server code
-    server/    # Redis access, room repo + Lua scripts, the game state
-               # machine, session handling, Socket.IO server + handlers -
+    game/      # the pure game engine - zero imports from Svelte/Socket.IO/
+               # Redis, safe to unit-test in isolation. engine.ts's
+               # reduce(state, action) is the sole source of truth for rules
+    shared/    # the wire contract only: ClientAction/ServerEvent (Zod-
+               # validated), plus the legacy role/art lookups still used to
+               # deal and render - zero server-only deps
+    server/    # everything IO-bound: Redis access, room repo + Lua scripts,
+               # the IO shell around the engine (loads/reduces/saves under a
+               # per-room lock), session handling, Socket.IO handlers -
                # never imported from a +page.svelte
     client/    # thin socket.io-client wrapper + the reactive game store
                # ($state-based) that drives the room UI
     components/  # the room/game UI: seat circle, role config, per-role
-                 # night-action prompts, vote board, game-over screen, etc.
+                 # night-action prompts, day-phase panels, vote board,
+                 # game-over screen, host override panel, etc.
   routes/
     register/  → lobby/  → room/[code]/   # the whole app is these 3 pages;
                                            # room/[code] renders whichever
                                            # phase the room is currently in
+    health/    # GET /health - liveness/readiness probe (checks Redis)
 server/index.ts   # production entrypoint: SvelteKit's Node adapter handler
                    # + attachSocketIO(), bundled by esbuild into build-server/
 static/audio/      # the judge's voice cues (mp3), reused from the old app
 ```
+
+Full architecture detail (the exact module layout, phase flow, and secrecy
+model) lives in `CLAUDE.md` at the repo root — that's the source of truth
+for anyone (human or AI) working in this codebase; keep it in sync with
+structural changes rather than duplicating it here.
 
 **Auth**: an HMAC-signed opaque session cookie references a session record
 in Redis — no JWT, and the Socket.IO handshake trusts only that signed
 cookie, never anything the client sends in its connection payload.
 
 **Authorization**: host-only actions (submitting the role config, starting
-the game, ending a vote) compare the authenticated session against
-`hostSessionId` stored server-side — the client never sends an "I'm the
-host" flag, so there's nothing to spoof. Similarly, a player's seat is
-always resolved server-side from their session, never taken from client
-input; night-action submissions are checked against the role actually dealt
-to that seat, so a client can't claim to be a role it wasn't dealt.
+the game, advancing day-phase queues, ending a vote, host overrides) compare
+the authenticated session against `hostSessionId` stored server-side — the
+client never sends an "I'm the host" flag, so there's nothing to spoof.
+Similarly, a player's seat is always resolved server-side from their
+session, never taken from client input; night-action submissions are
+checked against the role actually dealt to that seat.
 
-**Game state machine**: `src/lib/server/game/stateMachine.ts` drives phases
-(`LOBBY → SEATING → NIGHT_ACTIONS → [NIGHT_HUNTER_SHOT] → DAY_VOTE →
-[DAY_HUNTER_SHOT] → NIGHT_ACTIONS → … → GAME_OVER`) and an ordered list of
-night stages, skipping any role with no living seated holder. Only 8 roles
-have an implemented night action (普通狼人/预言家/女巫/猎人/守卫/狼美人/丘比特/盗贼);
-every other role in the roster is tracked for alive/dead + win-condition
-counting only, matching the original app's scope.
+**Note**: there's currently no host-transfer mechanism — if the host's
+session is lost mid-game (not a reconnect, but the device/cookie truly
+gone), the room can't be recovered by anyone else. Fine for a supervised
+in-person game where the host's phone stays on; worth scoping before
+supporting less-supervised play.
 
 ## Notes on the game logic
 
-- Night resolution (`src/lib/shared/nightResolution.ts`) is a direct,
-  unit-tested port of the original algorithm, including the order-dependent
-  "同守同救" quirk (if the guard protects the exact seat the witch also
-  saves with her antidote the same night, that seat dies anyway).
-- Dealing (`src/lib/shared/deal.ts`) uses a plain uniform shuffle. The
-  original app attempted to keep wolf cards out of the 盗贼's buried pile
-  but had a bug that meant it never actually worked; that special-casing
-  was not reproduced here.
+- Night resolution (`src/lib/game/rules/nightResolution.ts`) includes the
+  order-dependent "同守同救" quirk (if the guard protects the exact seat the
+  witch also saves with her antidote the same night, that seat dies
+  anyway), 摄梦人's two-nights-running death, and 野孩子's idol-death
+  conversion.
+- All 15 spec roles are implemented, with their trickier interactions
+  (witch self-save variants, hunter shoot-when-poisoned, knight duel,
+  wolf-king explode+shot, etc.) covered directly by `*.spec.ts` files next
+  to the modules they test, rather than only exercised through the UI.

@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { createSession } from '$lib/server/session';
 import { SESSION_COOKIE_NAME } from '$lib/server/cookieName';
+import { checkRegisterRateLimit } from '$lib/server/socket/rateLimit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
@@ -10,7 +11,11 @@ export const load: PageServerLoad = ({ locals }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, getClientAddress }) => {
+		if (!(await checkRegisterRateLimit(getClientAddress()))) {
+			return fail(429, { error: '请求过于频繁，请稍后再试' });
+		}
+
 		const form = await request.formData();
 		const username = String(form.get('username') ?? '').trim();
 
