@@ -7,6 +7,14 @@
 	import { startAmbient, stopAmbient, sfxDeath, narrate } from '$lib/client/sfx';
 	import { askConfirm, showAlert } from '$lib/client/confirmDialog.svelte';
 	import { leaveConfirmMessage } from '$lib/client/leaveRoom';
+	import { i18n } from '$lib/client/i18n.svelte';
+	import {
+		strings,
+		formatNightDeaths,
+		formatDayResult,
+		formatHunterResult,
+		formatRoomClosedByHost
+	} from '$lib/shared/i18n';
 	import type { AckResponse } from '$lib/shared/events';
 	import type { RoomPublicState } from '$lib/shared/gameTypes';
 	import type { PageData } from './$types';
@@ -26,6 +34,8 @@
 	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	const t = $derived(strings(i18n.lang));
 
 	// Guards the reconnect-resync handler below from firing on the socket's
 	// very first connection, before RoomJoin has told the server which room
@@ -112,7 +122,10 @@
 	$effect(() => {
 		if (gameStore.roomClosed && !roomClosedHandled) {
 			roomClosedHandled = true;
-			showAlert(gameStore.roomClosedMessage ?? '房间已关闭', '返回大厅').then(() => {
+			showAlert(
+				gameStore.roomClosedMessage ?? formatRoomClosedByHost(i18n.lang),
+				t.room.backToLobby
+			).then(() => {
 				goto(resolve('/lobby'));
 			});
 		}
@@ -164,9 +177,7 @@
 	async function takeSeat(seatNumber: number) {
 		const res = await sendAction<AckResponse>({ kind: 'SeatTake', seatNumber });
 		if (!res.ok) {
-			gameStore.showToast(
-				res.error === 'name_taken' ? '该昵称已被本房间其他玩家使用' : '该座位已被占用'
-			);
+			gameStore.showToast(res.error === 'name_taken' ? t.room.nameTaken : t.room.seatTaken);
 		}
 	}
 	async function startGame() {
@@ -187,7 +198,7 @@
 			// players just see the phase change whenever the request lands.
 			advancingCoupleReveal = true;
 			await new Promise<void>((resolveNarration) => {
-				narrate('所有人闭眼', () => setTimeout(resolveNarration, 3000));
+				narrate(t.narration.allEyesClosed, i18n.lang, () => setTimeout(resolveNarration, 3000));
 			});
 			advancingCoupleReveal = false;
 		}
@@ -204,7 +215,7 @@
 		// GAME_OVER is never one of the in-progress phases (the round has
 		// already concluded), so the only thing worth warning about here is
 		// the host-destroys-the-room case.
-		const { message, confirmLabel } = leaveConfirmMessage(isHost, false);
+		const { message, confirmLabel } = leaveConfirmMessage(isHost, false, i18n.lang);
 		if (!(await askConfirm(message, { confirmLabel }))) return;
 		leavingAfterGameOver = true;
 		// The session still has roomCode set from this finished game - clear
@@ -225,7 +236,11 @@
 </script>
 
 <svelte:head>
-	<title>房间 {data.roomCode} · 狼人杀助手</title>
+	<title
+		>{i18n.lang === 'zh'
+			? `房间 ${data.roomCode} · 狼人杀助手`
+			: `Room ${data.roomCode} · Werewolf`}</title
+	>
 </svelte:head>
 
 {#if isHost}
@@ -242,7 +257,7 @@
 	class="flex h-dvh flex-col overflow-hidden bg-gradient-to-b {phaseBg} text-zinc-100 transition-colors duration-700"
 >
 	{#if !roomState}
-		<p class="m-auto text-center text-zinc-500">加载中…</p>
+		<p class="m-auto text-center text-zinc-500">{t.room.loading}</p>
 	{:else}
 		<!-- Header: pinned, never scrolls - the phase banner and the host's
 		     night-results call-to-action stay visible no matter how tall the
@@ -255,7 +270,9 @@
 				     content below is showing - dead seats/voting/etc. are never
 				     blocked on this, so the host can tap it whenever during the day,
 				     not just at one forced moment. -->
-				<button onclick={announceNightResults} class="btn-primary w-full"> 公布夜晚结果 </button>
+				<button onclick={announceNightResults} class="btn-primary w-full">
+					{t.room.announceButton}
+				</button>
 			{/if}
 		</div>
 
@@ -278,34 +295,19 @@
 			>
 				{#if gameStore.lastNightDeaths !== null}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{gameStore.lastNightDeaths.length === 0
-							? '昨晚是平安夜'
-							: `昨晚 ${gameStore.lastNightDeaths.join('、')} 号玩家死亡`}
+						{formatNightDeaths(gameStore.lastNightDeaths, i18n.lang)}
 					</div>
 				{/if}
 
 				{#if gameStore.lastDayResult}
-					{@const dayBase = gameStore.lastDayResult.tie
-						? '投票平票，无人出局'
-						: gameStore.lastDayResult.eliminatedSeat === null
-							? '本轮无人出局'
-							: `${gameStore.lastDayResult.eliminatedSeat} 号被投票出局，身份是 ${gameStore.lastDayResult.identity}`}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{gameStore.lastDayResult.followDeathSeat !== null
-							? `${dayBase}，${gameStore.lastDayResult.followDeathSeat} 号殉情身亡`
-							: dayBase}
+						{formatDayResult({ ...gameStore.lastDayResult, lang: i18n.lang })}
 					</div>
 				{/if}
 
 				{#if gameStore.lastHunterResult}
-					{@const hunterBase =
-						gameStore.lastHunterResult.shotSeat === null
-							? `${gameStore.lastHunterResult.hunterSeat} 号猎人选择不开枪`
-							: `${gameStore.lastHunterResult.hunterSeat} 号猎人开枪带走了 ${gameStore.lastHunterResult.shotSeat} 号`}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{gameStore.lastHunterResult.followDeathSeat !== null
-							? `${hunterBase}，${gameStore.lastHunterResult.followDeathSeat} 号殉情身亡`
-							: hunterBase}
+						{formatHunterResult({ ...gameStore.lastHunterResult, lang: i18n.lang })}
 					</div>
 				{/if}
 
@@ -323,7 +325,7 @@
 
 				{#if roomState.phase === 'LOBBY'}
 					<div class="text-center">
-						<p class="text-xs text-zinc-500">分享房间号邀请好友</p>
+						<p class="text-xs text-zinc-500">{t.room.shareCode}</p>
 						<p class="title-glow font-display text-4xl font-black tracking-[0.3em] text-ember">
 							{data.roomCode}
 						</p>
@@ -339,7 +341,7 @@
 						</div>
 					{:else}
 						<p class="text-center text-sm text-zinc-500">
-							等待房主 {roomState.hostUsername} 设置房间中…
+							{t.room.waitingHostConfig(roomState.hostUsername ?? '')}
 						</p>
 					{/if}
 				{:else if roomState.phase === 'SEATING'}
@@ -410,7 +412,7 @@
 						<div class="w-full">
 							{#if roomState.pendingNightAnnounce}
 								<p class="text-center text-sm text-zinc-500">
-									{isHost ? '公布昨晚结果后即可开始投票' : '等待房主公布昨晚结果，投票尚未开始…'}
+									{isHost ? t.room.voteWaitAnnounceHost : t.room.voteWaitAnnouncePlayer}
 								</p>
 							{:else}
 								<VoteBoard {mySeat} {isHost} />
@@ -441,21 +443,22 @@
 				{#if roomState.phase === 'SEATING'}
 					{#if isHost}
 						<div class="flex gap-2">
-							<button onclick={rerollRoles} class="btn-ghost flex-1 text-sm">重新分配角色</button>
-							<button onclick={startGame} class="btn-primary flex-1">开始游戏</button>
+							<button onclick={rerollRoles} class="btn-ghost flex-1 text-sm">{t.room.reroll}</button
+							>
+							<button onclick={startGame} class="btn-primary flex-1">{t.room.startGame}</button>
 						</div>
 					{:else}
-						<p class="text-center text-sm text-zinc-500">等待房主开始游戏…</p>
+						<p class="text-center text-sm text-zinc-500">{t.room.seatingWaitingHost}</p>
 					{/if}
 				{:else if roomState.phase === 'GAME_OVER'}
 					<div class="flex gap-2">
 						{#if isHost}
 							<button onclick={playAgain} disabled={restarting} class="btn-primary flex-1">
-								{restarting ? '重启中…' : '再来一局'}
+								{restarting ? t.room.restarting : t.room.playAgain}
 							</button>
 						{/if}
 						<button onclick={backToLobby} disabled={leavingAfterGameOver} class="btn-ghost flex-1">
-							{leavingAfterGameOver ? '返回中…' : '返回大厅'}
+							{leavingAfterGameOver ? t.room.leavingBack : t.room.backToLobby}
 						</button>
 					</div>
 				{:else if roomState.phase === 'NIGHT_ACTIONS'}
@@ -477,15 +480,15 @@
 									onclick={() =>
 										gameStore.showInfoPopup(
 											gameStore.myPartnerSeat !== null
-												? `你的情侣是 ${gameStore.myPartnerSeat} 号`
-												: '你没有被选为情侣'
+												? t.room.coupleLinked(gameStore.myPartnerSeat)
+												: t.room.coupleNotLinked
 										)}
 									class="btn-primary w-full"
 								>
-									查看情侣
+									{t.room.viewCouple}
 								</button>
 							{:else}
-								<p class="text-center text-sm text-zinc-500">等待其他玩家行动…</p>
+								<p class="text-center text-sm text-zinc-500">{t.room.waitingOthers}</p>
 							{/if}
 						{/if}
 						{#if isHost && needsHostAdvance}
@@ -494,7 +497,7 @@
 								disabled={advancingCoupleReveal}
 								class="btn-ghost w-full hover:bg-ember/10"
 							>
-								{advancingCoupleReveal ? '闭眼中…' : '继续'}
+								{advancingCoupleReveal ? t.room.closingEyes : t.room.continueButton}
 							</button>
 						{/if}
 					</div>

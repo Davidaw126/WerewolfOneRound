@@ -195,8 +195,13 @@ export type ServerEvent =
 			 * the reveal screen marks them either way, not just when they won). */
 			coupleSeats: [number, number] | null;
 	  }
-	| { kind: 'ErrorToast'; message: string }
-	| { kind: 'RoomClosed'; message: string }
+	// Structured, not a baked message string - i18n needs this to stay a
+	// client-only rendering concern (src/lib/shared/i18n/format.ts's
+	// formatPlayerLeftMidGame/formatRoomClosedByHost), matching every other
+	// error code in the app instead of being the one path that could only
+	// ever speak Chinese.
+	| { kind: 'ErrorToast'; reason: 'player_left_mid_game'; seat: number | null }
+	| { kind: 'RoomClosed'; reason: 'host_left' }
 	// S4: no role field - see gameStore's revealTurn, which doesn't need one
 	// (pendingTurnRole is already unique to whoever's actual turn it is).
 	| { kind: 'StageNarrationStarted' };

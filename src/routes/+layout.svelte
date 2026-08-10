@@ -3,12 +3,14 @@
 	import '../app.css';
 	import { unlockAudio, sfxClick, narrationWatchdog } from '$lib/client/sfx';
 	import { initAudioSettings } from '$lib/client/audioSettings.svelte';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
 		initAudioSettings();
+		i18n.syncDocumentLang();
 
 		// Resume audio on the first gesture (autoplay policy) and give every
 		// button a tactile 8-bit click without wiring each one individually.

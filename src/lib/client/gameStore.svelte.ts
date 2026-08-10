@@ -2,6 +2,25 @@ import type { NightStage, RoomPublicState, Winner } from '$lib/shared/gameTypes'
 import type { Role } from '$lib/shared/roles';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent } from './socket';
+import { i18n } from './i18n.svelte';
+import {
+	strings,
+	formatNightDeaths,
+	formatDayResult,
+	formatHunterResult,
+	formatGameOverText,
+	formatSelfExplode,
+	formatKnightDuel,
+	formatHostOverrideApplied,
+	formatSeerResult,
+	formatCoupleRevealed,
+	formatRolesReshuffled,
+	formatRolesReshuffledConfirm,
+	formatHunterDenied,
+	formatHunterAuthorized,
+	formatRoomClosedByHost,
+	formatPlayerLeftMidGame
+} from '$lib/shared/i18n';
 
 export interface ActivityLogEntry {
 	round: string;
@@ -185,15 +204,16 @@ class GameStore {
 	private roundLabel(): string {
 		const phase = this.state?.phase;
 		const night = this.state?.nightNumber ?? 0;
+		const t = strings(i18n.lang).phaseBanner;
 		switch (phase) {
 			case 'NIGHT_ACTIONS':
 			case 'NIGHT_HUNTER_SHOT':
-				return `第 ${night} 夜`;
+				return t.night(night);
 			case 'DAY_VOTE':
 			case 'DAY_HUNTER_SHOT':
-				return `第 ${night} 天`;
+				return i18n.lang === 'zh' ? `第 ${night} 天` : `Day ${night}`;
 			case 'GAME_OVER':
-				return '游戏结束';
+				return t.gameOver;
 			default:
 				return '';
 		}
@@ -332,8 +352,8 @@ class GameStore {
 				// Broadcast to every client (not just the host who clicked it) -
 				// everyone's identity just changed, so everyone gets the
 				// confirmation and the permanent room-log record of it.
-				this.logRoom('房主重新分配了角色');
-				this.showConfirm('✓ 角色已重新分配', 3000);
+				this.logRoom(formatRolesReshuffled(i18n.lang));
+				this.showConfirm(formatRolesReshuffledConfirm(i18n.lang), 3000);
 				break;
 			case 'NightAnnouncePending':
 				this.state = { ...this.state, pendingNightAnnounce: true };
@@ -374,10 +394,7 @@ class GameStore {
 				this.state = { ...this.state, pendingNightAnnounce: false };
 				for (const seat of event.deaths) this.markDead(seat);
 				{
-					const text =
-						event.deaths.length === 0
-							? '昨夜是平安夜'
-							: `昨夜 ${event.deaths.join('、')} 号玩家死亡`;
+					const text = formatNightDeaths(event.deaths, i18n.lang);
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
@@ -401,13 +418,13 @@ class GameStore {
 				if (event.eliminatedSeat !== null) this.markDead(event.eliminatedSeat);
 				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				{
-					const base = event.tie
-						? '投票平票，无人出局'
-						: event.eliminatedSeat === null
-							? '本轮无人出局'
-							: `${event.eliminatedSeat} 号被投票出局，身份是 ${event.identity}`;
-					const text =
-						event.followDeathSeat !== null ? `${base}，${event.followDeathSeat} 号殉情身亡` : base;
+					const text = formatDayResult({
+						tie: event.tie,
+						eliminatedSeat: event.eliminatedSeat,
+						identity: event.identity,
+						followDeathSeat: event.followDeathSeat,
+						lang: i18n.lang
+					});
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
@@ -419,16 +436,19 @@ class GameStore {
 				this.state = { ...this.state, currentSpeaker: event.seat, speechOrder: event.order };
 				break;
 			case 'SelfExploded': {
-				const text = `${event.seat} 号玩家自爆身份为狼人`;
+				const text = formatSelfExplode(event.seat, i18n.lang);
 				this.logActivity(text, { public: true });
 				this.logRoom(text);
 				this.markDead(event.seat);
 				break;
 			}
 			case 'KnightDuelResolved': {
-				const text = event.targetWasWolf
-					? `骑士 ${event.knightSeat} 号决斗 ${event.targetSeat} 号，对方是狼人，${event.targetSeat} 号出局`
-					: `骑士 ${event.knightSeat} 号决斗 ${event.targetSeat} 号，对方是好人，骑士出局`;
+				const text = formatKnightDuel(
+					event.knightSeat,
+					event.targetSeat,
+					event.targetWasWolf,
+					i18n.lang
+				);
 				this.logActivity(text, { public: true });
 				this.logRoom(text);
 				this.markDead(event.targetWasWolf ? event.targetSeat : event.knightSeat);
@@ -448,12 +468,12 @@ class GameStore {
 				if (event.shotSeat !== null) this.markDead(event.shotSeat);
 				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				{
-					const base =
-						event.shotSeat === null
-							? `${event.hunterSeat} 号猎人选择不开枪`
-							: `${event.hunterSeat} 号猎人开枪，带走了 ${event.shotSeat} 号`;
-					const text =
-						event.followDeathSeat !== null ? `${base}，${event.followDeathSeat} 号殉情身亡` : base;
+					const text = formatHunterResult({
+						hunterSeat: event.hunterSeat,
+						shotSeat: event.shotSeat,
+						followDeathSeat: event.followDeathSeat,
+						lang: i18n.lang
+					});
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
@@ -471,34 +491,32 @@ class GameStore {
 					identities: event.identities
 				};
 				{
-					const text =
-						event.winner === 'wolves'
-							? '狼人阵营胜利'
-							: event.winner === 'lovers'
-								? '第三方阵营胜利'
-								: '好人阵营胜利';
+					const text = formatGameOverText(event.winner, i18n.lang, false);
 					this.logActivity(text, { public: true });
 					this.logRoom(text);
 				}
 				break;
-			case 'ErrorToast':
-				this.logRoom(event.message);
-				this.showToast(event.message);
+			case 'ErrorToast': {
+				const text = formatPlayerLeftMidGame(event.seat, i18n.lang);
+				this.logRoom(text);
+				this.showToast(text);
 				break;
-			case 'RoomClosed':
-				this.logRoom(event.message);
-				this.showToast(event.message);
-				this.roomClosedMessage = event.message;
+			}
+			case 'RoomClosed': {
+				const text = formatRoomClosedByHost(i18n.lang);
+				this.logRoom(text);
+				this.showToast(text);
+				this.roomClosedMessage = text;
 				this.roomClosed = true;
 				break;
+			}
 			case 'StageNarrationStarted':
 				this.revealTurn();
 				break;
 			case 'HostOverrideApplied': {
 				if (event.overrideKind === 'KILL') this.markDead(event.seat);
 				if (event.overrideKind === 'REVIVE') this.markAlive(event.seat);
-				const label = { KILL: '击杀', REVIVE: '复活', SET_ROLE: '改变身份' }[event.overrideKind];
-				const text = `房主使用上帝之手对 ${event.seat} 号${label}`;
+				const text = formatHostOverrideApplied(event.seat, event.overrideKind, i18n.lang);
 				this.logActivity(text, { public: true });
 				this.logRoom(text);
 				break;
@@ -516,19 +534,17 @@ class GameStore {
 				// '坏人'/'好人', not the specific role - the seer only ever learns
 				// good/bad (isWolf is the only thing the server ever sends), so the
 				// wording shouldn't imply anything more specific than that either.
-				this.logActivity(
-					`你查验了 ${event.targetSeat} 号，结果是${event.isWolf ? '坏人' : '好人'}`
-				);
+				this.logActivity(formatSeerResult(event.targetSeat, event.isWolf, i18n.lang));
 				// lastSeerResult above is the lasting record (shown inline in the
 				// prompt/activity log) - the popup is just the "here's the answer"
 				// moment, same treatment as the role-reveal card.
 				this.showInfoPopup(
-					`${event.targetSeat} 号是${event.isWolf ? '坏人' : '好人'}`,
+					strings(i18n.lang).nightPrompt.checkResult(event.targetSeat, event.isWolf),
 					event.isWolf ? 'bad' : 'good'
 				);
 				break;
 			case 'CoupleRevealed':
-				this.logActivity(`你的情侣是 ${event.partnerSeat} 号`);
+				this.logActivity(formatCoupleRevealed(event.partnerSeat, i18n.lang));
 				// Held for the COUPLE_REVEAL stage's own reveal button, not shown
 				// right away - see myPartnerSeat's own comment.
 				this.myPartnerSeat = event.partnerSeat;
@@ -547,11 +563,11 @@ class GameStore {
 			}
 			case 'HunterAuthorized':
 				this.hunterAuthorized = true;
-				this.showInfoPopup('你可以开枪反击', 'good');
+				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good');
 				break;
 			case 'HunterDenied':
-				this.logActivity('你身中剧毒，无法开枪反击');
-				this.showInfoPopup('你身中剧毒，无法开枪反击', 'bad');
+				this.logActivity(formatHunterDenied(i18n.lang));
+				this.showInfoPopup(formatHunterDenied(i18n.lang), 'bad');
 				break;
 			case 'HostStageChanged':
 				this.hostStage = event.stage;

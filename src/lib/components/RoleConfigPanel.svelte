@@ -6,8 +6,20 @@
 	import { defaultRuleConfig } from '$lib/game/defaultRuleConfig';
 	import type { RoleId } from '$lib/game/types';
 	import { sendAction } from '$lib/client/socket';
+	import { strings, roleName, presetName, formatSetupIssue } from '$lib/shared/i18n';
+	import type { ValidationIssue } from '$lib/game/rules/setup';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse, RuleConfigOverrides } from '$lib/shared/events';
 	import PixelSprite from './PixelSprite.svelte';
+
+	const t = $derived(strings(i18n.lang));
+
+	function issueText(i: ValidationIssue): string {
+		const roleLabel = i.params?.roleId
+			? roleName(roleIdToLegacy(i.params.roleId), i18n.lang)
+			: undefined;
+		return formatSetupIssue(i.code, i.reason, { ...i.params, roleLabel }, i18n.lang);
+	}
 
 	let counts = $state<Record<Role, number>>(
 		Object.fromEntries(ALL_ROLES.map((r) => [r, 0])) as Record<Role, number>
@@ -93,11 +105,11 @@
 		error = null;
 		issues = [];
 		if (total === 0) {
-			error = '请至少配置一个角色';
+			error = t.roleConfig.atLeastOneRole;
 			return;
 		}
 		submitting = true;
-		const res = await sendAction<AckResponse & { issues?: { code: string; message: string }[] }>({
+		const res = await sendAction<AckResponse & { issues?: ValidationIssue[] }>({
 			kind: 'RoomSubmitConfig',
 			roleConfig: counts,
 			cupidPoisonBlocksHunter,
@@ -105,10 +117,10 @@
 		});
 		submitting = false;
 		if (!res.ok) {
-			error = res.issues?.[0]?.message ?? '配置提交失败，请重试';
-			issues = (res.issues ?? []).map((i) => `${i.code} · ${i.message}`);
+			error = res.issues?.[0] ? issueText(res.issues[0]) : t.roleConfig.submitFailed;
+			issues = (res.issues ?? []).map((i) => `${i.code} · ${issueText(i)}`);
 		} else if (res.issues && res.issues.length > 0) {
-			issues = res.issues.map((i) => `⚠ ${i.code} · ${i.message}`);
+			issues = res.issues.map((i) => `⚠ ${i.code} · ${issueText(i)}`);
 		}
 	}
 </script>
@@ -133,12 +145,12 @@
 				>
 					<PixelSprite {role} px={30} idle={(counts[role] ?? 0) > 0} />
 					<div class="min-w-0 flex-1">
-						<div class="truncate text-[11px] text-bone">{role}</div>
+						<div class="truncate text-[11px] text-bone">{roleName(role, i18n.lang)}</div>
 					</div>
 					<div class="flex items-center gap-1">
 						<button
 							onclick={() => inc(role, -1)}
-							aria-label="减少"
+							aria-label={t.roleConfig.decrease}
 							class="h-6 w-6 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
 							>−</button
 						>
@@ -147,7 +159,7 @@
 						>
 						<button
 							onclick={() => inc(role, 1)}
-							aria-label="增加"
+							aria-label={t.roleConfig.increase}
 							class="h-6 w-6 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
 							>+</button
 						>
@@ -176,12 +188,14 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 flex-col space-y-3">
-	<h2 class="font-display text-lg font-semibold tracking-wider text-ember uppercase">角色配置</h2>
+	<h2 class="font-display text-lg font-semibold tracking-wider text-ember uppercase">
+		{t.roleConfig.title}
+	</h2>
 
 	<div class="min-h-0 flex-1 space-y-3 overflow-y-auto">
 		<div class="panel p-3">
 			<div class="mb-2 text-xs font-bold tracking-widest text-ember uppercase">
-				预设板子 · Presets
+				{t.roleConfig.presets}
 			</div>
 			<div class="flex flex-wrap gap-2">
 				{#each PRESET_BOARDS as board (board.name)}
@@ -190,134 +204,142 @@
 						onclick={() => applyPreset(board.roleConfig)}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone active:bg-ember active:text-black"
 					>
-						{board.name}
+						{presetName(board.name, i18n.lang)}
 					</button>
 				{/each}
 			</div>
 		</div>
 
-		{@render section('好人阵营', 'Village', goodRoles, goodTotal, true)}
-		{@render section('狼人阵营', 'Wolves', wolfRoles, wolfTotal, false)}
+		{@render section(t.roleConfig.goodCamp, 'Village', goodRoles, goodTotal, true)}
+		{@render section(t.roleConfig.wolfCamp, 'Wolves', wolfRoles, wolfTotal, false)}
 
 		<div class="panel space-y-3 p-3">
-			<div class="text-xs font-bold tracking-widest text-ember uppercase">规则 · House Rule</div>
+			<div class="text-xs font-bold tracking-widest text-ember uppercase">
+				{t.roleConfig.houseRuleHeader}
+			</div>
 
 			{@render toggle(
-				'情侣殉情算中毒 · 猎人被毒死的情侣因殉情死亡时，也不能开枪',
+				t.roleConfig.cupidPoisonBlocksHunter,
 				cupidPoisonBlocksHunter,
 				() => (cupidPoisonBlocksHunter = !cupidPoisonBlocksHunter)
 			)}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
-					<span>胜利条件</span>
+					<span>{t.roleConfig.winConditionLabel}</span>
 					<select
 						bind:value={winCondition}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
-						<option value="SIDE_KILL">屠边（神/民其一死绝）</option>
-						<option value="TOTAL_KILL">屠城（狼人数 ≥ 好人数）</option>
+						<option value="SIDE_KILL">{t.roleConfig.winConditionSideKill}</option>
+						<option value="TOTAL_KILL">{t.roleConfig.winConditionTotalKill}</option>
 					</select>
 				</label>
 			</div>
 
 			{@render toggle(
-				'狼人可空刀',
+				t.roleConfig.wolfAllowEmptyKill,
 				wolfAllowEmptyKill,
 				() => (wolfAllowEmptyKill = !wolfAllowEmptyKill)
 			)}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
-					<span>同守同救</span>
+					<span>{t.roleConfig.sameGuardSameSaveLabel}</span>
 					<select
 						bind:value={guardSameGuardSameSave}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
-						<option value="TARGET_DIES">目标仍死亡</option>
-						<option value="TARGET_LIVES">目标存活</option>
+						<option value="TARGET_DIES">{t.roleConfig.sameGuardSameSaveDies}</option>
+						<option value="TARGET_LIVES">{t.roleConfig.sameGuardSameSaveLives}</option>
 					</select>
 				</label>
 			</div>
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">女巫</div>
+				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+					{t.roleConfig.witchHeader}
+				</div>
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
-					<span>自救规则</span>
+					<span>{t.roleConfig.witchSelfRescueLabel}</span>
 					<select
 						bind:value={witchSelfRescue}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
-						<option value="FIRST_NIGHT_ONLY">仅首夜可自救</option>
-						<option value="NEVER">禁止自救</option>
-						<option value="ALWAYS">任意夜可自救</option>
+						<option value="FIRST_NIGHT_ONLY">{t.roleConfig.witchSelfRescueFirstNightOnly}</option>
+						<option value="NEVER">{t.roleConfig.witchSelfRescueNever}</option>
+						<option value="ALWAYS">{t.roleConfig.witchSelfRescueAlways}</option>
 					</select>
 				</label>
 				{@render toggle(
-					'女巫可自毒',
+					t.roleConfig.witchCanPoisonSelf,
 					witchCanPoisonSelf,
 					() => (witchCanPoisonSelf = !witchCanPoisonSelf)
 				)}
 				{@render toggle(
-					'同一晚可同时使用解药和毒药',
+					t.roleConfig.witchBothPotionsSameNight,
 					witchBothPotionsSameNight,
 					() => (witchBothPotionsSameNight = !witchBothPotionsSameNight)
 				)}
 			</div>
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">猎人</div>
+				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+					{t.roleConfig.hunterHeader}
+				</div>
 				{@render toggle(
-					'被毒死仍可开枪',
+					t.roleConfig.hunterCanShootWhenPoisoned,
 					hunterCanShootWhenPoisoned,
 					() => (hunterCanShootWhenPoisoned = !hunterCanShootWhenPoisoned)
 				)}
 				{@render toggle(
-					'被放逐可开枪',
+					t.roleConfig.hunterCanShootWhenExiled,
 					hunterCanShootWhenExiled,
 					() => (hunterCanShootWhenExiled = !hunterCanShootWhenExiled)
 				)}
 				{@render toggle(
-					'被狼人刀死可开枪',
+					t.roleConfig.hunterCanShootWhenWolfKilled,
 					hunterCanShootWhenWolfKilled,
 					() => (hunterCanShootWhenWolfKilled = !hunterCanShootWhenWolfKilled)
 				)}
 				{@render toggle(
-					'因情侣殉情死亡仍可开枪',
+					t.roleConfig.hunterCanShootWhenLoverSuicide,
 					hunterCanShootWhenLoverSuicide,
 					() => (hunterCanShootWhenLoverSuicide = !hunterCanShootWhenLoverSuicide)
 				)}
 			</div>
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">白痴</div>
+				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+					{t.roleConfig.idiotHeader}
+				</div>
 				{@render toggle(
-					'被放逐翻牌免死',
+					t.roleConfig.idiotRevealOnExile,
 					idiotRevealOnExile,
 					() => (idiotRevealOnExile = !idiotRevealOnExile)
 				)}
 				{@render toggle(
-					'翻牌后保留发言权',
+					t.roleConfig.idiotKeepsSpeechRight,
 					idiotKeepsSpeechRight,
 					() => (idiotKeepsSpeechRight = !idiotKeepsSpeechRight)
 				)}
 				{@render toggle(
-					'翻牌后失去投票权',
+					t.roleConfig.idiotLosesVoteRight,
 					idiotLosesVoteRight,
 					() => (idiotLosesVoteRight = !idiotLosesVoteRight)
 				)}
 				{@render toggle(
-					'翻牌后仍可竞选警长',
+					t.roleConfig.idiotCanRunForSheriffAfterReveal,
 					idiotCanRunForSheriffAfterReveal,
 					() => (idiotCanRunForSheriffAfterReveal = !idiotCanRunForSheriffAfterReveal)
 				)}
 				{@render toggle(
-					'翻牌若为警长则立即撕警徽',
+					t.roleConfig.idiotTearsBadgeIfSheriff,
 					idiotTearsBadgeIfSheriff,
 					() => (idiotTearsBadgeIfSheriff = !idiotTearsBadgeIfSheriff)
 				)}
 				{@render toggle(
-					'夜晚仍可正常死亡',
+					t.roleConfig.idiotDiesNormallyAtNight,
 					idiotDiesNormallyAtNight,
 					() => (idiotDiesNormallyAtNight = !idiotDiesNormallyAtNight)
 				)}
@@ -341,11 +363,13 @@
 	     footer styling elsewhere in the room. -->
 	<div class="shrink-0 space-y-2 border-t-[3px] border-line bg-ink/95 px-1 py-2">
 		<p class="text-sm text-zinc-500">
-			共 {total} 张牌{(counts['盗贼'] ?? 0) > 0 ? `（含盗贼，实际 ${total - 2} 个座位）` : ''}
+			{(counts['盗贼'] ?? 0) > 0
+				? t.roleConfig.cardCountWithThief(total, total - 2)
+				: t.roleConfig.cardCountSummary(total)}
 		</p>
 		{#if error}<p class="text-sm text-wolf">{error}</p>{/if}
 		<button onclick={submit} disabled={submitting} class="btn-primary w-full">
-			{submitting ? '提交中…' : '确认配置'}
+			{submitting ? t.roleConfig.submitting : t.roleConfig.confirm}
 		</button>
 	</div>
 </div>

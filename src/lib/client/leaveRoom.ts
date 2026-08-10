@@ -1,4 +1,5 @@
 import type { Phase } from '../shared/gameTypes';
+import { strings, type Lang } from '../shared/i18n';
 
 // Mirrors the server's own IN_PROGRESS_PHASES in handleRoomLeave - only these
 // phases have an active turn/vote that leaving would actually break.
@@ -19,20 +20,15 @@ export function isGameInProgress(phase: Phase | undefined | null): boolean {
  * seat, and leaving outside of either case is low-stakes. */
 export function leaveConfirmMessage(
 	isHost: boolean,
-	gameInProgress: boolean
+	gameInProgress: boolean,
+	lang: Lang
 ): { message: string; confirmLabel: string } {
+	const t = strings(lang).leaveRoom;
 	if (isHost) {
-		return {
-			message: '你是房主，离开将关闭并清空整个房间，所有玩家都会被移出。确定要离开吗？',
-			confirmLabel: '关闭房间并离开'
-		};
+		return { message: t.hostWarning, confirmLabel: t.hostConfirmLabel };
 	}
 	if (gameInProgress) {
-		return {
-			message:
-				'游戏正在进行中，离开将结束当前对局；你的座位会被清空，其他玩家可以继续游戏。确定要离开吗？',
-			confirmLabel: '结束对局并离开'
-		};
+		return { message: t.midGameWarning, confirmLabel: t.midGameConfirmLabel };
 	}
-	return { message: '确定要离开房间吗？', confirmLabel: '离开' };
+	return { message: t.simpleConfirm, confirmLabel: t.simpleConfirmLabel };
 }

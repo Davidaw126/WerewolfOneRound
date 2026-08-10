@@ -366,17 +366,15 @@ export async function handleRoomLeave(socket: GameSocket): Promise<AckResponse> 
 
 		if (isHost) {
 			await destroyRoom(code);
-			emitToRoom(code, { kind: 'RoomClosed', message: '房主已离开，房间已关闭' });
+			emitToRoom(code, { kind: 'RoomClosed', reason: 'host_left' });
 		} else if (IN_PROGRESS_PHASES.includes(room.phase)) {
 			const leavingSeat = await seatOf(code, socket.data.sessionId);
 			await leaveSeatAtomic(code, socket.data.sessionId);
 			await softResetToSeating(code);
 			emitToRoom(code, {
 				kind: 'ErrorToast',
-				message:
-					leavingSeat !== null
-						? `${leavingSeat} 号玩家离开了房间，当前对局已结束`
-						: '有玩家离开了房间，当前对局已结束'
+				reason: 'player_left_mid_game',
+				seat: leavingSeat
 			});
 		} else {
 			const { vacated } = await leaveSeatAtomic(code, socket.data.sessionId);

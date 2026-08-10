@@ -5,6 +5,10 @@
 	import type { AckResponse } from '$lib/shared/events';
 	import RoleFace from './RoleFace.svelte';
 	import { sfxReveal } from '$lib/client/sfx';
+	import { strings } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
+
+	const t = $derived(strings(i18n.lang));
 
 	// S7 身份卡长按才显示，松手立即盖回，切后台立即盖回: no persisted
 	// open/closed state at all (unlike the old tap-to-toggle) - the card is
@@ -26,7 +30,7 @@
 			await sendAction<AckResponse>({ kind: 'RevealRole' });
 			revealing = false;
 			sfxReveal();
-			gameStore.logActivity('你查看了自己的身份');
+			gameStore.logActivity(t.activityLog.youCheckedIdentity);
 		}
 	}
 
@@ -64,7 +68,7 @@
 	class="btn-ghost flex flex-1 touch-none items-center justify-center gap-2 py-2 text-xs select-none"
 >
 	<span>🎴</span>
-	<span>{revealing ? '翻开中…' : '按住查看身份'}</span>
+	<span>{revealing ? t.roleReveal.revealing : t.roleReveal.holdToView}</span>
 </button>
 
 {#if open && gameStore.myRole}
@@ -73,11 +77,11 @@
 			class="overlay-panel"
 			role="dialog"
 			aria-modal="true"
-			aria-label="你的身份"
+			aria-label={t.roleReveal.yourIdentity}
 			transition:scale={{ duration: 150, start: 0.85 }}
 		>
 			<RoleFace role={gameStore.myRole} size="lg" showTeam={false} />
-			<p class="mt-3 text-center text-[11px] text-zinc-500">松手隐藏</p>
+			<p class="mt-3 text-center text-[11px] text-zinc-500">{t.roleReveal.releaseToHide}</p>
 		</div>
 	</div>
 {/if}

@@ -3,13 +3,17 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
+	import { strings } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
 	import LeaveRoomButton from './LeaveRoomButton.svelte';
 	import AudioToggleButtons from './AudioToggleButtons.svelte';
 	import HostOverridePanel from './HostOverridePanel.svelte';
+	import LanguageToggle from './LanguageToggle.svelte';
 
 	let { isHost, username }: { isHost: boolean; username: string } = $props();
 
+	const t = $derived(strings(i18n.lang));
 	const state = $derived(gameStore.state);
 	const canStop = $derived(
 		isHost && state !== null && state.phase !== 'LOBBY' && state.phase !== 'GAME_OVER'
@@ -17,25 +21,26 @@
 
 	const label = $derived.by(() => {
 		if (!state) return '';
+		const n = state.nightNumber;
 		switch (state.phase) {
 			case 'LOBBY':
-				return '房主配置角色中';
+				return t.phaseBanner.lobby;
 			case 'SEATING':
-				return '玩家入座中';
+				return t.phaseBanner.seating;
 			case 'NIGHT_ACTIONS':
-				return `第 ${state.nightNumber} 夜`;
+				return t.phaseBanner.night(n);
 			case 'NIGHT_HUNTER_SHOT':
-				return `第 ${state.nightNumber} 夜 · 猎人开枪`;
+				return t.phaseBanner.nightHunter(n);
 			case 'LAST_WORDS':
-				return `第 ${state.nightNumber} 天 · 遗言`;
+				return t.phaseBanner.lastWords(n);
 			case 'DISCUSSION':
-				return `第 ${state.nightNumber} 天 · 发言`;
+				return t.phaseBanner.discussion(n);
 			case 'DAY_VOTE':
-				return `第 ${state.nightNumber} 天 · 投票`;
+				return t.phaseBanner.dayVote(n);
 			case 'DAY_HUNTER_SHOT':
-				return `第 ${state.nightNumber} 天 · 猎人开枪`;
+				return t.phaseBanner.dayHunter(n);
 			case 'GAME_OVER':
-				return '游戏结束';
+				return t.phaseBanner.gameOver;
 		}
 	});
 
@@ -44,7 +49,9 @@
 	const stageLabel = $derived.by(() => {
 		const stage = state?.stage;
 		if (!stage) return null;
-		return stage.kind === 'COUPLE_REVEAL' ? '情侣确认身份' : '角色行动中';
+		return stage.kind === 'COUPLE_REVEAL'
+			? t.phaseBanner.stageCoupleConfirm
+			: t.phaseBanner.stageActing;
 	});
 
 	const timeGlyph = $derived.by(() => {
@@ -63,8 +70,7 @@
 	});
 
 	async function stopGame() {
-		if (!(await askConfirm('确定要结束当前游戏吗？所有玩家将返回座位，可使用相同配置重新开始。')))
-			return;
+		if (!(await askConfirm(t.phaseBanner.stopGameConfirm))) return;
 		await sendAction<AckResponse>({ kind: 'RoomStopGame' });
 	}
 </script>
@@ -94,8 +100,9 @@
 		     identity + destructive controls on the right. -->
 		<div class="flex items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
-				<div class="chip">房间号 {state.roomCode}</div>
+				<div class="chip">{t.phaseBanner.roomCode} {state.roomCode}</div>
 				<AudioToggleButtons />
+				<LanguageToggle />
 			</div>
 			<div class="flex items-center gap-2">
 				<div class="chip">{username}</div>
@@ -106,8 +113,8 @@
 					     (公布夜晚结果/开始游戏/继续/etc). -->
 					<button
 						onclick={stopGame}
-						aria-label="结束游戏"
-						title="结束游戏"
+						aria-label={t.phaseBanner.stopGameAria}
+						title={t.phaseBanner.stopGameAria}
 						class="rounded-full border border-wolf/40 p-1.5 text-wolf transition hover:border-wolf/70 hover:bg-wolf/10"
 					>
 						<svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">

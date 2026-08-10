@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { gameStore } from '$lib/client/gameStore.svelte';
+	import { i18n } from '$lib/client/i18n.svelte';
+	import { strings, formatGameOverText, seatLabel } from '$lib/shared/i18n';
 	import RoleFace from './RoleFace.svelte';
 
+	const t = $derived(strings(i18n.lang));
 	const result = $derived(gameStore.gameOverResult);
 	const seats = $derived(gameStore.state?.seats ?? []);
 	// §11.4 enriched GAME_OVER screen - the room log already narrates every
@@ -25,11 +28,7 @@
 					? 'text-shadow:0 0 24px rgba(184,161,255,0.45)'
 					: 'text-shadow:0 0 24px rgba(232,195,122,0.45)'}
 		>
-			{result.winner === 'wolves'
-				? '狼人阵营胜利'
-				: result.winner === 'lovers'
-					? '第三方阵营胜利'
-					: '好人阵营胜利'}
+			{formatGameOverText(result.winner, i18n.lang, false)}
 		</h2>
 
 		<div class="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
@@ -38,15 +37,18 @@
 				{@const isCouple = result.coupleSeats?.includes(seat.seatNumber) ?? false}
 				<div class="relative space-y-1.5">
 					{#if isCouple}
-						<span class="absolute -top-1.5 -right-1 z-10 text-[13px]" title="情侣">💕</span>
+						<span class="absolute -top-1.5 -right-1 z-10 text-[13px]" title={t.gameOver.couple}
+							>💕</span
+						>
 					{/if}
 					<div class="line-clamp-2 min-h-8 text-xs text-zinc-500">
-						{seat.seatNumber}号 {seat.username ?? ''}
+						{seatLabel(seat.seatNumber, i18n.lang)}
+						{seat.username ?? ''}
 					</div>
 					{#if role}
 						<RoleFace {role} size="sm" />
 					{:else}
-						<div class="panel px-2 py-3 text-sm text-zinc-500">未知</div>
+						<div class="panel px-2 py-3 text-sm text-zinc-500">{t.gameOver.unknownRole}</div>
 					{/if}
 				</div>
 			{/each}

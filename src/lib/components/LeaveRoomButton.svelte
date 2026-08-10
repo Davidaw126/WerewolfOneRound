@@ -5,16 +5,19 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { isGameInProgress, leaveConfirmMessage } from '$lib/client/leaveRoom';
+	import { strings } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
 
 	let { isHost = false }: { isHost?: boolean } = $props();
 
+	const t = $derived(strings(i18n.lang));
 	let leaving = $state(false);
 
 	const gameInProgress = $derived(isGameInProgress(gameStore.state?.phase));
 
 	async function leaveRoom() {
-		const { message, confirmLabel } = leaveConfirmMessage(isHost, gameInProgress);
+		const { message, confirmLabel } = leaveConfirmMessage(isHost, gameInProgress, i18n.lang);
 		if (!(await askConfirm(message, { confirmLabel }))) return;
 		leaving = true;
 		await sendAction<AckResponse>({ kind: 'RoomLeave' });
@@ -25,8 +28,8 @@
 <button
 	onclick={leaveRoom}
 	disabled={leaving}
-	aria-label="离开房间"
-	title="离开房间"
+	aria-label={t.leaveRoom.button}
+	title={t.leaveRoom.button}
 	class="rounded-full border border-line p-1.5 text-zinc-400 transition hover:border-wolf/60 hover:text-wolf disabled:cursor-not-allowed disabled:opacity-50"
 >
 	{#if leaving}

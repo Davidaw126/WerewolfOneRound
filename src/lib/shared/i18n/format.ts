@@ -1,0 +1,249 @@
+// Dynamic, structured-data-driven sentence builders. Several of these events
+// used to be independently phrased in THREE places (JudgeAudioPlayer's TTS
+// line, gameStore's activity/room log text, and room/[code]/+page.svelte's
+// own on-screen banner) - since none of that duplication was ever meant to
+// diverge, translating was a good moment to converge all three onto these
+// single shared functions instead of writing (and maintaining) three
+// separate English versions of the same sentence.
+
+import type { Lang } from './types';
+import type { Role } from '../roles';
+import type { Winner } from '../gameTypes';
+import { roleName } from './roles';
+
+/** "X号" / "Seat X" - the single-seat label used throughout the seat grid,
+ * vote board, night prompts, etc. wherever a bare seat number needs to read
+ * as a label rather than just a number. */
+export function seatLabel(seatNumber: number, lang: Lang): string {
+	return lang === 'zh' ? `${seatNumber}号` : `Seat ${seatNumber}`;
+}
+
+function joinSeatsZh(seats: number[]): string {
+	return seats.join('、');
+}
+
+function joinSeatsEn(seats: number[]): string {
+	if (seats.length === 1) return `seat ${seats[0]}`;
+	if (seats.length === 2) return `seats ${seats[0]} and ${seats[1]}`;
+	return `seats ${seats.slice(0, -1).join(', ')}, and ${seats[seats.length - 1]}`;
+}
+
+export function formatNightDeaths(deaths: number[], lang: Lang): string {
+	if (deaths.length === 0) {
+		return lang === 'zh' ? '昨晚是平安夜' : 'It was a peaceful night — no one died.';
+	}
+	return lang === 'zh'
+		? `昨晚 ${joinSeatsZh(deaths)} 号玩家死亡`
+		: `Last night, ${joinSeatsEn(deaths)} died.`;
+}
+
+function appendFollowDeath(base: string, followDeathSeat: number | null, lang: Lang): string {
+	if (followDeathSeat === null) return base;
+	return lang === 'zh'
+		? `${base}，${followDeathSeat} 号殉情身亡`
+		: `${base} Seat ${followDeathSeat} died alongside them, out of love.`;
+}
+
+export function formatDayResult(params: {
+	tie: boolean;
+	eliminatedSeat: number | null;
+	identity: Role | null;
+	followDeathSeat: number | null;
+	lang: Lang;
+}): string {
+	const { tie, eliminatedSeat, identity, followDeathSeat, lang } = params;
+	const roleLabel = identity ? roleName(identity, lang) : lang === 'zh' ? '未知' : 'Unknown';
+	const base =
+		lang === 'zh'
+			? tie
+				? '投票平票，无人出局'
+				: eliminatedSeat === null
+					? '本轮无人出局'
+					: `${eliminatedSeat} 号被投票出局，身份是 ${roleLabel}`
+			: tie
+				? 'The vote was tied — no one was eliminated.'
+				: eliminatedSeat === null
+					? 'No one was eliminated this round.'
+					: `Seat ${eliminatedSeat} was voted out. Their role was ${roleLabel}.`;
+	return appendFollowDeath(base, followDeathSeat, lang);
+}
+
+export function formatHunterResult(params: {
+	hunterSeat: number;
+	shotSeat: number | null;
+	followDeathSeat: number | null;
+	lang: Lang;
+}): string {
+	const { hunterSeat, shotSeat, followDeathSeat, lang } = params;
+	const base =
+		lang === 'zh'
+			? shotSeat === null
+				? `${hunterSeat} 号猎人选择不开枪`
+				: `${hunterSeat} 号猎人开枪，带走了 ${shotSeat} 号玩家`
+			: shotSeat === null
+				? `The hunter in seat ${hunterSeat} chose not to shoot.`
+				: `The hunter in seat ${hunterSeat} shot and took seat ${shotSeat} down with them.`;
+	return appendFollowDeath(base, followDeathSeat, lang);
+}
+
+export function formatGameOverText(
+	winner: Winner,
+	lang: Lang,
+	withGameOverSuffix: boolean
+): string {
+	const zh =
+		winner === 'wolves' ? '狼人阵营胜利' : winner === 'lovers' ? '第三方阵营胜利' : '好人阵营胜利';
+	const en =
+		winner === 'wolves'
+			? 'The Werewolves Win'
+			: winner === 'lovers'
+				? 'The Lovers Win'
+				: 'The Village Wins';
+	if (!withGameOverSuffix) return lang === 'zh' ? zh : en;
+	return lang === 'zh' ? `${zh}，游戏结束` : `${en} — Game Over`;
+}
+
+export function formatSelfExplode(seat: number, lang: Lang): string {
+	return lang === 'zh'
+		? `${seat} 号玩家自爆身份为狼人`
+		: `Seat ${seat} self-destructed as a Werewolf`;
+}
+
+export function formatKnightDuel(
+	knightSeat: number,
+	targetSeat: number,
+	targetWasWolf: boolean,
+	lang: Lang
+): string {
+	if (lang === 'zh') {
+		return targetWasWolf
+			? `骑士 ${knightSeat} 号决斗 ${targetSeat} 号，对方是狼人，${targetSeat} 号出局`
+			: `骑士 ${knightSeat} 号决斗 ${targetSeat} 号，对方是好人，骑士出局`;
+	}
+	return targetWasWolf
+		? `The Knight (seat ${knightSeat}) dueled seat ${targetSeat} — they were a werewolf, and seat ${targetSeat} is out.`
+		: `The Knight (seat ${knightSeat}) dueled seat ${targetSeat} — they were good, and the Knight is out.`;
+}
+
+const HOST_OVERRIDE_LABEL: Record<Lang, Record<'KILL' | 'REVIVE' | 'SET_ROLE', string>> = {
+	zh: { KILL: '击杀', REVIVE: '复活', SET_ROLE: '改变身份' },
+	en: { KILL: 'kill', REVIVE: 'revive', SET_ROLE: 'role change' }
+};
+
+export function formatHostOverrideApplied(
+	seat: number,
+	overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE',
+	lang: Lang
+): string {
+	const label = HOST_OVERRIDE_LABEL[lang][overrideKind];
+	return lang === 'zh'
+		? `房主使用上帝之手对 ${seat} 号${label}`
+		: `The host used God Mode on seat ${seat}: ${label}`;
+}
+
+export function formatSeerResult(seat: number, isWolf: boolean, lang: Lang): string {
+	return lang === 'zh'
+		? `你查验了 ${seat} 号，结果是${isWolf ? '坏人' : '好人'}`
+		: `You checked seat ${seat} — the result is ${isWolf ? 'Evil' : 'Good'}`;
+}
+
+export function formatCoupleRevealed(partnerSeat: number, lang: Lang): string {
+	return lang === 'zh' ? `你的情侣是 ${partnerSeat} 号` : `Your lover is seat ${partnerSeat}`;
+}
+
+export function formatRolesReshuffled(lang: Lang): string {
+	return lang === 'zh' ? '房主重新分配了角色' : 'The host reshuffled everyone’s roles';
+}
+
+export function formatRolesReshuffledConfirm(lang: Lang): string {
+	return lang === 'zh' ? '✓ 角色已重新分配' : '✓ Roles reshuffled';
+}
+
+export function formatHunterDenied(lang: Lang): string {
+	return lang === 'zh' ? '你身中剧毒，无法开枪反击' : "You're poisoned and can't shoot back";
+}
+
+export function formatHunterAuthorized(lang: Lang): string {
+	return lang === 'zh' ? '你可以开枪反击' : 'You may shoot back';
+}
+
+export function formatRoomClosedByHost(lang: Lang): string {
+	return lang === 'zh' ? '房主已离开，房间已关闭' : 'The host left — the room has been closed';
+}
+
+export function formatPlayerLeftMidGame(leavingSeat: number | null, lang: Lang): string {
+	if (lang === 'zh') {
+		return leavingSeat !== null
+			? `${leavingSeat} 号玩家离开了房间，当前对局已结束`
+			: '有玩家离开了房间，当前对局已结束';
+	}
+	return leavingSeat !== null
+		? `Seat ${leavingSeat} left the room — the current round has ended`
+		: 'A player left the room — the current round has ended';
+}
+
+// §5.2 validateSetup's E01-E09 codes - the server sends {code, params} rather
+// than a baked message (see game/rules/setup.ts) specifically so this stays a
+// client-only rendering concern, matching every other error-code mapping in
+// the app instead of being the one exception that could only ever speak
+// Chinese.
+export interface SetupIssueParams {
+	numberOfSeats?: number;
+	playerCount?: number;
+	roleLabel?: string;
+}
+
+export function formatSetupIssue(
+	code: string,
+	reason: 'negative' | 'unique_exceeded' | undefined,
+	params: SetupIssueParams,
+	lang: Lang
+): string {
+	const roleLabel = params.roleLabel ?? '';
+	if (lang === 'zh') {
+		switch (code) {
+			case 'E01':
+				return `角色总数（${params.numberOfSeats}）与玩家数（${params.playerCount}）不一致，请检查是否所有座位都已入座`;
+			case 'E02':
+				return '狼人阵营至少需要 1 人';
+			case 'E03':
+				return '好人阵营至少需要 1 人';
+			case 'E04':
+				return '狼人数必须少于好人数，否则一开局狼人就已经获胜';
+			case 'E05':
+				return reason === 'negative'
+					? `${roleLabel} 数量不能为负数`
+					: `${roleLabel} 是唯一角色，数量不能超过 1`;
+			case 'E07':
+				return '配置了野孩子时，玩家数至少需要 4 人';
+			case 'E08':
+				return '配置了丘比特时，玩家数至少需要 6 人';
+			case 'E09':
+				return '骑士与白痴同时在场，节奏可能偏慢，请知悉';
+			default:
+				return code;
+		}
+	}
+	switch (code) {
+		case 'E01':
+			return `Total roles (${params.numberOfSeats}) doesn't match the number of players (${params.playerCount}) — check that every seat is filled`;
+		case 'E02':
+			return 'The wolf team needs at least 1 player';
+		case 'E03':
+			return 'The good team needs at least 1 player';
+		case 'E04':
+			return 'Wolves must outnumber the good team, or the wolves would win instantly';
+		case 'E05':
+			return reason === 'negative'
+				? `${roleLabel} count can't be negative`
+				: `${roleLabel} is a unique role — count can't exceed 1`;
+		case 'E07':
+			return 'Wild Child requires at least 4 players';
+		case 'E08':
+			return 'Cupid requires at least 6 players';
+		case 'E09':
+			return 'Knight and Idiot together may slow the game down — just a heads up';
+		default:
+			return code;
+	}
+}

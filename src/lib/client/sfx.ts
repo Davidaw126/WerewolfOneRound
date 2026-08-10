@@ -191,11 +191,13 @@ function teardownAmbient(): void {
 // effects used elsewhere in this file, since browsers don't expose
 // speechSynthesis output as a capturable audio stream.
 
-let cachedVoice: SpeechSynthesisVoice | null | undefined;
+import type { Lang } from '$lib/shared/i18n';
 
-function pickChineseVoice(): SpeechSynthesisVoice | null {
+const cachedVoices: Partial<Record<Lang, SpeechSynthesisVoice | null>> = {};
+
+function pickVoice(lang: Lang): SpeechSynthesisVoice | null {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-	if (cachedVoice !== undefined) return cachedVoice;
+	if (lang in cachedVoices) return cachedVoices[lang] ?? null;
 
 	const voices = speechSynthesis.getVoices();
 	if (voices.length === 0) {
@@ -203,15 +205,16 @@ function pickChineseVoice(): SpeechSynthesisVoice | null {
 		speechSynthesis.addEventListener(
 			'voiceschanged',
 			() => {
-				cachedVoice = undefined;
-				pickChineseVoice();
+				delete cachedVoices[lang];
+				pickVoice(lang);
 			},
 			{ once: true }
 		);
 		return null;
 	}
-	cachedVoice = voices.find((v) => v.lang.toLowerCase().startsWith('zh')) ?? null;
-	return cachedVoice;
+	const prefix = lang === 'zh' ? 'zh' : 'en';
+	cachedVoices[lang] = voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) ?? null;
+	return cachedVoices[lang] ?? null;
 }
 
 // Native back-to-back speechSynthesis.speak() calls queue with NO gap between
@@ -225,6 +228,7 @@ function pickChineseVoice(): SpeechSynthesisVoice | null {
 // is what actually enforces "wait 3s" there specifically.
 interface NarrationItem {
 	text: string;
+	lang: Lang;
 	onStart?: () => void;
 }
 
@@ -263,9 +267,9 @@ function speakNext(): void {
 	startedFired = false;
 
 	const utter = new SpeechSynthesisUtterance(item.text);
-	const voice = pickChineseVoice();
+	const voice = pickVoice(item.lang);
 	if (voice) utter.voice = voice;
-	utter.lang = voice?.lang ?? 'zh-CN';
+	utter.lang = voice?.lang ?? (item.lang === 'zh' ? 'zh-CN' : 'en-US');
 	utter.pitch = 0.6; // deeper, independent of rate
 	utter.rate = 0.8;
 	// Muting is volume-only, never an early return: the utterance must still
@@ -319,12 +323,12 @@ export function narrationWatchdog(): void {
  * merely queued) - callers that gate UI on narration timing rely on this. If
  * speech isn't going to happen at all (unsupported browser), `onStart` fires
  * immediately instead, so that gating degrades open rather than hanging. */
-export function narrate(text: string, onStart?: () => void): void {
+export function narrate(text: string, lang: Lang, onStart?: () => void): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) {
 		onStart?.();
 		return;
 	}
-	narrationQueue.push({ text, onStart });
+	narrationQueue.push({ text, lang, onStart });
 	speakNext();
 }
 

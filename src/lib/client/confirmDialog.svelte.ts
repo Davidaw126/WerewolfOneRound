@@ -1,3 +1,6 @@
+import { strings } from '$lib/shared/i18n';
+import { i18n } from './i18n.svelte';
+
 // A single shared confirm-dialog store so every "are you sure?" moment in the
 // app uses the same pixel-styled overlay (ConfirmDialogHost.svelte, mounted
 // once in the root layout) instead of the browser's native confirm(), which
@@ -5,10 +8,10 @@
 class ConfirmDialogStore {
 	open = $state(false);
 	message = $state('');
-	confirmLabel = $state('确认');
+	confirmLabel = $state('');
 	// null = alert mode: no cancel button, since there's nothing to cancel
 	// (e.g. "the room was closed") - just one button to acknowledge.
-	cancelLabel = $state<string | null>('取消');
+	cancelLabel = $state<string | null>(null);
 	private resolver: ((value: boolean) => void) | null = null;
 
 	ask(
@@ -19,9 +22,10 @@ class ConfirmDialogStore {
 		// second ask() arrives while one is already open - resolve the stale
 		// one as "cancelled" before replacing it.
 		this.resolver?.(false);
+		const t = strings(i18n.lang).common;
 		this.message = message;
-		this.confirmLabel = opts?.confirmLabel ?? '确认';
-		this.cancelLabel = opts?.cancelLabel === undefined ? '取消' : opts.cancelLabel;
+		this.confirmLabel = opts?.confirmLabel ?? t.confirm;
+		this.cancelLabel = opts?.cancelLabel === undefined ? t.cancel : opts.cancelLabel;
 		this.open = true;
 		return new Promise((resolve) => {
 			this.resolver = resolve;
@@ -51,6 +55,8 @@ export function askConfirm(
  * the user needs to actually see and register (e.g. the room they're in was
  * just closed), where a transient auto-clearing toast could easily be missed
  * entirely if something else (like navigating away) happens right after. */
-export function showAlert(message: string, confirmLabel = '好的'): Promise<void> {
-	return confirmDialogStore.ask(message, { confirmLabel, cancelLabel: null }).then(() => undefined);
+export function showAlert(message: string, confirmLabel?: string): Promise<void> {
+	return confirmDialogStore
+		.ask(message, { confirmLabel: confirmLabel ?? strings(i18n.lang).common.ok, cancelLabel: null })
+		.then(() => undefined);
 }

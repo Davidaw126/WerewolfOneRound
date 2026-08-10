@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { roleTeam, type Role } from '$lib/shared/roles';
 	import { ROLE_FLAVOR } from '$lib/shared/roleFlavor';
+	import { roleName, roleFlavor, campName, campNameShort } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import PixelSprite from './PixelSprite.svelte';
 
 	let {
@@ -24,18 +26,20 @@
 			? 'text-2xl'
 			: 'text-sm'}"
 	>
-		{role}
+		{roleName(role, i18n.lang)}
 	</div>
 	{#if size === 'lg'}
 		{#if showTeam}
 			<div class="text-xs tracking-widest text-zinc-500 uppercase">
-				{team === 'wolf' ? '狼人阵营' : '好人阵营'}
+				{campName(team, i18n.lang)}
 			</div>
 		{/if}
-		<div class="mt-1 text-sm text-zinc-400">『{ROLE_FLAVOR[role]}』</div>
+		<div class="mt-1 text-sm text-zinc-400">
+			『{roleFlavor(role, i18n.lang, ROLE_FLAVOR)}』
+		</div>
 	{:else if showTeam}
 		<div class="text-[10px] tracking-wide text-zinc-500 uppercase">
-			{team === 'wolf' ? '狼人' : '好人'}
+			{campNameShort(team, i18n.lang)}
 		</div>
 	{/if}
 </div>

@@ -3,6 +3,10 @@
 	// controls in the PhaseBanner cluster (see LeaveRoomButton). Lit in ember
 	// when on, so state reads at a glance without decoding the icon.
 	import { audioSettings } from '$lib/client/audioSettings.svelte';
+	import { strings } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
+
+	const t = $derived(strings(i18n.lang));
 
 	const btnClass =
 		'rounded-full border border-line p-1.5 transition hover:border-wolf/60 hover:text-wolf disabled:cursor-not-allowed disabled:opacity-50';
@@ -10,8 +14,8 @@
 
 <button
 	onclick={() => audioSettings.toggleAmbient()}
-	aria-label={audioSettings.ambient ? '关闭背景音乐' : '开启背景音乐'}
-	title={audioSettings.ambient ? '关闭背景音乐' : '开启背景音乐'}
+	aria-label={audioSettings.ambient ? t.audioToggle.musicOn : t.audioToggle.musicOff}
+	title={audioSettings.ambient ? t.audioToggle.musicOn : t.audioToggle.musicOff}
 	class="{btnClass} {audioSettings.ambient ? 'text-ember' : 'text-zinc-400'}"
 >
 	<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" class="h-3.5 w-3.5">
@@ -26,8 +30,8 @@
 
 <button
 	onclick={() => audioSettings.toggleEffects()}
-	aria-label={audioSettings.effects ? '关闭音效与语音' : '开启音效与语音'}
-	title={audioSettings.effects ? '关闭音效与语音' : '开启音效与语音'}
+	aria-label={audioSettings.effects ? t.audioToggle.sfxOn : t.audioToggle.sfxOff}
+	title={audioSettings.effects ? t.audioToggle.sfxOn : t.audioToggle.sfxOff}
 	class="{btnClass} {audioSettings.effects ? 'text-ember' : 'text-zinc-400'}"
 >
 	<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" class="h-3.5 w-3.5">

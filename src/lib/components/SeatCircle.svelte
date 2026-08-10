@@ -2,6 +2,8 @@
 	import { scale } from 'svelte/transition';
 	import type { Role } from '$lib/shared/roles';
 	import type { SeatState } from '$lib/shared/gameTypes';
+	import { strings } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import PixelSprite from './PixelSprite.svelte';
 
 	let {
@@ -25,6 +27,8 @@
 			? 'h-12 w-12 sm:h-14 sm:w-14 text-[9px] sm:text-[10px]'
 			: 'h-16 w-16 sm:h-20 sm:w-20 text-[11px] sm:text-sm'
 	);
+
+	const t = $derived(strings(i18n.lang));
 </script>
 
 <div
@@ -50,13 +54,13 @@
 				{isMyTurn ? 'animate-pulse shadow-[0_0_0_4px_rgba(245,158,11,0.4)]' : ''}"
 		>
 			{#if seat.sessionId === hostSessionId}
-				<span class="absolute -top-1.5 -right-1 text-[10px]" title="房主">👑</span>
+				<span class="absolute -top-1.5 -right-1 text-[10px]" title={t.seatCircle.host}>👑</span>
 			{/if}
 			{#if seat.isDead}
 				<span
 					in:scale={{ duration: 300, start: 0.3 }}
 					class="pointer-events-none absolute inset-0 flex items-center justify-center text-lg opacity-90"
-					aria-label="出局"
+					aria-label={t.seatCircle.dead}
 				>
 					💀
 				</span>
@@ -71,7 +75,7 @@
 					class="line-clamp-2 max-w-full px-1 text-center leading-tight break-words"
 					in:scale={{ duration: 200, start: 0.6 }}
 				>
-					{seat.username ?? '空位'}
+					{seat.username ?? t.seatCircle.empty}
 				</span>
 			{/key}
 		</button>

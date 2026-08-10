@@ -39,9 +39,14 @@ export function buildSetup(roleConfig: Partial<Record<RoleId, number>>): Setup {
 export type ValidationCode =
 	'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06' | 'E07' | 'E08' | 'E09' | 'E10';
 
+// Structured, not a baked message string - i18n needs this to stay a
+// client-only rendering concern (see src/lib/shared/i18n/format.ts's
+// formatSetupIssue), matching every other error code in the app instead of
+// being the one path that could only ever speak Chinese.
 export interface ValidationIssue {
 	code: ValidationCode;
-	message: string;
+	reason?: 'negative' | 'unique_exceeded';
+	params?: { numberOfSeats?: number; playerCount?: number; roleId?: RoleId };
 }
 
 export interface ValidationResult {
@@ -70,10 +75,6 @@ const UNIQUE_ROLES: ReadonlySet<RoleId> = new Set([
 	'WOLF_BEAUTY'
 ]);
 
-function issue(code: ValidationCode, message: string): ValidationIssue {
-	return { code, message };
-}
-
 export function validateSetup(setup: Setup, playerCount: number): ValidationResult {
 	const errors: ValidationIssue[] = [];
 	const warnings: ValidationIssue[] = [];
@@ -81,33 +82,31 @@ export function validateSetup(setup: Setup, playerCount: number): ValidationResu
 
 	// E01 角色总数必须等于玩家数
 	if (setup.numberOfSeats !== playerCount) {
-		errors.push(
-			issue(
-				'E01',
-				`角色总数（${setup.numberOfSeats}）与玩家数（${playerCount}）不一致，请检查是否所有座位都已入座`
-			)
-		);
+		errors.push({
+			code: 'E01',
+			params: { numberOfSeats: setup.numberOfSeats, playerCount }
+		});
 	}
 
 	let wolfCount = 0;
 	let goodCount = 0;
 	for (const id of ALL_ROLE_IDS) {
 		const count = roleConfig[id] ?? 0;
-		if (count < 0) errors.push(issue('E05', `${ROLE_META[id].name} 数量不能为负数`));
+		if (count < 0) errors.push({ code: 'E05', reason: 'negative', params: { roleId: id } });
 		if (count > 1 && UNIQUE_ROLES.has(id)) {
-			errors.push(issue('E05', `${ROLE_META[id].name} 是唯一角色，数量不能超过 1`));
+			errors.push({ code: 'E05', reason: 'unique_exceeded', params: { roleId: id } });
 		}
 		if (ROLE_META[id].camp === 'WEREWOLF') wolfCount += count;
 		else goodCount += count;
 	}
 
 	// E02 狼人阵营人数 >= 1
-	if (wolfCount < 1) errors.push(issue('E02', '狼人阵营至少需要 1 人'));
+	if (wolfCount < 1) errors.push({ code: 'E02' });
 	// E03 好人阵营人数 >= 1
-	if (goodCount < 1) errors.push(issue('E03', '好人阵营至少需要 1 人'));
+	if (goodCount < 1) errors.push({ code: 'E03' });
 	// E04 狼人数 < 好人数（否则开局即结束）
 	if (wolfCount >= 1 && goodCount >= 1 && wolfCount >= goodCount) {
-		errors.push(issue('E04', '狼人数必须少于好人数，否则一开局狼人就已经获胜'));
+		errors.push({ code: 'E04' });
 	}
 
 	// E06 若含 THIEF：额外底牌数 = 2，玩家数 = 角色数 - 2 - automatically
@@ -118,17 +117,17 @@ export function validateSetup(setup: Setup, playerCount: number): ValidationResu
 
 	// E07 若含 WILD_CHILD：场上存活玩家 >= 4
 	if ((roleConfig.WILD_CHILD ?? 0) > 0 && playerCount < 4) {
-		errors.push(issue('E07', '配置了野孩子时，玩家数至少需要 4 人'));
+		errors.push({ code: 'E07' });
 	}
 	// E08 若含 CUPID：场上玩家 >= 6
 	if ((roleConfig.CUPID ?? 0) > 0 && playerCount < 6) {
-		errors.push(issue('E08', '配置了丘比特时，玩家数至少需要 6 人'));
+		errors.push({ code: 'E08' });
 	}
 
 	// E09 若含 KNIGHT：不与 IDIOT 冲突（可共存，仅提示节奏偏快）- non-blocking
 	// per the spec's own text ("可共存，仅提示"), unlike every other code here.
 	if ((roleConfig.KNIGHT ?? 0) > 0 && (roleConfig.IDIOT ?? 0) > 0) {
-		warnings.push(issue('E09', '骑士与白痴同时在场，节奏可能偏慢，请知悉'));
+		warnings.push({ code: 'E09' });
 	}
 
 	// E10 警长竞选开启时，玩家数 >= 6 - SPEC-GAP: deferred until M5 actually

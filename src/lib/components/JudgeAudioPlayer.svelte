@@ -3,6 +3,15 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { narrate, stopNarration } from '$lib/client/sfx';
 	import { sendAction } from '$lib/client/socket';
+	import { i18n } from '$lib/client/i18n.svelte';
+	import {
+		strings,
+		formatNightDeaths,
+		formatDayResult,
+		formatHunterResult,
+		formatGameOverText,
+		type Strings
+	} from '$lib/shared/i18n';
 	import type { Role } from '$lib/shared/roles';
 
 	let unlocked = $state(false);
@@ -14,34 +23,26 @@
 	let lastGameOver: unknown = null;
 	let lastPendingNightAnnounce = false;
 
-	// Moderator-style call-outs, one per role with a night action.
-	const roleLines: Partial<Record<Role, string>> = {
-		普通狼人: '狼人请睁眼，请选择今晚的目标',
-		预言家: '预言家请睁眼，请选择要查验的玩家',
-		女巫: '女巫请睁眼，你要使用解药或毒药吗',
-		守卫: '守卫请睁眼，请选择要守护的玩家',
-		狼美人: '狼美人请睁眼，请选择要魅惑的玩家',
-		丘比特: '丘比特请睁眼，请选择两名玩家结为情侣',
-		盗贼: '盗贼请睁眼，请选择是否更换身份',
-		猎人: '猎人请确认你的身份'
-	};
+	const t = $derived(strings(i18n.lang).narration);
 
-	// §8.3 LOVERS_CONFIRM - two beats, not one: Cupid needs to actually close
-	// their eyes before the two lovers are told to open theirs (privacy, same
-	// as every other night role's turn), so this is two separate narrate()
-	// calls (which queue and play in sequence) rather than one combined line.
-	// Neither is keyed in roleLines - not a Role, and no NightNarrationStarted
-	// relay for either (see the stage effect below): nothing else gates its
-	// own reveal on this line starting, unlike a real role's turn prompt.
-	const cupidCloseLine = '丘比特请闭眼';
-	const coupleRevealLine = '玩家们请睁眼，确认是否被连为情侣';
+	// Moderator-style call-outs, one per role with a night action.
+	const roleLineKeys: Partial<Record<Role, keyof Strings['narration']>> = {
+		普通狼人: 'wolfTurn',
+		预言家: 'seerTurn',
+		女巫: 'witchTurn',
+		守卫: 'guardTurn',
+		狼美人: 'wolfBeautyTurn',
+		丘比特: 'cupidTurn',
+		盗贼: 'thiefTurn',
+		猎人: 'hunterTurn'
+	};
 
 	function unlockAudio() {
 		unlocked = true;
 		// Some browsers only allow speechSynthesis to actually produce audio
 		// after a real user gesture - a near-silent utterance here "unlocks"
 		// the pipeline the same way the old silent-clip trick did.
-		narrate(' ');
+		narrate(' ', i18n.lang);
 	}
 
 	onMount(() => {
@@ -66,14 +67,14 @@
 			onStart?.();
 			return;
 		}
-		narrate(text, onStart);
+		narrate(text, i18n.lang, onStart);
 	}
 
 	$effect(() => {
 		const phase = gameStore.state?.phase;
 		if (!phase || phase === lastPhase) return;
 		lastPhase = phase;
-		if (phase === 'NIGHT_ACTIONS') say('天黑请闭眼');
+		if (phase === 'NIGHT_ACTIONS') say(t.nightBegins);
 		// A host stop-and-restart (RoomStopGame/"再来一局") resets phase to
 		// SEATING (a fresh room starts at LOBBY) - cut off whatever might
 		// still be queued rather than letting it run over the now-reset round.
@@ -92,7 +93,7 @@
 		const pending = gameStore.state?.pendingNightAnnounce ?? false;
 		if (pending === lastPendingNightAnnounce) return;
 		lastPendingNightAnnounce = pending;
-		if (pending) say('天亮了');
+		if (pending) say(t.dawnBreaks);
 	});
 
 	$effect(() => {
@@ -104,13 +105,13 @@
 		if (key === lastStageKey) return;
 		lastStageKey = key;
 		if (key === 'COUPLE_REVEAL') {
-			say(cupidCloseLine);
-			say(coupleRevealLine);
-		} else if (key && roleLines[key as Role]) {
+			say(t.cupidClose);
+			say(t.coupleReveal);
+		} else if (key && roleLineKeys[key as Role]) {
 			// Every other client's NightActionPrompt for this role is held back
 			// until this specific line actually starts speaking (see gameStore's
 			// pendingTurnRole) - relay the moment it does, not just when it's queued.
-			say(roleLines[key as Role]!, () => {
+			say(t[roleLineKeys[key as Role]!], () => {
 				void sendAction({ kind: 'NightNarrationStarted', role: key as Role });
 			});
 		}
@@ -124,7 +125,7 @@
 		if (deaths === lastNightDeaths) return;
 		lastNightDeaths = deaths;
 		if (deaths === null) return;
-		say(deaths.length === 0 ? '昨夜是平安夜' : `昨夜 ${deaths.join('、')} 号玩家死亡`);
+		say(formatNightDeaths(deaths, i18n.lang));
 	});
 
 	$effect(() => {
@@ -132,12 +133,7 @@
 		if (result === lastDayResult) return;
 		lastDayResult = result;
 		if (!result) return;
-		const base = result.tie
-			? '投票平票，本轮无人出局'
-			: result.eliminatedSeat === null
-				? '本轮无人出局'
-				: `${result.eliminatedSeat} 号玩家被投票出局，他的身份是 ${result.identity}`;
-		say(result.followDeathSeat !== null ? `${base}，${result.followDeathSeat} 号殉情身亡` : base);
+		say(formatDayResult({ ...result, lang: i18n.lang }));
 	});
 
 	$effect(() => {
@@ -145,11 +141,7 @@
 		if (result === lastHunterResult) return;
 		lastHunterResult = result;
 		if (!result) return;
-		const base =
-			result.shotSeat === null
-				? `${result.hunterSeat} 号猎人选择不开枪`
-				: `${result.hunterSeat} 号猎人开枪，带走了 ${result.shotSeat} 号玩家`;
-		say(result.followDeathSeat !== null ? `${base}，${result.followDeathSeat} 号殉情身亡` : base);
+		say(formatHunterResult({ ...result, lang: i18n.lang }));
 	});
 
 	$effect(() => {
@@ -157,12 +149,6 @@
 		if (result === lastGameOver) return;
 		lastGameOver = result;
 		if (!result) return;
-		say(
-			result.winner === 'wolves'
-				? '狼人阵营胜利，游戏结束'
-				: result.winner === 'lovers'
-					? '第三方阵营胜利，游戏结束'
-					: '好人阵营胜利，游戏结束'
-		);
+		say(formatGameOverText(result.winner, i18n.lang, true));
 	});
 </script>

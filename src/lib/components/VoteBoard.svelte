@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
+	import { strings, seatLabel } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
+
+	const t = $derived(strings(i18n.lang));
 
 	let {
 		mySeat,
@@ -46,7 +50,7 @@
 		const res = await sendAction<AckResponse>({ kind: 'VoteCast', target });
 		if (!res.ok) return;
 		myVoteTarget = target;
-		const description = target === 'abstain' ? '你选择了弃票' : `你投给了 ${target} 号`;
+		const description = target === 'abstain' ? t.vote.myVoteAbstain : t.vote.myVoteFor(target);
 		gameStore.logActivity(description);
 		gameStore.showConfirm(`✓ ${description}`, 3000);
 	}
@@ -59,14 +63,15 @@
 <div class="space-y-4">
 	<div class="flex items-baseline justify-between">
 		<h2 class="font-display text-lg font-semibold text-ember">
-			{inPk ? 'PK 投票' : '白天投票'}
+			{inPk ? t.vote.pk : t.vote.day}
 		</h2>
-		<span class="text-xs text-zinc-500 tabular-nums">已投 {votedSeats.length}/{totalVoters} 人</span
+		<span class="text-xs text-zinc-500 tabular-nums"
+			>{t.vote.votedCount(votedSeats.length, totalVoters)}</span
 		>
 	</div>
 
 	{#if iAmPkCandidate}
-		<p class="text-center text-sm text-zinc-500">你是 PK 候选人，本轮不可投票</p>
+		<p class="text-center text-sm text-zinc-500">{t.vote.pkCandidateNote}</p>
 	{:else}
 		<div class="grid grid-cols-4 gap-2">
 			{#each targetSeats as seat (seat.seatNumber)}
@@ -77,7 +82,8 @@
 						? 'border-ember bg-ember/20 text-ember'
 						: ''}"
 				>
-					{seat.seatNumber}号 {seat.username}
+					{seatLabel(seat.seatNumber, i18n.lang)}
+					{seat.username}
 				</button>
 			{/each}
 		</div>
@@ -89,11 +95,11 @@
 				? 'border-ember text-ember'
 				: ''}"
 		>
-			弃票
+			{t.vote.abstain}
 		</button>
 	{/if}
 
 	{#if isHost}
-		<button onclick={endVote} class="btn-primary w-full">结束投票，公布结果</button>
+		<button onclick={endVote} class="btn-primary w-full">{t.vote.endVote}</button>
 	{/if}
 </div>

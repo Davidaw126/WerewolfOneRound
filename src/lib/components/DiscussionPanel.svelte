@@ -2,10 +2,13 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
+	import { strings, seatLabel } from '$lib/shared/i18n';
+	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
 
 	let { isHost }: { isHost: boolean } = $props();
 
+	const t = $derived(strings(i18n.lang));
 	const roomState = $derived(gameStore.state);
 	const phase = $derived(roomState?.phase ?? null);
 	const seats = $derived(roomState?.seats ?? []);
@@ -29,7 +32,7 @@
 
 	async function confirmExplode() {
 		if (explodeSeat === null) return;
-		if (!(await askConfirm(`确认 ${explodeSeat} 号自爆身份为狼人？此操作不可撤销。`))) return;
+		if (!(await askConfirm(t.discussion.confirmExplode(explodeSeat)))) return;
 		const res = await sendAction<AckResponse>({ kind: 'DaySelfExplode', seat: explodeSeat });
 		if (res.ok) {
 			explodeOpen = false;
@@ -39,12 +42,7 @@
 
 	async function confirmDuel() {
 		if (duelKnightSeat === null || duelTargetSeat === null) return;
-		if (
-			!(await askConfirm(
-				`确认 ${duelKnightSeat} 号（骑士）与 ${duelTargetSeat} 号决斗？此操作不可撤销。`
-			))
-		)
-			return;
+		if (!(await askConfirm(t.discussion.confirmDuel(duelKnightSeat, duelTargetSeat)))) return;
 		const res = await sendAction<AckResponse>({
 			kind: 'DayKnightDuel',
 			knightSeat: duelKnightSeat,
@@ -60,42 +58,40 @@
 
 <div class="panel space-y-3 p-4">
 	<h3 class="font-display text-lg font-semibold text-ember">
-		{phase === 'LAST_WORDS' ? '遗言' : '发言'}
+		{phase === 'LAST_WORDS' ? t.discussion.lastWordsTitle : t.discussion.discussionTitle}
 	</h3>
 
 	{#if speaker}
 		<p class="text-center text-sm text-zinc-300">
-			当前发言：<span class="font-semibold text-ember"
-				>{speaker.seatNumber} 号 {speaker.username}</span
-			>
+			{t.discussion.currentSpeaker(speaker.seatNumber, speaker.username ?? '')}
 		</p>
 	{:else}
 		<p class="text-center text-sm text-zinc-500">
-			{phase === 'LAST_WORDS' ? '遗言已结束' : '发言顺序已结束'}
+			{phase === 'LAST_WORDS' ? t.discussion.lastWordsEnded : t.discussion.discussionEnded}
 		</p>
 	{/if}
 
 	{#if isHost}
-		<button onclick={nextSpeaker} class="btn-ghost w-full py-2 text-sm">下一位</button>
+		<button onclick={nextSpeaker} class="btn-ghost w-full py-2 text-sm">{t.discussion.next}</button>
 
 		{#if phase === 'DISCUSSION'}
-			<button onclick={beginVote} class="btn-primary w-full">开始投票</button>
+			<button onclick={beginVote} class="btn-primary w-full">{t.discussion.startVote}</button>
 
 			<div class="space-y-2 border-t border-white/10 pt-3">
 				{#if !explodeOpen && !duelOpen}
 					<div class="flex gap-2">
 						<button onclick={() => (explodeOpen = true)} class="btn-ghost flex-1 py-2 text-xs">
-							💥 有玩家自爆
+							{t.discussion.selfExplodeButton}
 						</button>
 						<button onclick={() => (duelOpen = true)} class="btn-ghost flex-1 py-2 text-xs">
-							⚔️ 骑士决斗
+							{t.discussion.knightDuelButton}
 						</button>
 					</div>
 				{/if}
 
 				{#if explodeOpen}
 					<div class="space-y-2">
-						<p class="text-xs text-zinc-400">选择自爆玩家：</p>
+						<p class="text-xs text-zinc-400">{t.discussion.selectExplodeSeat}</p>
 						<div class="grid grid-cols-4 gap-2">
 							{#each livingSeats as seat (seat.seatNumber)}
 								<button
@@ -104,7 +100,7 @@
 										? 'border-wolf bg-wolf/20 text-wolf'
 										: ''}"
 								>
-									{seat.seatNumber}号
+									{seatLabel(seat.seatNumber, i18n.lang)}
 								</button>
 							{/each}
 						</div>
@@ -112,14 +108,14 @@
 							<button
 								onclick={confirmExplode}
 								disabled={explodeSeat === null}
-								class="btn-primary flex-1 py-2 text-sm">确认</button
+								class="btn-primary flex-1 py-2 text-sm">{t.discussion.confirm}</button
 							>
 							<button
 								onclick={() => {
 									explodeOpen = false;
 									explodeSeat = null;
 								}}
-								class="btn-ghost flex-1 py-2 text-sm">取消</button
+								class="btn-ghost flex-1 py-2 text-sm">{t.discussion.cancel}</button
 							>
 						</div>
 					</div>
@@ -127,7 +123,7 @@
 
 				{#if duelOpen}
 					<div class="space-y-2">
-						<p class="text-xs text-zinc-400">选择骑士：</p>
+						<p class="text-xs text-zinc-400">{t.discussion.selectKnightSeat}</p>
 						<div class="grid grid-cols-4 gap-2">
 							{#each livingSeats as seat (seat.seatNumber)}
 								<button
@@ -136,11 +132,11 @@
 										? 'border-ember bg-ember/20 text-ember'
 										: ''}"
 								>
-									{seat.seatNumber}号
+									{seatLabel(seat.seatNumber, i18n.lang)}
 								</button>
 							{/each}
 						</div>
-						<p class="text-xs text-zinc-400">选择被决斗者：</p>
+						<p class="text-xs text-zinc-400">{t.discussion.selectDuelTargetSeat}</p>
 						<div class="grid grid-cols-4 gap-2">
 							{#each livingSeats as seat (seat.seatNumber)}
 								<button
@@ -150,7 +146,7 @@
 										? 'border-wolf bg-wolf/20 text-wolf'
 										: ''}"
 								>
-									{seat.seatNumber}号
+									{seatLabel(seat.seatNumber, i18n.lang)}
 								</button>
 							{/each}
 						</div>
@@ -158,7 +154,7 @@
 							<button
 								onclick={confirmDuel}
 								disabled={duelKnightSeat === null || duelTargetSeat === null}
-								class="btn-primary flex-1 py-2 text-sm">确认</button
+								class="btn-primary flex-1 py-2 text-sm">{t.discussion.confirm}</button
 							>
 							<button
 								onclick={() => {
@@ -166,7 +162,7 @@
 									duelKnightSeat = null;
 									duelTargetSeat = null;
 								}}
-								class="btn-ghost flex-1 py-2 text-sm">取消</button
+								class="btn-ghost flex-1 py-2 text-sm">{t.discussion.cancel}</button
 							>
 						</div>
 					</div>
@@ -174,6 +170,6 @@
 			</div>
 		{/if}
 	{:else}
-		<p class="text-center text-xs text-zinc-500">等待房主推进…</p>
+		<p class="text-center text-xs text-zinc-500">{t.discussion.waitingHost}</p>
 	{/if}
 </div>
