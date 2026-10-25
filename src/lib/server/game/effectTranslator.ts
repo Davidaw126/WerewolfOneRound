@@ -57,6 +57,18 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				continue;
 
 			case 'HostOverrideApplied':
+				if (payload.overrideKind === 'SET_ROLE') {
+					const seat = payload.seat as number;
+					const [playerSession, room] = await Promise.all([
+						findSessionInSeat(code, seat),
+						readRoomHash(code)
+					]);
+					if (playerSession)
+						emitToSession(playerSession, { kind: 'RoleChangedByHost', seat, forYou: true });
+					if (room?.hostSessionId && room.hostSessionId !== playerSession)
+						emitToSession(room.hostSessionId, { kind: 'RoleChangedByHost', seat, forYou: false });
+					continue;
+				}
 				emitToRoom(code, {
 					kind: 'HostOverrideApplied',
 					seat: payload.seat as number,

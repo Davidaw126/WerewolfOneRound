@@ -21,6 +21,8 @@ export type NightRuleError =
 	| 'seer_no_self_check'
 	| 'wolf_empty_kill_not_allowed'
 	| 'already_submitted'
+	/** A named seat isn't a living player (or a 丘比特 linked one seat twice). */
+	| 'invalid_target'
 	/** Submitted outside this role's own stage (e.g. 黑狼王 picking a kill
 	 * during his 确认开枪状态 stage, after the pack's turn has closed). */
 	| 'not_your_turn'

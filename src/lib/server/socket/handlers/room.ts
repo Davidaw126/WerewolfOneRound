@@ -24,7 +24,7 @@ import {
 	getPlayers,
 	getSeats
 } from '../../rooms/roomRepo';
-import type { Phase } from '../../../shared/gameTypes';
+import { IN_PROGRESS_PHASES } from '../../../shared/gameTypes';
 import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
 import { startAndSaveGame, deleteGameState, clearGameActions } from '../../game/gameStateRepo';
@@ -302,20 +302,6 @@ async function redealIdentities(
 	// see the role they were actually just reshuffled into.
 	await redis.del(revealedKey(code));
 }
-
-// Phases with an active turn/vote in flight - one player leaving mid-way
-// leaves a seat/identity nobody can act for anymore (the night can never
-// auto-advance past a seat that's gone), so the round in progress can't
-// safely continue. LOBBY/SEATING have no such in-flight state to break, and
-// GAME_OVER has already concluded - leaving during either is just a quiet
-// seat-vacate, not a forced round-reset for everyone still looking at the
-// results screen.
-const IN_PROGRESS_PHASES: Phase[] = [
-	'NIGHT_ACTIONS',
-	'NIGHT_HUNTER_SHOT',
-	'DAY_VOTE',
-	'DAY_HUNTER_SHOT'
-];
 
 /** Resets an in-progress (or just-finished) round back to SEATING without
  * touching roleConfig/numberOfSeats/seats - so whoever's already seated stays

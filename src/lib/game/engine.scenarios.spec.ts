@@ -442,8 +442,14 @@ class Sim {
 				const r = reduce(s, { type: 'CONFIRM_STAGE', seat: stranger });
 				expect(r.state.currentStepKey, 'a non-holder moved the status stage on').toBe(key);
 			}
-			this.apply({ type: 'CONFIRM_STAGE', seat: holders[0] });
-			expect(stageConfirmComplete(this.state)).toBe(true);
+			// Every holder (a 上帝之手 duplicate included) gets to look.
+			holders.forEach((seat, i) => {
+				this.apply({ type: 'CONFIRM_STAGE', seat });
+				expect(
+					stageConfirmComplete(this.state),
+					`status stage complete after ${i + 1}/${holders.length} confirms`
+				).toBe(i === holders.length - 1);
+			});
 			// The IO shell's post-action pause, then on to the next role.
 			this.apply({ type: 'ADVANCE_STAGE', expectedStepKey: key });
 			this.bump('statusConfirmed');

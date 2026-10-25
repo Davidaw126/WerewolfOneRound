@@ -502,6 +502,31 @@ function handleSubmitNightAction(
 			return;
 		}
 
+		// One action per role per night. The pack's shared kill has its own
+		// check below; without this one a double-tapped (or raced) submit gave a
+		// 预言家 two checks in one night.
+		if (!inPackStage && alreadySubmitted) return reject(effects, seat, 'already_submitted');
+
+		// Every seat named must be a living player. The client only offers
+		// living seats, but its list can go stale mid-turn (上帝之手 kills
+		// someone while the prompt is open) and the wire schema doesn't know
+		// the board. The antidote's 0 is a presence marker, not a seat.
+		const targets = [
+			a.wolfKillTarget,
+			a.seerCheckTarget,
+			a.witchPoisonTarget,
+			a.guardTarget,
+			a.wolfBeautyCharmTarget,
+			a.wildChildIdol,
+			a.dreamWeaverTarget,
+			a.nightmareFearTarget,
+			...(a.cupidLinks ?? [])
+		].filter((t): t is Seat => typeof t === 'number');
+		if (targets.some((t) => !draft.players[t] || draft.players[t].isDead))
+			return reject(effects, seat, 'invalid_target');
+		if (a.cupidLinks && a.cupidLinks[0] === a.cupidLinks[1])
+			return reject(effects, seat, 'invalid_target');
+
 		switch (role) {
 			case 'WEREWOLF':
 			case 'WOLF_KING':
@@ -762,7 +787,14 @@ export function stageConfirmComplete(state: GameState): boolean {
 		const lovers = (state.lovers ?? []).filter((s) => !state.players[s]?.isDead);
 		return lovers.length > 0 && lovers.every((s) => confirms.includes(s));
 	}
-	return confirms.length > 0;
+	// Every living holder, not just the first to tap: with a 上帝之手 second
+	// 猎人 the stage used to move on while the other was still looking.
+	const role = key?.startsWith('role:') ? (key.slice('role:'.length) as RoleId) : null;
+	if (!role) return false;
+	const holders = Object.values(state.players).filter(
+		(p) => !p.isDead && actsInStage(role, p.role)
+	);
+	return holders.length > 0 && holders.every((p) => confirms.includes(p.seat));
 }
 
 function handleCastVote(
@@ -1214,6 +1246,8 @@ function handleHostOverride(
 	return withEffects(state, (draft, effects) => {
 		const player = draft.players[action.seat];
 		if (!player) return;
+		// The game is decided - an override now would only end it a second time.
+		if (draft.phase === 'GAME_OVER') return;
 		draft.hostOverrideCount += 1;
 
 		let deaths: Seat[] = [];
@@ -1239,6 +1273,12 @@ function handleHostOverride(
 			player.isDead = false;
 			player.deathCause = undefined;
 			player.deathRound = undefined;
+			// Revived at DAWN, before 公布夜晚结果: off tonight's death list too,
+			// or the announcement still reads them out (and every phone marks
+			// them dead again). Nor do they still owe a shot.
+			if (draft.pendingNightDeaths)
+				draft.pendingNightDeaths = draft.pendingNightDeaths.filter((d) => d.seat !== action.seat);
+			draft.pendingShoots = draft.pendingShoots.filter((s) => s !== action.seat);
 		} else if (action.kind === 'SET_ROLE' && action.role) {
 			player.role = action.role;
 			// Their phone has to learn the new card - it used to keep showing

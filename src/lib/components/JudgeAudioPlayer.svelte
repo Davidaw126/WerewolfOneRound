@@ -9,6 +9,7 @@
 		dropQueuedNarration
 	} from '$lib/client/sfx';
 	import { sendAction } from '$lib/client/socket';
+	import { audioSettings } from '$lib/client/audioSettings.svelte';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import {
 		strings,
@@ -20,6 +21,7 @@
 	import type { Role } from '$lib/shared/roles';
 
 	let unlocked = $state(false);
+	let warnedLocked = false;
 	let lastPhase: string | null = null;
 	let lastStageKey: string | null = null;
 	let lastNightDeaths: number[] | null = null;
@@ -94,6 +96,12 @@
 			// every device in the room) doesn't wait on narration that will
 			// never actually happen.
 			onStart?.();
+			// Typically a page reload mid-game: no tap since, so the voice is
+			// still locked. Say so once, instead of the lines going missing.
+			if (!warnedLocked && audioSettings.effects) {
+				warnedLocked = true;
+				gameStore.showInfoPopup(strings(i18n.lang).narration.voiceBlocked, 'bad', 8000);
+			}
 			return;
 		}
 		narrate(text, i18n.lang, onStart, tag);

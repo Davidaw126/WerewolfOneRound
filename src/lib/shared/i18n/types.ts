@@ -92,6 +92,7 @@ export interface Strings {
 		doneCloseEyes: (description: string) => string;
 		packKillChosen: (bySeat: number, target: number | null) => string;
 		roleDoneByOther: string;
+		roleChangedForYou: string;
 		fearedTonight: string;
 		fearedPass: string;
 		descFearedPassed: string;
@@ -138,6 +139,7 @@ export interface Strings {
 			no_kill_to_save: string;
 			guard_repeat_target: string;
 			already_submitted: string;
+			invalid_target: string;
 			not_your_turn: string;
 			not_your_role: string;
 			feared: string;

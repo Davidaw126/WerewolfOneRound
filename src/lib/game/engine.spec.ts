@@ -568,7 +568,7 @@ describe('IDIOT reveal-on-exile (§9.5, B16-B19, UT-10)', () => {
 			{ 1: 'WEREWOLF', 2: 'IDIOT', 3: 'SEER', 4: 'VILLAGER' },
 			{ phase: 'VOTE', votes: { 1: 2, 3: 2, 4: 2 } } // everyone votes out the idiot
 		);
-		state = kill(state, 3); // the seer already died earlier - idiot is now the only living god
+		state = kill(structuredClone(state), 3); // the seer already died earlier - idiot is now the only living god
 
 		const { state: after } = reduce(state, { type: 'TALLY_VOTES' });
 
@@ -1199,5 +1199,93 @@ describe('witch after the antidote is spent', () => {
 		};
 		expect(witchPrompt.context.witch.killedSeat).toBeNull();
 		expect(witchPrompt.context.witch.antidoteAvailable).toBe(false);
+	});
+});
+
+describe('night action guards', () => {
+	it('gives the seer only one check per night, even on a double-tap', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WEREWOLF'
+		});
+		state = { ...state, currentStepKey: 'role:SEER' };
+		const check = (target: number) =>
+			reduce(state, {
+				type: 'SUBMIT_NIGHT_ACTION',
+				seat: 2,
+				role: 'SEER',
+				action: { seerCheckTarget: target }
+			});
+		({ state } = check(1));
+		const second = check(5);
+		expect(effectsOfKind(second.effects, 'SeerResult')).toHaveLength(0);
+		expect(payload(effectsOfKind(second.effects, 'NightActionRejected')[0])).toMatchObject({
+			error: 'already_submitted'
+		});
+	});
+
+	it('rejects a target that is already out', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WEREWOLF'
+		});
+		state = kill(structuredClone(state), 3);
+		const { state: after, effects } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 3 }
+		});
+		expect(payload(effectsOfKind(effects, 'NightActionRejected')[0])).toMatchObject({
+			error: 'invalid_target'
+		});
+		expect(after.nightActions.wolfKillTarget).toBeUndefined();
+	});
+});
+
+describe('上帝之手 edge cases', () => {
+	it('a seat revived at dawn is left out of the night announcement', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WEREWOLF'
+		});
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 3 }
+		}));
+		while (state.phase !== 'DAWN') ({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
+		({ state } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'REVIVE', seat: 3 }));
+		const { state: after, effects } = reduce(state, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		const announced = payload(effectsOfKind(effects, 'NightResultsAnnounced')[0]) as {
+			deaths: { seat: number }[];
+		};
+		expect(announced.deaths).toEqual([]);
+		expect(after.players[3].isDead).toBe(false);
+	});
+
+	it('ignores overrides once the game is over', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WEREWOLF'
+		});
+		({ state } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'KILL', seat: 1 }));
+		({ state } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'KILL', seat: 5 }));
+		expect(state.phase).toBe('GAME_OVER');
+		const { effects } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'REVIVE', seat: 1 });
+		expect(effects).toHaveLength(0);
 	});
 });

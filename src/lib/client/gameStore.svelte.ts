@@ -613,6 +613,16 @@ class GameStore {
 			case 'StageConfirmed':
 				this.stageConfirmed = true;
 				break;
+			case 'RoleChangedByHost': {
+				if (event.forYou) {
+					const text = strings(i18n.lang).nightPrompt.roleChangedForYou;
+					this.logActivity(text);
+					this.showInfoPopup(text, 'neutral', 6000);
+				} else {
+					this.logActivity(formatHostOverrideApplied(event.seat, 'SET_ROLE', i18n.lang));
+				}
+				break;
+			}
 			case 'RoleDoneByOther': {
 				this.roleDoneByOther = true;
 				const text = strings(i18n.lang).nightPrompt.roleDoneByOther;

@@ -310,6 +310,9 @@ export type PrivateInfo =
 	| { kind: 'StageConfirmed' }
 	/** Another holder of your role already used tonight's turn. */
 	| { kind: 'RoleDoneByOther' }
+	/** 上帝之手 改变身份 - only the host and that seat's player hear of it;
+	 * a room-wide notice would point every player at that seat. */
+	| { kind: 'RoleChangedByHost'; seat: number; forYou: boolean }
 	/** A teammate made tonight's pack kill (null = 空刀) - close your eyes. */
 	| { kind: 'PackKillChosen'; bySeat: number; target: number | null }
 	// S4: acknowledges a role's submission - host-only (see effectTranslator's

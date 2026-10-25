@@ -122,6 +122,7 @@ export const en: Strings = {
 				? `Teammate seat ${bySeat} chose no kill tonight — close your eyes`
 				: `Teammate seat ${bySeat} chose to kill seat ${target} — close your eyes`,
 		roleDoneByOther: 'Someone else with this role already acted tonight — close your eyes',
+		roleChangedForYou: 'The host changed your role with God Mode — check your card',
 		fearedTonight: 'The Nightmare has filled you with fear - you cannot use your skill tonight',
 		fearedPass: 'OK, skip my turn',
 		descFearedPassed: 'Feared - did not act tonight',
@@ -170,6 +171,7 @@ export const en: Strings = {
 			no_kill_to_save: "No one was attacked tonight, so there's nothing to save",
 			guard_repeat_target: "You can't protect the same seat two nights in a row",
 			already_submitted: "You've already acted tonight",
+			invalid_target: 'That player is out — pick someone else',
 			not_your_turn: "It's not your turn to act",
 			not_your_role: "That's not your role",
 			feared: "You're filled with fear and can't act tonight",

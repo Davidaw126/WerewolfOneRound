@@ -14,7 +14,6 @@ import { touchRoomTtl } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { Phase as LegacyPhase } from '../../shared/gameTypes';
-import { ALWAYS_ANNOUNCED_ROLES } from '../../game/rules/nightOrder';
 import { actsInStage, STATUS_STAGE_ROLES } from '../../game/roleMeta';
 import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
@@ -75,7 +74,8 @@ function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 	const key = state.currentStepKey;
 	if (!key || !key.startsWith('role:')) return;
 	const role = key.slice('role:'.length) as RoleId;
-	if (!ALWAYS_ANNOUNCED_ROLES.has(role)) return; // a non-P0 stage always has a living holder by construction
+	// Not only the always-announced roles: any stage can lose its last holder
+	// mid-turn (上帝之手 kills or recasts them), and that stage must not freeze.
 	if (roleHasLivingHolder(state, role)) return; // real stage - HUNTER waits for the host; every other role's submission-triggered timer (night.ts) handles it
 
 	setTimeout(() => {

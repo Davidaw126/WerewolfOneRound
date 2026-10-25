@@ -1,14 +1,5 @@
-import type { Phase } from '../shared/gameTypes';
+import { IN_PROGRESS_PHASES, type Phase } from '../shared/gameTypes';
 import { strings, type Lang } from '../shared/i18n';
-
-// Mirrors the server's own IN_PROGRESS_PHASES in handleRoomLeave - only these
-// phases have an active turn/vote that leaving would actually break.
-const IN_PROGRESS_PHASES: Phase[] = [
-	'NIGHT_ACTIONS',
-	'NIGHT_HUNTER_SHOT',
-	'DAY_VOTE',
-	'DAY_HUNTER_SHOT'
-];
 
 export function isGameInProgress(phase: Phase | undefined | null): boolean {
 	return !!phase && IN_PROGRESS_PHASES.includes(phase);

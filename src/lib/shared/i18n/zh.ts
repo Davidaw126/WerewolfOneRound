@@ -122,6 +122,7 @@ export const zh: Strings = {
 				? `队友 ${bySeat} 号已决定今晚空刀，请闭眼`
 				: `队友 ${bySeat} 号已选择刀 ${target} 号，请闭眼`,
 		roleDoneByOther: '这个身份今晚已经有人行动过了，请闭眼',
+		roleChangedForYou: '房主用上帝之手更改了你的身份，请查看身份牌',
 		fearedTonight: '你今晚被恶灵骑士恐惧，无法使用技能',
 		fearedPass: '知道了，跳过本回合',
 		descFearedPassed: '被恐惧，今晚未行动',
@@ -168,6 +169,7 @@ export const zh: Strings = {
 			no_kill_to_save: '今晚无人被袭击，无法使用解药',
 			guard_repeat_target: '不能连续两晚守护同一位玩家',
 			already_submitted: '你今晚已经行动过了',
+			invalid_target: '这位玩家已出局，请重新选择',
 			not_your_turn: '现在不是你的行动时间',
 			not_your_role: '这不是你的身份',
 			feared: '你被恐惧了，今晚无法行动',

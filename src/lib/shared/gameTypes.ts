@@ -16,6 +16,19 @@ export type Phase =
 	| 'DAY_HUNTER_SHOT'
 	| 'GAME_OVER';
 
+/** A round is under way: a non-host leaving now resets the room to SEATING
+ * (their seat would otherwise stall the next turn that needs them - a
+ * departure during the day used to slip through and freeze the next night).
+ * Shared by the server's handleRoomLeave and the client's leave warning. */
+export const IN_PROGRESS_PHASES: readonly Phase[] = [
+	'NIGHT_ACTIONS',
+	'NIGHT_HUNTER_SHOT',
+	'LAST_WORDS',
+	'DISCUSSION',
+	'DAY_VOTE',
+	'DAY_HUNTER_SHOT'
+];
+
 export type NightStage = { kind: 'ROLE_TURN'; role: Role } | { kind: 'COUPLE_REVEAL' };
 
 /** S4: the room-wide broadcast form of NightStage - which role is acting is
