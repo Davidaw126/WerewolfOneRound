@@ -1,5 +1,5 @@
-// Night ambience (water droplets and a distant wolf, synthesised with the Web
-// Audio API - no audio assets) plus the host phone's spoken narration further down. There
+// Night ambience (a stormy forest, synthesised with the Web Audio API - no
+// audio assets) plus the host phone's spoken narration further down. There
 // are no other sound effects: button clicks, whooshes and stings were
 // removed so the only sounds at the table are the judge's voice and, during
 // the night, the ambience. All browser-only; no-ops during SSR. The
@@ -26,11 +26,27 @@ function ac(): AudioContext | null {
 			(window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
 		if (!Ctor) return null;
 		ctx = new Ctor();
+		// iPhone: the system voice (speechSynthesis) can take over the audio
+		// session and knock this context into 'interrupted'/'suspended' while
+		// it speaks - and it doesn't always come back by itself, so the night
+		// ambience would just stop after the first announcement. Bring it
+		// back as soon as the browser lets us.
+		const c = ctx;
+		c.onstatechange = () => {
+			if (c.state !== 'running' && ambientRequested) setTimeout(resumeAudio, 400);
+		};
 		master = ctx.createGain();
 		master.gain.value = 0.35;
 		master.connect(ctx.destination);
 	}
 	return ctx;
+}
+
+/** Resume after an interruption (see ac()) - no gesture needed for that. */
+function resumeAudio(): void {
+	if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+		void ctx.resume().then(syncAmbient, () => {});
+	}
 }
 
 /** Resume the context after a user gesture. Safe to call repeatedly.
@@ -61,14 +77,27 @@ export function setAmbientEnabled(on: boolean): void {
 	syncAmbient();
 }
 
-// --- night ambience -----------------------------------------------------------
-// Relaxing and sparse: water droplets falling in a softly echoing space, and
-// once in a while a distant wolf howl. Nothing continuous - no wind, no drone
-// - so there's no background buzz under the judge's voice.
+// --- night ambience: a forest at night, weather rolling through ---------------
+// Layers, all synthesised (no audio files):
+//  - wind that gusts and falls away (never a steady hum: it's band-passed
+//    noise whose level and colour keep moving), with the trees' leaves
+//    rustling harder on every gust;
+//  - grass swishing nearby now and then;
+//  - crickets (fewer when it pours), an owl, and wolves - a lone howl or a
+//    small pack answering each other;
+//  - weather on a cycle: clear -> drizzle -> rain -> thunderstorm -> rain ->
+//    clear. Rain is drops on leaves only (a continuous hiss read as static),
+//    with near cracks and far rumbles of thunder.
+// Everything ducks under the judge's voice while a line is spoken.
+
+type Weather = 'clear' | 'drizzle' | 'rain' | 'storm';
 
 interface Ambience {
 	bus: GainNode;
+	duck: GainNode;
 	timers: ReturnType<typeof setTimeout>[];
+	sources: AudioScheduledSourceNode[];
+	weather: Weather;
 }
 let ambience: Ambience | null = null;
 
@@ -89,7 +118,14 @@ function syncAmbient(): void {
 	else teardownAmbience();
 }
 
-/** A soft room/cave echo: a stereo impulse response of fading noise. */
+/** Lower the forest while the judge speaks, so every line stays clear. */
+function duckAmbience(on: boolean): void {
+	const c = ctx;
+	if (!c || !ambience) return;
+	ambience.duck.gain.setTargetAtTime(on ? 0.35 : 1, c.currentTime, on ? 0.15 : 0.6);
+}
+
+/** A soft outdoor echo: a stereo impulse response of fading noise. */
 function makeReverb(c: AudioContext, seconds: number): ConvolverNode {
 	const len = Math.floor(c.sampleRate * seconds);
 	const ir = c.createBuffer(2, len, c.sampleRate);
@@ -102,102 +138,358 @@ function makeReverb(c: AudioContext, seconds: number): ConvolverNode {
 	return conv;
 }
 
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
 function buildAmbience(): void {
 	const c = ac();
 	if (!c || !master || ambience || c.state !== 'running') return;
 
+	const duck = c.createGain();
+	duck.connect(master);
 	const bus = c.createGain();
 	bus.gain.setValueAtTime(0.0001, c.currentTime);
-	bus.gain.exponentialRampToValueAtTime(1, c.currentTime + 3); // fade in
-	bus.connect(master);
-	// Dry + echo: the echo is what makes single plinks sound like a cave.
-	const reverb = makeReverb(c, 2.8);
+	bus.gain.exponentialRampToValueAtTime(0.9, c.currentTime + 4); // fade in
+	bus.connect(duck);
+	const reverb = makeReverb(c, 3);
 	const wet = c.createGain();
-	wet.gain.value = 0.6;
+	wet.gain.value = 0.55;
 	reverb.connect(wet);
 	wet.connect(bus);
 
-	const a: Ambience = { bus, timers: [] };
+	const a: Ambience = {
+		bus,
+		duck,
+		timers: [],
+		sources: [],
+		weather: Math.random() < 0.35 ? 'rain' : 'clear'
+	};
 	ambience = a;
 	const later = (ms: number, fn: () => void) => {
 		a.timers.push(setTimeout(() => ambience === a && fn(), ms));
 	};
-	const out = (node: AudioNode, pan: number, dry: number) => {
+	const now = () => c.currentTime;
+
+	// Shared noise: 6 s of white noise, every noisy layer reads its own
+	// offset of it, so they don't sound like copies of each other.
+	const NOISE_S = 6;
+	const noise = c.createBuffer(1, c.sampleRate * NOISE_S, c.sampleRate);
+	{
+		const d = noise.getChannelData(0);
+		for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+	}
+	const loopNoise = (): AudioBufferSourceNode => {
+		const src = c.createBufferSource();
+		src.buffer = noise;
+		src.loop = true;
+		src.start(0, rand(0, NOISE_S));
+		a.sources.push(src);
+		return src;
+	};
+	const oneShotNoise = (dur: number): AudioBufferSourceNode => {
+		const src = c.createBufferSource();
+		src.buffer = noise;
+		src.start(now(), rand(0, NOISE_S - dur - 0.1), dur);
+		return src;
+	};
+	/** node -> panner -> dry bus + echo send. */
+	const out = (node: AudioNode, pan: number, dry = 1, send = 1) => {
 		const p = c.createStereoPanner();
 		p.pan.value = pan;
-		const g = c.createGain();
-		g.gain.value = dry;
 		node.connect(p);
-		p.connect(g);
-		g.connect(bus);
-		p.connect(reverb);
+		const d = c.createGain();
+		d.gain.value = dry;
+		p.connect(d);
+		d.connect(bus);
+		if (send > 0) {
+			const sg = c.createGain();
+			sg.gain.value = send;
+			p.connect(sg);
+			sg.connect(reverb);
+		}
 	};
+	const filter = (type: BiquadFilterType, freq: number, q = 0.7) => {
+		const f = c.createBiquadFilter();
+		f.type = type;
+		f.frequency.value = freq;
+		f.Q.value = q;
+		return f;
+	};
+	const stormy = () =>
+		a.weather === 'storm' ? 1 : a.weather === 'rain' ? 0.6 : a.weather === 'drizzle' ? 0.3 : 0;
 
-	// One droplet: a short sine whose pitch flicks upward - the "plip".
-	const droplet = (at: number) => {
-		const base = 700 + Math.random() * 900;
-		const osc = c.createOscillator();
-		osc.type = 'sine';
-		osc.frequency.setValueAtTime(base, at);
-		osc.frequency.exponentialRampToValueAtTime(base * (1.5 + Math.random() * 0.4), at + 0.05);
+	// ---- wind + leaves (two gusting streams, left and right) ----------------
+	const leaves = c.createGain();
+	leaves.gain.value = 0.0001;
+	{
+		const src = loopNoise();
+		const hp = filter('highpass', 1800);
+		const bp = filter('bandpass', 3800, 0.5);
+		src.connect(hp);
+		hp.connect(bp);
+		bp.connect(leaves);
+		out(leaves, 0, 0.9, 0.4);
+	}
+	for (const pan of [-0.6, 0.6]) {
+		const src = loopNoise();
+		const hp = filter('highpass', 160); // nothing low enough to hum
+		const bp = filter('bandpass', 500, 0.8);
 		const g = c.createGain();
-		g.gain.setValueAtTime(0.0001, at);
-		g.gain.exponentialRampToValueAtTime(0.07 + Math.random() * 0.05, at + 0.006);
-		g.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
-		osc.connect(g);
-		out(g, Math.random() * 1.4 - 0.7, 0.5);
-		osc.start(at);
-		osc.stop(at + 0.25);
-	};
-	const drip = () => {
-		const t0 = c.currentTime;
-		droplet(t0);
-		// Now and then two or three in a row, like a leak gathering pace.
-		if (Math.random() < 0.25) droplet(t0 + 0.18 + Math.random() * 0.2);
-		if (Math.random() < 0.08) droplet(t0 + 0.5 + Math.random() * 0.3);
-		later(700 + Math.random() * 2600, drip);
-	};
+		g.gain.value = 0.0001;
+		src.connect(hp);
+		hp.connect(bp);
+		bp.connect(g);
+		out(g, pan, 1, 0.5);
+		const gust = () => {
+			const strength = Math.min(1, rand(0.15, 0.7) + stormy() * 0.4);
+			const t = now();
+			g.gain.setTargetAtTime(0.02 + strength * 0.22, t, rand(0.6, 1.6));
+			bp.frequency.setTargetAtTime(280 + strength * 1100, t, rand(0.8, 1.8));
+			leaves.gain.setTargetAtTime(0.004 + strength * strength * 0.09, t, 0.7);
+			// ...and let it die back down before the next one.
+			later(rand(1500, 3500), () => {
+				g.gain.setTargetAtTime(0.015 + stormy() * 0.05, now(), rand(1.2, 2.5));
+				leaves.gain.setTargetAtTime(0.003 + stormy() * 0.02, now(), 1.2);
+			});
+			later(rand(2500, 6000) * (1 - stormy() * 0.4), gust);
+		};
+		later(rand(200, 2500), gust);
+	}
 
-	// A distant wolf: a soft tone rising, holding with a slight waver,
-	// then sinking - mostly heard through the echo, so it sits far away.
-	const howl = () => {
-		const t0 = c.currentTime;
-		const start = 260 + Math.random() * 60;
-		const peak = start * (1.7 + Math.random() * 0.2);
-		// Pure sine: anything with harmonics (triangle/square) reads as a
-		// retro buzz rather than a far-off wolf.
-		const osc = c.createOscillator();
-		osc.type = 'sine';
-		osc.frequency.setValueAtTime(start, t0);
-		osc.frequency.exponentialRampToValueAtTime(peak, t0 + 1.0);
-		osc.frequency.setValueAtTime(peak, t0 + 1.9);
-		osc.frequency.exponentialRampToValueAtTime(start * 1.15, t0 + 3.4);
-		const vib = c.createOscillator();
-		vib.frequency.value = 5;
-		const vibAmt = c.createGain();
-		vibAmt.gain.value = 6;
-		vib.connect(vibAmt);
-		vibAmt.connect(osc.frequency);
-		const lp = c.createBiquadFilter();
-		lp.type = 'lowpass';
-		lp.frequency.value = 1100;
+	// ---- grass swishing nearby -----------------------------------------------
+	const swish = () => {
+		const dur = rand(0.35, 0.8);
+		const src = oneShotNoise(dur);
+		const hp = filter('highpass', rand(3000, 5000));
 		const g = c.createGain();
+		const t = now();
+		g.gain.setValueAtTime(0.0001, t);
+		g.gain.exponentialRampToValueAtTime(rand(0.02, 0.05), t + dur * 0.35);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+		src.connect(hp);
+		hp.connect(g);
+		out(g, rand(-0.9, 0.9), 1, 0.2);
+		if (Math.random() < 0.4)
+			later(rand(250, 600), swish); // a step or two
+		else later(rand(2500, 7000), swish);
+	};
+	later(rand(1500, 4000), swish);
+
+	// ---- crickets -------------------------------------------------------------
+	const cricket = (pitch: number, pan: number) => {
+		const chirp = () => {
+			if (Math.random() > stormy() * 0.8) {
+				const t0 = now();
+				const pulses = 2 + Math.floor(Math.random() * 3);
+				for (let k = 0; k < pulses; k++) {
+					const at = t0 + k * 0.065;
+					const osc = c.createOscillator();
+					osc.frequency.value = pitch;
+					const g = c.createGain();
+					g.gain.setValueAtTime(0.0001, at);
+					g.gain.exponentialRampToValueAtTime(0.012, at + 0.01);
+					g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+					osc.connect(g);
+					out(g, pan, 1, 0.3);
+					osc.start(at);
+					osc.stop(at + 0.05);
+				}
+			}
+			later(rand(300, 900), chirp);
+		};
+		later(rand(300, 2000), chirp);
+	};
+	cricket(rand(4200, 4500), rand(-0.8, -0.3));
+	cricket(rand(4600, 5000), rand(0.3, 0.8));
+	cricket(rand(3900, 4200), rand(-0.2, 0.2));
+
+	// ---- owl --------------------------------------------------------------------
+	const owl = () => {
+		const pan = rand(-0.8, 0.8);
+		const hoot = (at: number, f: number, dur: number) => {
+			const osc = c.createOscillator();
+			osc.frequency.setValueAtTime(f, at);
+			osc.frequency.exponentialRampToValueAtTime(f * 0.88, at + dur);
+			const g = c.createGain();
+			g.gain.setValueAtTime(0.0001, at);
+			g.gain.exponentialRampToValueAtTime(0.05, at + 0.06);
+			g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+			osc.connect(g);
+			out(g, pan, 0.6, 0.8);
+			osc.start(at);
+			osc.stop(at + dur + 0.05);
+		};
+		const t0 = now();
+		const f = rand(360, 420);
+		hoot(t0, f, 0.5); // hoo...
+		hoot(t0 + 0.9, f * 1.05, 0.25); // hoo-
+		hoot(t0 + 1.2, f * 1.05, 0.25); // hoo-
+		hoot(t0 + 1.5, f, 0.6); // hooo
+		later(rand(12_000, 25_000), owl);
+	};
+	later(rand(4000, 9000), owl);
+
+	// ---- wolves -----------------------------------------------------------------
+	const howl = (delay: number, base: number, pan: number, far: number) => {
+		const t0 = now() + delay;
+		const peak = base * rand(1.6, 1.9);
+		const len = rand(3, 4.6);
+		const voice = c.createGain();
+		// Two pure sines (fundamental + a quiet octave) - a voice, not a buzz.
+		for (const [mult, lvl] of [
+			[1, 1],
+			[2, 0.12]
+		] as const) {
+			const osc = c.createOscillator();
+			osc.frequency.setValueAtTime(base * mult, t0);
+			osc.frequency.exponentialRampToValueAtTime(peak * mult, t0 + len * 0.3);
+			osc.frequency.setValueAtTime(peak * mult, t0 + len * 0.6);
+			osc.frequency.exponentialRampToValueAtTime(base * 1.1 * mult, t0 + len);
+			const vib = c.createOscillator();
+			vib.frequency.value = rand(4.5, 6);
+			const vibAmt = c.createGain();
+			vibAmt.gain.value = 5 * mult;
+			vib.connect(vibAmt);
+			vibAmt.connect(osc.frequency);
+			const lg = c.createGain();
+			lg.gain.value = lvl;
+			osc.connect(lg);
+			lg.connect(voice);
+			osc.start(t0);
+			vib.start(t0);
+			osc.stop(t0 + len + 0.1);
+			vib.stop(t0 + len + 0.1);
+		}
+		const g = c.createGain();
+		const peakGain = 0.07 * (1 - far * 0.6);
 		g.gain.setValueAtTime(0.0001, t0);
-		g.gain.exponentialRampToValueAtTime(0.045, t0 + 0.7);
-		g.gain.setValueAtTime(0.045, t0 + 2.2);
-		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.5);
-		osc.connect(lp);
+		g.gain.exponentialRampToValueAtTime(peakGain, t0 + len * 0.25);
+		g.gain.setValueAtTime(peakGain, t0 + len * 0.65);
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+		const lp = filter('lowpass', 1400 - far * 600);
+		voice.connect(lp);
 		lp.connect(g);
-		out(g, Math.random() * 1.2 - 0.6, 0.25);
-		osc.start(t0);
-		vib.start(t0);
-		osc.stop(t0 + 3.6);
-		vib.stop(t0 + 3.6);
-		later(60_000 + Math.random() * 60_000, howl); // rare: once every 1-2 minutes
+		out(g, pan, 1 - far * 0.6, 0.6 + far * 0.6);
 	};
+	const wolves = () => {
+		const far = rand(0.2, 0.9);
+		howl(0, rand(250, 310), rand(-0.8, 0.8), far);
+		// Often the pack answers.
+		if (Math.random() < 0.55) {
+			const answers = 1 + Math.floor(Math.random() * 3);
+			for (let k = 0; k < answers; k++) {
+				howl(
+					rand(0.6, 2.8) + k * 0.8,
+					rand(230, 360),
+					rand(-0.9, 0.9),
+					Math.min(1, far + rand(-0.2, 0.3))
+				);
+			}
+		}
+		later(rand(10_000, 22_000), wolves);
+	};
+	later(rand(3000, 7000), wolves);
 
-	later(600, drip);
-	later(20_000 + Math.random() * 20_000, howl);
+	// ---- rain: only drops on leaves - no continuous hiss --------------------------
+	// A loop of sparse random ticks, so it reads as drops, never as static.
+	const patterGain = c.createGain();
+	patterGain.gain.value = 0.0001;
+	{
+		const len = c.sampleRate * 3;
+		const buf = c.createBuffer(2, len, c.sampleRate);
+		for (let ch = 0; ch < 2; ch++) {
+			const d = buf.getChannelData(ch);
+			for (let n = 0; n < 110; n++) {
+				const at = Math.floor(Math.random() * (len - 400));
+				const amp = rand(0.2, 1);
+				for (let k = 0; k < 300; k++)
+					d[at + k] += (Math.random() * 2 - 1) * amp * Math.exp(-k / 40);
+			}
+		}
+		const src = c.createBufferSource();
+		src.buffer = buf;
+		src.loop = true;
+		src.start();
+		a.sources.push(src);
+		const bp = filter('bandpass', 2600, 0.6);
+		src.connect(bp);
+		bp.connect(patterGain);
+		patterGain.connect(bus);
+	}
+
+	// ---- thunder --------------------------------------------------------------------
+	const thunder = (near: boolean) => {
+		const t0 = now() + (near ? 0 : rand(0, 0.5));
+		if (near) {
+			// The crack.
+			const crack = oneShotNoise(0.6);
+			const hp = filter('highpass', 1400);
+			const g = c.createGain();
+			g.gain.setValueAtTime(0.0001, t0);
+			g.gain.exponentialRampToValueAtTime(0.28, t0 + 0.01);
+			g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+			crack.connect(hp);
+			hp.connect(g);
+			out(g, rand(-0.5, 0.5), 1, 0.9);
+		}
+		// The rumble - kept above ~150 Hz so a phone speaker can play it.
+		const dur = rand(4, 7);
+		const src = oneShotNoise(dur);
+		const lp = filter('lowpass', near ? 380 : 240, 0.9);
+		const hp = filter('highpass', 120);
+		const g = c.createGain();
+		const peak = near ? rand(0.35, 0.5) : rand(0.12, 0.22);
+		g.gain.setValueAtTime(0.0001, t0);
+		g.gain.exponentialRampToValueAtTime(peak, t0 + (near ? 0.25 : 0.8));
+		// Rolling: a few swells on the way down.
+		let t = t0 + 0.8;
+		while (t < t0 + dur - 1) {
+			g.gain.exponentialRampToValueAtTime(peak * rand(0.3, 0.9), t);
+			t += rand(0.4, 1.1);
+		}
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+		src.connect(hp);
+		hp.connect(lp);
+		lp.connect(g);
+		out(g, rand(-0.6, 0.6), 1, 0.8);
+	};
+	const thunderLoop = () => {
+		if (a.weather === 'storm') thunder(Math.random() < 0.5);
+		else if (a.weather === 'rain' && Math.random() < 0.3) thunder(false);
+		later(a.weather === 'storm' ? rand(5000, 12_000) : rand(12_000, 25_000), thunderLoop);
+	};
+	later(rand(5000, 10_000), thunderLoop);
+
+	// ---- the weather cycle ---------------------------------------------------------
+	const LEVELS: Record<Weather, { patter: number }> = {
+		clear: { patter: 0.0001 },
+		drizzle: { patter: 0.04 },
+		rain: { patter: 0.08 },
+		storm: { patter: 0.12 }
+	};
+	const NEXT: Record<Weather, Weather[]> = {
+		clear: ['drizzle'],
+		drizzle: ['rain', 'clear'],
+		rain: ['storm', 'storm', 'drizzle'],
+		storm: ['rain']
+	};
+	const LASTS: Record<Weather, [number, number]> = {
+		clear: [25_000, 50_000],
+		drizzle: [15_000, 30_000],
+		rain: [25_000, 45_000],
+		storm: [30_000, 55_000]
+	};
+	const setWeather = (w: Weather) => {
+		a.weather = w;
+		const t = now();
+		patterGain.gain.setTargetAtTime(LEVELS[w].patter, t, 4);
+		if (w === 'storm') later(rand(1500, 4000), () => thunder(true)); // announce it
+		const [lo, hi] = LASTS[w];
+		later(rand(lo, hi), () => {
+			const options = NEXT[w];
+			setWeather(options[Math.floor(Math.random() * options.length)]);
+		});
+	};
+	setWeather(a.weather);
 }
 
 function teardownAmbience(): void {
@@ -210,11 +502,18 @@ function teardownAmbience(): void {
 		if (c) {
 			a.bus.gain.cancelScheduledValues(c.currentTime);
 			a.bus.gain.setValueAtTime(Math.max(a.bus.gain.value, 0.0001), c.currentTime);
-			a.bus.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 1.5); // fade out
+			a.bus.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 2); // fade out
 		}
-		// Every source is a one-shot that stops itself; just unhook the bus
-		// once the fade (and the last echo tail) is done.
-		setTimeout(() => a.bus.disconnect(), 4500);
+		setTimeout(() => {
+			for (const src of a.sources) {
+				try {
+					src.stop();
+				} catch {
+					/* already stopped */
+				}
+			}
+			a.duck.disconnect();
+		}, 4500);
 	} catch {
 		/* context gone */
 	}
@@ -275,6 +574,14 @@ export function speechSupported(): boolean {
 }
 
 let speechPrimed = false;
+/** A priming utterance is out and hasn't started/failed yet. */
+let primeInFlight = false;
+
+/** Whether a gesture has actually unlocked speech on this device (the
+ * priming utterance really started) - not merely that one was attempted. */
+export function isSpeechPrimed(): boolean {
+	return speechPrimed;
+}
 
 /**
  * Must be called synchronously from inside a user gesture (pointerdown,
@@ -300,13 +607,31 @@ export function primeSpeech(): void {
 			/* older engines throw on unknown values */
 		}
 	}
-	if (speechPrimed) return;
-	speechPrimed = true;
+	// Only counts once it actually starts. iOS silently refuses a speak()
+	// from an event that isn't a real activation (pointerdown/touchstart
+	// aren't - touchend/click are), and marking it primed on the attempt
+	// meant every later tap skipped the retry: no voice until something
+	// spoke straight from a click (the 上帝之手 test button).
+	if (speechPrimed || primeInFlight) return;
+	primeInFlight = true;
 	const u = new SpeechSynthesisUtterance('.');
 	u.volume = 0;
 	u.rate = 2;
 	keepAlive.add(u);
-	u.onend = u.onerror = () => keepAlive.delete(u);
+	u.onstart = () => {
+		speechPrimed = true;
+	};
+	u.onend = () => {
+		speechPrimed = true;
+		primeInFlight = false;
+		keepAlive.delete(u);
+	};
+	u.onerror = () => {
+		primeInFlight = false;
+		keepAlive.delete(u);
+	};
+	// A refused speak() may fire nothing at all - let the next tap retry.
+	setTimeout(() => (primeInFlight = false), 1500);
 	speechSynthesis.speak(u);
 }
 
@@ -347,6 +672,18 @@ const POST_CANCEL_DELAY_MS = 250;
  * anyway so the rest of the room isn't held up waiting on silence. */
 const START_GRACE_MS = 2500;
 let startGraceTimer: ReturnType<typeof setTimeout> | null = null;
+/** A line that still hasn't started this long after speak() was refused -
+ * the voice is blocked (a mobile browser lost the unlock, e.g. after being
+ * backgrounded). Longer than START_GRACE_MS so a slow voice isn't flagged. */
+const BLOCKED_AFTER_MS = 5000;
+let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+let onBlocked: (() => void) | null = null;
+
+/** Called when the voice turns out to be blocked, so the host can be asked
+ * to tap the screen once - the next tap re-unlocks it (primeSpeech). */
+export function onSpeechBlocked(cb: (() => void) | null): void {
+	onBlocked = cb;
+}
 /** Whether the utterance currently in flight has already fired onstart (and
  * therefore already relayed its signal to the server). Only then is it safe to
  * cancel it - see setEffectsEnabled. */
@@ -412,6 +749,12 @@ function speakNext(): void {
 	};
 	utter.onstart = () => {
 		startedFired = true;
+		if (blockedTimer) {
+			clearTimeout(blockedTimer);
+			blockedTimer = null;
+		}
+		speechPrimed = true;
+		duckAmbience(true);
 		if (startGraceTimer) {
 			clearTimeout(startGraceTimer);
 			startGraceTimer = null;
@@ -424,6 +767,8 @@ function speakNext(): void {
 		// stopNarration) must not finish whatever is speaking now.
 		if (current !== utter) return;
 		current = null;
+		duckAmbience(false);
+		resumeAudio(); // in case the voice interrupted the ambience (iPhone)
 		relayStart();
 		finishCurrent();
 	};
@@ -436,6 +781,20 @@ function speakNext(): void {
 	if (speechSynthesis.paused) speechSynthesis.resume();
 	speechSynthesis.speak(utter);
 	startGraceTimer = setTimeout(relayStart, START_GRACE_MS);
+	if (blockedTimer) clearTimeout(blockedTimer);
+	blockedTimer = setTimeout(() => {
+		blockedTimer = null;
+		if (current !== utter || startedFired || voiceMuted) return;
+		// Never started: drop the stuck line, forget the unlock so the very
+		// next tap primes again, and tell the host.
+		speechPrimed = false;
+		primeInFlight = false;
+		lastCancelAt = Date.now();
+		speechSynthesis.cancel();
+		current = null;
+		finishCurrent();
+		onBlocked?.();
+	}, BLOCKED_AFTER_MS);
 
 	// Many mobile browsers silently kill speech synthesis when the tab/app is
 	// backgrounded, WITHOUT ever firing onend/onerror - pause()/resume() and

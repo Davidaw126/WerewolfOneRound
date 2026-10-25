@@ -322,6 +322,7 @@ export interface Strings {
 		nightBegins: string;
 		dawnBreaks: string;
 		allEyesClosed: string;
+		voiceBlocked: string;
 		/** Host-only button shown while narration isn't enabled on this device. */
 		enableVoice: string;
 		/** Shown instead when this browser has no speech synthesis at all. */

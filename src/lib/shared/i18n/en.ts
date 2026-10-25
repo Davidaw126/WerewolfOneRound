@@ -362,6 +362,7 @@ export const en: Strings = {
 		dawnBreaks: 'Dawn breaks.',
 		allEyesClosed: 'Everyone, close your eyes.',
 		enableVoice: '🔊 Tap to enable voice narration',
+		voiceBlocked: "🔇 The phone blocked the judge's voice — tap the screen once to restore it",
 		voiceUnsupported: "This browser can't speak narration - try Safari or Chrome"
 	}
 };

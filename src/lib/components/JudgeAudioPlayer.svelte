@@ -5,6 +5,7 @@
 		narrate,
 		stopNarration,
 		primeSpeech,
+		onSpeechBlocked,
 		dropQueuedNarration,
 		startAmbient,
 		stopAmbient
@@ -66,8 +67,22 @@
 		// control, the start button) - by the time NIGHT_ACTIONS begins they've
 		// long since tapped something. If they haven't (e.g. the page reloaded
 		// mid-game), the enable button below asks for that one tap.
-		document.addEventListener('pointerdown', unlockAudio, { capture: true });
-		return () => document.removeEventListener('pointerdown', unlockAudio, { capture: true });
+		// The END of a tap: iOS only lets speech start from a real activation
+		// event (touchend/click/pointerup), never pointerdown/touchstart.
+		const events = ['touchend', 'pointerup', 'click', 'keydown'] as const;
+		for (const e of events) document.addEventListener(e, unlockAudio, { capture: true });
+		return () => {
+			for (const e of events) document.removeEventListener(e, unlockAudio, { capture: true });
+		};
+	});
+
+	// If a phone refuses a line, say so - otherwise the host only notices
+	// the silence much later. One tap anywhere fixes it.
+	onMount(() => {
+		onSpeechBlocked(() =>
+			gameStore.showInfoPopup(strings(i18n.lang).narration.voiceBlocked, 'bad', 8000)
+		);
+		return () => onSpeechBlocked(null);
 	});
 
 	onDestroy(() => {

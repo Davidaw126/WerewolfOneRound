@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import '../app.css';
-	import { unlockAudio, narrationWatchdog } from '$lib/client/sfx';
+	import { unlockAudio, primeSpeech, narrationWatchdog } from '$lib/client/sfx';
 	import { initAudioSettings } from '$lib/client/audioSettings.svelte';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
@@ -12,9 +12,18 @@
 		initAudioSettings();
 		i18n.syncDocumentLang();
 
-		// Resume audio on the first gesture (autoplay policy).
-		const onDown = () => unlockAudio();
-		window.addEventListener('pointerdown', onDown);
+		// Resume audio on a gesture (autoplay policy) - the END of a tap: iOS
+		// only unlocks audio from touchend/click/pointerup, not pointerdown.
+		// Speech is unlocked here too, app-wide, so a tap anywhere - the lobby,
+		// the seat circle, before the judge view even exists - counts. Mobile
+		// Safari and Chrome (iOS and Android) both refuse speechSynthesis until
+		// one has happened; primeSpeech retries on every tap until it sticks.
+		const onDown = (e: Event) => {
+			unlockAudio();
+			if (e.type !== 'pointerdown') primeSpeech();
+		};
+		const gestures = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+		for (const g of gestures) window.addEventListener(g, onDown);
 
 		// Deliberately does NOT suspend the AudioContext or pause speechSynthesis
 		// when the tab/app goes to the background - the ambient drone and
@@ -36,7 +45,7 @@
 		window.addEventListener('pageshow', onVisible);
 
 		return () => {
-			window.removeEventListener('pointerdown', onDown);
+			for (const g of gestures) window.removeEventListener(g, onDown);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			window.removeEventListener('pageshow', onVisible);
 		};
