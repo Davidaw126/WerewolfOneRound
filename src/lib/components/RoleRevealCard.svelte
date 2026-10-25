@@ -4,7 +4,6 @@
 	import { sendAction } from '$lib/client/socket';
 	import type { AckResponse } from '$lib/shared/events';
 	import RoleFace from './RoleFace.svelte';
-	import { sfxReveal } from '$lib/client/sfx';
 	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 
@@ -29,7 +28,6 @@
 			// `revealing = true` would otherwise stick as "翻开中…".
 			await sendAction<AckResponse>({ kind: 'RevealRole' });
 			revealing = false;
-			sfxReveal();
 			gameStore.logActivity(t.activityLog.youCheckedIdentity);
 		}
 	}

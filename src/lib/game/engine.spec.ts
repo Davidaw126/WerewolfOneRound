@@ -13,6 +13,22 @@ function payload<T = Record<string, unknown>>(effect: EngineEffect | undefined):
 	return effect.payload as T;
 }
 
+/** These flow tests were written against the old 遗言 defaults - keep them
+ * on here so the LAST_WORDS queue stays covered now that the shipped
+ * defaults turn it off. */
+function lastWordsOnConfig() {
+	const cfg = defaultRuleConfig();
+	cfg.lastWords = {
+		firstNightVictim: true,
+		exiledPlayer: true,
+		hunterShotVictim: true,
+		nightVictimAfterFirst: false
+	};
+	// These tests drive the in-app HUNTER_SHOOT phase directly.
+	cfg.shotsAtTable = false;
+	return cfg;
+}
+
 function start(roles: Record<Seat, RoleId>) {
 	const roleConfig: Partial<Record<RoleId, number>> = {};
 	const players = Object.entries(roles).map(([seatStr, role]) => {
@@ -22,7 +38,7 @@ function start(roles: Record<Seat, RoleId>) {
 	});
 	return startGame({
 		roomCode: 'ABC123',
-		ruleConfig: defaultRuleConfig(),
+		ruleConfig: lastWordsOnConfig(),
 		setup: buildSetup(roleConfig),
 		deal: {
 			identities: Object.fromEntries(Object.entries(roles).map(([s, r]) => [s, r])),
@@ -260,7 +276,7 @@ describe('full game: night action -> witch save -> seer check -> vote -> GOOD wi
 			identity: RoleId;
 			tie: boolean;
 		};
-		expect(dayResolved).toMatchObject({ eliminatedSeat: 1, identity: 'WEREWOLF', tie: false });
+		expect(dayResolved).toMatchObject({ eliminatedSeat: 1, identity: null, tie: false }); // card stays face down
 
 		// Zero wolves remain -> GOOD wins immediately.
 		expect(state.phase).toBe('GAME_OVER');
@@ -484,7 +500,7 @@ describe('§9.4 平票处理: a tied vote opens VOTE_PK (tieBreak=PK_THEN_NO_EXI
 			eliminatedSeat: number;
 			identity: string;
 		};
-		expect(resolved).toMatchObject({ eliminatedSeat: 1, identity: 'WEREWOLF' });
+		expect(resolved).toMatchObject({ eliminatedSeat: 1, identity: null });
 		// Zero wolves remain -> GOOD wins immediately.
 		expect(state.phase).toBe('GAME_OVER');
 		expect(state.winner).toBe('GOOD');
@@ -583,7 +599,7 @@ describe('IDIOT reveal-on-exile (§9.5, B16-B19, UT-10)', () => {
 });
 
 describe('SELF_EXPLODE (§9.6)', () => {
-	it('a regular werewolf self-explodes: dies, day ends immediately (selfExplodeEndsDay default true)', () => {
+	it('a regular werewolf self-explodes: dies, the day is decided (selfExplodeEndsDay default true)', () => {
 		// A second, surviving wolf keeps this from also being an immediate GOOD
 		// win - the point of this test is the phase transition, not the tally.
 		const state = makeState(
@@ -595,8 +611,13 @@ describe('SELF_EXPLODE (§9.6)', () => {
 		expect(after.players[1].isDead).toBe(true);
 		expect(after.players[1].deathCause).toBe('SELF_EXPLODE');
 		expect(payload(effectsOfKind(effects, 'SelfExploded')[0])).toMatchObject({ seat: 1 });
-		expect(after.phase).toBe('NIGHT');
-		expect(after.round).toBe(2);
+		// The day is over (no exile possible) but waits for the host's 进入下一夜.
+		expect(after.phase).toBe('DISCUSSION');
+		expect(after.dayDecided).toBe(true);
+		expect(reduce(after, { type: 'EXILE', seat: 3 }).effects).toEqual([]);
+		const night = reduce(after, { type: 'END_DAY' }).state;
+		expect(night.phase).toBe('NIGHT');
+		expect(night.round).toBe(2);
 	});
 
 	it('rejects a non-wolf seat trying to self-explode (server-side camp check)', () => {
@@ -606,7 +627,7 @@ describe('SELF_EXPLODE (§9.6)', () => {
 		expect(effects).toEqual([]);
 	});
 
-	it('UT-21: a wolf-king explosion queues a shot; resolving it advances straight to the next night', () => {
+	it('UT-21: a wolf-king explosion queues a shot; resolving it returns to the decided day', () => {
 		// A second wolf (seat 2) survives both the explosion and the shot (which
 		// targets a villager instead), so the win check doesn't preempt the
 		// phase-transition assertions below.
@@ -620,22 +641,19 @@ describe('SELF_EXPLODE (§9.6)', () => {
 		expect(exploded.state.players[1].deathCause).toBe('SELF_EXPLODE');
 		expect(exploded.state.phase).toBe('HUNTER_SHOOT');
 		expect(exploded.state.pendingShoots).toEqual([1]);
-		expect(exploded.state.returnPhase).toBe('NIGHT');
 
 		const shot = reduce(exploded.state, { type: 'HUNTER_SHOOT', shooterSeat: 1, targetSeat: 4 });
 		expect(shot.state.players[4].isDead).toBe(true);
 		expect(shot.state.players[4].deathCause).toBe('WOLF_KING_SHOT');
-		// lastWords.hunterShotVictim (default true) covers a wolf-king's shot
-		// victim too - a day-time shot, same as a regular hunter's.
-		expect(shot.state.phase).toBe('LAST_WORDS');
-		expect(shot.state.pendingLastWords).toEqual([4]);
-
-		const { state: after } = reduce(shot.state, { type: 'NEXT_SPEAKER' });
-		expect(after.phase).toBe('NIGHT'); // straight into the next night, no vote
+		// Back to the (decided) day - no exile, the host starts the night.
+		expect(shot.state.phase).toBe('DISCUSSION');
+		expect(shot.state.dayDecided).toBe(true);
+		const { state: after } = reduce(shot.state, { type: 'END_DAY' });
+		expect(after.phase).toBe('NIGHT');
 		expect(after.round).toBe(2);
 	});
 
-	it('wolfKingExplodeCanShoot = false: no shot queued, straight to night', () => {
+	it('wolfKingExplodeCanShoot = false: no shot queued, day decided', () => {
 		const cfg = {
 			...defaultRuleConfig(),
 			wolf: { ...defaultRuleConfig().wolf, wolfKingExplodeCanShoot: false }
@@ -646,12 +664,13 @@ describe('SELF_EXPLODE (§9.6)', () => {
 		);
 		const { state: after } = reduce(state, { type: 'SELF_EXPLODE', seat: 1 });
 		expect(after.pendingShoots).toEqual([]);
-		expect(after.phase).toBe('NIGHT');
+		expect(after.phase).toBe('DISCUSSION');
+		expect(after.dayDecided).toBe(true);
 	});
 });
 
 describe('KNIGHT_DUEL (§9.6, UT-22)', () => {
-	it('B29: duel reveals a wolf - wolf dies, duel ends the day immediately (duelEndsDayIfWolf default true)', () => {
+	it('B29: duel reveals a wolf - wolf dies, duel decides the day (duelEndsDayIfWolf default true)', () => {
 		// A second wolf survives the duel so this stays mid-game (not an
 		// incidental GOOD win) - the assertions are about the phase transition.
 		const state = makeState(
@@ -668,7 +687,8 @@ describe('KNIGHT_DUEL (§9.6, UT-22)', () => {
 		expect(after.players[2].deathCause).toBe('KNIGHT_DUEL');
 		expect(after.players[2].revealedRole).toBe('WEREWOLF');
 		expect(after.knightUsed).toBe(true);
-		expect(after.phase).toBe('NIGHT');
+		expect(after.phase).toBe('DISCUSSION');
+		expect(after.dayDecided).toBe(true);
 
 		const resolved = payload(effectsOfKind(effects, 'KnightDuelResolved')[0]) as {
 			targetWasWolf: boolean;
@@ -695,7 +715,7 @@ describe('KNIGHT_DUEL (§9.6, UT-22)', () => {
 		expect(after.phase).toBe('DISCUSSION');
 	});
 
-	it('B31: duel target is a cross-camp couple wolf - wolf dies, partner follows via LOVER_SUICIDE, immediate night', () => {
+	it('B31: duel target is a cross-camp couple wolf - wolf dies, partner follows via LOVER_SUICIDE, day decided', () => {
 		// A second wolf (seat 4) survives so killing the linked wolf isn't also
 		// an incidental GOOD win - B31's "立即进夜" outcome assumes the game
 		// keeps going, which only shows up if it doesn't end here.
@@ -709,7 +729,8 @@ describe('KNIGHT_DUEL (§9.6, UT-22)', () => {
 		expect(after.players[2].deathCause).toBe('KNIGHT_DUEL');
 		expect(after.players[3].isDead).toBe(true);
 		expect(after.players[3].deathCause).toBe('LOVER_SUICIDE');
-		expect(after.phase).toBe('NIGHT');
+		expect(after.phase).toBe('DISCUSSION');
+		expect(after.dayDecided).toBe(true);
 	});
 
 	it('onceOnly: rejected outright once knightUsed is already true', () => {
@@ -751,15 +772,14 @@ describe('hunter chain-shot (UT-09 / B14)', () => {
 			5: 'VILLAGER'
 		});
 
-		({ state } = reduce(state, { type: 'ADVANCE_STAGE' })); // -> WEREWOLF (past fake GUARD)
+		// No guard/witch/seer configured, so the night opens on WEREWOLF.
+		expect(state.currentStepKey).toBe('role:WEREWOLF');
 		({ state } = reduce(state, {
 			type: 'SUBMIT_NIGHT_ACTION',
 			seat: 2,
 			role: 'WEREWOLF',
 			action: { wolfKillTarget: 1 }
 		}));
-		({ state } = reduce(state, { type: 'ADVANCE_STAGE' })); // -> WITCH (fake)
-		({ state } = reduce(state, { type: 'ADVANCE_STAGE' })); // -> SEER (fake)
 		({ state } = reduce(state, { type: 'ADVANCE_STAGE' })); // -> HUNTER's informational turn
 		({ state } = reduce(state, { type: 'ADVANCE_STAGE' })); // exhausted -> DAWN
 		({ state } = reduce(state, { type: 'ANNOUNCE_NIGHT_RESULTS' }));
@@ -1027,10 +1047,18 @@ describe('M7: THIEF forced wolf pick (UT-24)', () => {
 
 describe('M7: NIGHTMARE fear (§4.2, B49)', () => {
 	it('a feared seat cannot act for the rest of that night or vote the next day; fear clears at the next night', () => {
-		// GUARD/WEREWOLF/WITCH/HUNTER aren't configured on this board at all -
-		// NIGHTMARE (not itself always-announced, but configured+alive) is the
-		// first stage in the order.
+		// The 恶灵骑士 is this board's only wolf: he first makes the pack's
+		// kill in the WEREWOLF stage, then fears in his own.
 		let { state } = start({ 1: 'NIGHTMARE', 2: 'SEER', 3: 'VILLAGER', 4: 'VILLAGER' });
+		expect(state.currentStepKey).toBe('role:WEREWOLF');
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'NIGHTMARE',
+			action: { wolfKillTarget: null } // 空刀 - nobody dies, so the day stays simple
+		}));
+		expect(state.submittedRoles).toEqual(['WEREWOLF']);
+		({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
 		expect(state.currentStepKey).toBe('role:NIGHTMARE');
 
 		({ state } = reduce(state, {
@@ -1075,9 +1103,16 @@ describe('M7: NIGHTMARE fear (§4.2, B49)', () => {
 		// Fear clears at the start of the next night.
 		expect(state.fearedSeat).toBeNull();
 
-		// The seer can act normally again. GUARD/WEREWOLF/WITCH still aren't
-		// configured, so advanceToNextNight lands directly on NIGHTMARE, same
-		// as night 1.
+		// The seer can act normally again. Night 2 opens with the pack's kill
+		// again (the 恶灵骑士 alone), then his own fear stage.
+		expect(state.currentStepKey).toBe('role:WEREWOLF');
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'NIGHTMARE',
+			action: { wolfKillTarget: null }
+		}));
+		({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
 		expect(state.currentStepKey).toBe('role:NIGHTMARE');
 		({ state } = reduce(state, {
 			type: 'SUBMIT_NIGHT_ACTION',
@@ -1094,5 +1129,53 @@ describe('M7: NIGHTMARE fear (§4.2, B49)', () => {
 		});
 		expect(effectsOfKind(allowed.effects, 'NightActionRejected')).toEqual([]);
 		expect(allowed.state.nightActions.seerCheckTarget).toBe(4);
+	});
+});
+
+describe('EXILE (host records the table vote)', () => {
+	it('a hunter exiled at day shoots, then the day waits for END_DAY', () => {
+		const state = makeState(
+			{ 1: 'HUNTER', 2: 'WEREWOLF', 3: 'WEREWOLF', 4: 'VILLAGER', 5: 'VILLAGER', 6: 'SEER' },
+			{ phase: 'DISCUSSION', round: 1 }
+		);
+		const exiled = reduce(state, { type: 'EXILE', seat: 1 });
+		expect(exiled.state.players[1].deathCause).toBe('VOTE_OUT');
+		expect(exiled.state.phase).toBe('HUNTER_SHOOT');
+		const resolved = payload(effectsOfKind(exiled.effects, 'DayResolved')[0]);
+		expect(resolved).toMatchObject({ eliminatedSeat: 1, identity: null });
+
+		const shot = reduce(exiled.state, { type: 'HUNTER_SHOOT', shooterSeat: 1, targetSeat: 2 });
+		expect(shot.state.players[2].isDead).toBe(true);
+		expect(shot.state.phase).toBe('DISCUSSION');
+		expect(shot.state.dayDecided).toBe(true);
+		// Only once per day.
+		expect(reduce(shot.state, { type: 'EXILE', seat: 4 }).effects).toEqual([]);
+
+		const night = reduce(shot.state, { type: 'END_DAY' }).state;
+		expect(night.phase).toBe('NIGHT');
+		expect(night.dayDecided).toBe(false);
+	});
+
+	it('an exiled lover takes their partner along (殉情)', () => {
+		const state = makeState(
+			{ 1: 'VILLAGER', 2: 'WEREWOLF', 3: 'WEREWOLF', 4: 'VILLAGER', 5: 'SEER' },
+			{ phase: 'DISCUSSION', round: 1, lovers: [1, 4] }
+		);
+		const { state: after, effects } = reduce(state, { type: 'EXILE', seat: 1 });
+		expect(after.players[4].deathCause).toBe('LOVER_SUICIDE');
+		expect(payload(effectsOfKind(effects, 'DayResolved')[0])).toMatchObject({
+			followDeathSeat: 4
+		});
+	});
+
+	it("can't exile a dead or flipped seat", () => {
+		const state = makeState(
+			{ 1: 'IDIOT', 2: 'WEREWOLF', 3: 'VILLAGER' },
+			{ phase: 'DISCUSSION', round: 1 }
+		);
+		state.players[1].isRevealedIdiot = true;
+		state.players[3].isDead = true;
+		expect(reduce(state, { type: 'EXILE', seat: 1 }).effects).toEqual([]);
+		expect(reduce(state, { type: 'EXILE', seat: 3 }).effects).toEqual([]);
 	});
 });

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { gameStore } from '$lib/client/gameStore.svelte';
-	import { sfxWhoosh } from '$lib/client/sfx';
 
 	type TimeOfDay = 'night' | 'day' | null;
 
@@ -28,7 +27,6 @@
 		const now = timeOfDay;
 		if (now !== null && now !== prev) {
 			active = now;
-			sfxWhoosh();
 			clearTimeout(timer);
 			timer = setTimeout(() => (active = null), 1400);
 		}

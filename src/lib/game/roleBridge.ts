@@ -18,7 +18,7 @@ for (const id of ALL_ROLE_IDS) {
 	LEGACY_TO_ROLE_ID[ROLE_META[id].legacyRole] = id;
 }
 
-/** The old-app roster has 8 roles (禁言长老/高级村民/老流氓/黑狼王/隐狼/恶魔/
+/** The old-app roster has 7 roles (禁言长老/高级村民/老流氓/隐狼/恶魔/
  * 机械狼/梦魇) with no counterpart in the new 15-role RoleId set (M0 plan
  * decision 3) - null here means exactly that, not a bug. */
 export function legacyToRoleId(role: Role): RoleId | null {

@@ -34,7 +34,10 @@
 	async function createRoom() {
 		error = null;
 		creating = true;
-		const res = await sendAction<AckResponse & { roomCode?: string }>({ kind: 'RoomCreate' });
+		const res = await sendAction<AckResponse & { roomCode?: string }>(
+			{ kind: 'RoomCreate' },
+			{ quiet: true }
+		);
 		creating = false;
 		if (res.ok && res.roomCode) {
 			await goto(resolve('/room/[code]', { code: res.roomCode }));
@@ -52,7 +55,10 @@
 		}
 		error = null;
 		joining = true;
-		const res = await sendAction<AckResponse>({ kind: 'RoomJoin', roomCode: code });
+		const res = await sendAction<AckResponse>(
+			{ kind: 'RoomJoin', roomCode: code },
+			{ quiet: true }
+		);
 		joining = false;
 		if (res.ok) {
 			await goto(resolve('/room/[code]', { code }));

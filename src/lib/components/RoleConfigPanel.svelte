@@ -30,7 +30,7 @@
 	let issues = $state<string[]>([]);
 
 	// Narrowed to the 15 roles the new engine can represent (M0 plan decision
-	// 3) - the other 8 (禁言长老/高级村民/老流氓/黑狼王/隐狼/恶魔/机械狼/梦魇)
+	// 3) - the other 7 (禁言长老/高级村民/老流氓/隐狼/恶魔/机械狼/梦魇)
 	// have no RoleId counterpart, so a room configured with one of them would
 	// fail to start (server-side validated too, in handleRoomSubmitConfig).
 	const pickableRoles = ALL_ROLES.filter((r) => SUPPORTED_LEGACY_ROLES.includes(r));
@@ -59,6 +59,9 @@
 	const defaults = defaultRuleConfig();
 	let winCondition = $state<'SIDE_KILL' | 'TOTAL_KILL'>(defaults.winCondition);
 	let wolfAllowEmptyKill = $state(defaults.wolf.allowEmptyKill);
+	let blackWolfKingCanShootWhenLoverSuicide = $state(
+		defaults.wolf.blackWolfKingCanShootWhenLoverSuicide
+	);
 	let guardSameGuardSameSave = $state(defaults.guard.sameGuardSameSave);
 	let witchSelfRescue = $state(defaults.witch.selfRescue);
 	let witchCanPoisonSelf = $state(defaults.witch.canPoisonSelf);
@@ -77,7 +80,10 @@
 	function buildRuleOverrides(): RuleConfigOverrides {
 		return {
 			winCondition,
-			wolf: { allowEmptyKill: wolfAllowEmptyKill },
+			wolf: {
+				allowEmptyKill: wolfAllowEmptyKill,
+				blackWolfKingCanShootWhenLoverSuicide
+			},
 			guard: { sameGuardSameSave: guardSameGuardSameSave },
 			witch: {
 				selfRescue: witchSelfRescue,
@@ -109,12 +115,15 @@
 			return;
 		}
 		submitting = true;
-		const res = await sendAction<AckResponse & { issues?: ValidationIssue[] }>({
-			kind: 'RoomSubmitConfig',
-			roleConfig: counts,
-			cupidPoisonBlocksHunter,
-			ruleOverrides: buildRuleOverrides()
-		});
+		const res = await sendAction<AckResponse & { issues?: ValidationIssue[] }>(
+			{
+				kind: 'RoomSubmitConfig',
+				roleConfig: counts,
+				cupidPoisonBlocksHunter,
+				ruleOverrides: buildRuleOverrides()
+			},
+			{ quiet: true } // validation issues are listed inline below
+		);
 		submitting = false;
 		if (!res.ok) {
 			error = res.issues?.[0] ? issueText(res.issues[0]) : t.roleConfig.submitFailed;
@@ -308,6 +317,19 @@
 					() => (hunterCanShootWhenLoverSuicide = !hunterCanShootWhenLoverSuicide)
 				)}
 			</div>
+
+			{#if (counts['黑狼王'] ?? 0) > 0}
+				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
+					<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+						{t.roleConfig.blackWolfKingHeader}
+					</div>
+					{@render toggle(
+						t.roleConfig.blackWolfKingCanShootWhenLoverSuicide,
+						blackWolfKingCanShootWhenLoverSuicide,
+						() => (blackWolfKingCanShootWhenLoverSuicide = !blackWolfKingCanShootWhenLoverSuicide)
+					)}
+				</div>
+			{/if}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">

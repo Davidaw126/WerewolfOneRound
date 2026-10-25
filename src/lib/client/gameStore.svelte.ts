@@ -1,7 +1,7 @@
 import type { NightStage, RoomPublicState, Winner } from '$lib/shared/gameTypes';
 import type { Role } from '$lib/shared/roles';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
-import { onServerEvent, onPrivateEvent } from './socket';
+import { onServerEvent, onPrivateEvent, onActionError } from './socket';
 import { i18n } from './i18n.svelte';
 import {
 	strings,
@@ -10,6 +10,7 @@ import {
 	formatHunterResult,
 	formatGameOverText,
 	formatSelfExplode,
+	formatDayOut,
 	formatKnightDuel,
 	formatHostOverrideApplied,
 	formatSeerResult,
@@ -17,6 +18,8 @@ import {
 	formatRolesReshuffled,
 	formatRolesReshuffledConfirm,
 	formatHunterDenied,
+	formatShotStatus,
+	formatActionError,
 	formatHunterAuthorized,
 	formatRoomClosedByHost,
 	formatPlayerLeftMidGame
@@ -60,6 +63,7 @@ class GameStore {
 		tie: boolean;
 		followDeathSeat: number | null;
 		followDeathIdentity: Role | null;
+		idiotRevealed: boolean;
 	} | null>(null);
 	lastHunterResult = $state<{
 		hunterSeat: number;
@@ -73,6 +77,12 @@ class GameStore {
 	} | null>(null);
 
 	myRole = $state<Role | null>(null);
+	/** This phone's 确认 on the current 开枪状态/情侣相认 stage landed. */
+	stageConfirmed = $state(false);
+	/** A wolf teammate already made tonight's kill (this stage only). */
+	packKill = $state<{ bySeat: number; target: number | null } | null>(null);
+	/** Another holder of this role (a 上帝之手 duplicate) already acted. */
+	roleDoneByOther = $state(false);
 	myTurnRole = $state<Role | null>(null);
 	/** Private per-turn info for whoever is acting - see TurnContext. */
 	turnContext = $state<TurnContext | null>(null);
@@ -240,6 +250,7 @@ class GameStore {
 
 	connect(): void {
 		this.disconnect();
+		onActionError((code) => this.showInfoPopup(formatActionError(code, i18n.lang), 'bad', 4000));
 		this.unsubscribers.push(
 			onServerEvent((event) => this.handleServerEvent(event)),
 			onPrivateEvent((event) => this.handlePrivateEvent(event))
@@ -249,6 +260,16 @@ class GameStore {
 	disconnect(): void {
 		for (const unsub of this.unsubscribers) unsub();
 		this.unsubscribers = [];
+	}
+
+	private markRevealedIdiot(seat: number): void {
+		if (!this.state) return;
+		this.state = {
+			...this.state,
+			seats: this.state.seats.map((s) =>
+				s.seatNumber === seat ? { ...s, revealedIdiot: true } : s
+			)
+		};
 	}
 
 	private markDead(seat: number): void {
@@ -372,7 +393,10 @@ class GameStore {
 					phase: event.phase,
 					nightNumber: event.nightNumber,
 					currentSpeaker: null,
-					speechOrder: []
+					speechOrder: [],
+					// A new night clears it; a day-time hunter shot returning to the
+					// day must not.
+					dayDecided: event.phase === 'NIGHT_ACTIONS' ? false : this.state.dayDecided
 				};
 				this.myTurnRole = null;
 				this.turnContext = null;
@@ -384,6 +408,9 @@ class GameStore {
 				break;
 			case 'StageChanged':
 				this.state = { ...this.state, stage: event.stage };
+				this.stageConfirmed = false;
+				this.packKill = null;
+				this.roleDoneByOther = false;
 				this.myTurnRole = null;
 				this.turnContext = null;
 				this.pendingTurnRole = null;
@@ -399,6 +426,9 @@ class GameStore {
 					this.logRoom(text);
 				}
 				break;
+			case 'DayDecided':
+				this.state = { ...this.state, dayDecided: true };
+				break;
 			case 'VoteUpdated':
 				this.state = {
 					...this.state,
@@ -412,10 +442,16 @@ class GameStore {
 					identity: event.identity,
 					tie: event.tie,
 					followDeathSeat: event.followDeathSeat,
-					followDeathIdentity: event.followDeathIdentity
+					followDeathIdentity: event.followDeathIdentity,
+					idiotRevealed: event.idiotRevealed === true
 				};
 				this.state = { ...this.state, pkCandidates: event.pkCandidates ?? [] };
-				if (event.eliminatedSeat !== null) this.markDead(event.eliminatedSeat);
+				if (event.idiotRevealed && event.eliminatedSeat !== null) {
+					// Flipped, not dead - see SeatState.revealedIdiot.
+					this.markRevealedIdiot(event.eliminatedSeat);
+				} else if (event.eliminatedSeat !== null) {
+					this.markDead(event.eliminatedSeat);
+				}
 				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				{
 					const text = formatDayResult({
@@ -423,6 +459,7 @@ class GameStore {
 						eliminatedSeat: event.eliminatedSeat,
 						identity: event.identity,
 						followDeathSeat: event.followDeathSeat,
+						idiotRevealed: event.idiotRevealed === true,
 						lang: i18n.lang
 					});
 					this.logActivity(text, { public: true });
@@ -435,6 +472,13 @@ class GameStore {
 			case 'DiscussionSpeakerChanged':
 				this.state = { ...this.state, currentSpeaker: event.seat, speechOrder: event.order };
 				break;
+			case 'DayOut': {
+				for (const seat of [...event.seats, ...event.followDeaths]) this.markDead(seat);
+				const text = formatDayOut(event.seats, event.followDeaths, i18n.lang);
+				this.logActivity(text, { public: true });
+				this.logRoom(text);
+				break;
+			}
 			case 'SelfExploded': {
 				const text = formatSelfExplode(event.seat, i18n.lang);
 				this.logActivity(text, { public: true });
@@ -451,7 +495,8 @@ class GameStore {
 				);
 				this.logActivity(text, { public: true });
 				this.logRoom(text);
-				this.markDead(event.targetWasWolf ? event.targetSeat : event.knightSeat);
+				for (const seat of event.deaths) this.markDead(seat);
+				this.state = { ...this.state, knightUsed: true };
 				break;
 			}
 			case 'HunterPending':
@@ -514,7 +559,7 @@ class GameStore {
 				this.revealTurn();
 				break;
 			case 'HostOverrideApplied': {
-				if (event.overrideKind === 'KILL') this.markDead(event.seat);
+				if (event.overrideKind === 'KILL') for (const seat of event.deaths) this.markDead(seat);
 				if (event.overrideKind === 'REVIVE') this.markAlive(event.seat);
 				const text = formatHostOverrideApplied(event.seat, event.overrideKind, i18n.lang);
 				this.logActivity(text, { public: true });
@@ -527,8 +572,33 @@ class GameStore {
 	private handlePrivateEvent(event: PrivateInfo): void {
 		switch (event.kind) {
 			case 'YourRole':
+				// 上帝之手 changed this card mid-turn: drop a prompt that belongs
+				// to the old role (a new one, if any, follows right behind).
+				if (this.myRole !== null && this.myRole !== event.role) {
+					this.myTurnRole = null;
+					this.turnContext = null;
+					this.pendingTurnRole = null;
+					this.pendingTurnContext = null;
+				}
 				this.myRole = event.role;
 				break;
+			case 'StageConfirmed':
+				this.stageConfirmed = true;
+				break;
+			case 'RoleDoneByOther': {
+				this.roleDoneByOther = true;
+				const text = strings(i18n.lang).nightPrompt.roleDoneByOther;
+				this.logActivity(text);
+				this.showInfoPopup(text, 'neutral', 5000);
+				break;
+			}
+			case 'PackKillChosen': {
+				this.packKill = { bySeat: event.bySeat, target: event.target };
+				const text = strings(i18n.lang).nightPrompt.packKillChosen(event.bySeat, event.target);
+				this.logActivity(text);
+				this.showInfoPopup(text, 'neutral', 5000);
+				break;
+			}
 			case 'SeerResult':
 				this.lastSeerResult = { targetSeat: event.targetSeat, isWolf: event.isWolf };
 				// '坏人'/'好人', not the specific role - the seer only ever learns
@@ -556,6 +626,13 @@ class GameStore {
 				const role = event.role;
 				this.pendingTurnRole = role;
 				this.pendingTurnContext = event.context;
+				if (event.replay) {
+					// Re-sent after a reconnect/reload (server's turnReplay.ts) -
+					// this stage's narration already played while we were away, so
+					// there's no StageNarrationStarted left to wait for.
+					this.revealTurn();
+					break;
+				}
 				// Fallback in case narration never relays a start signal (muted,
 				// unsupported browser, no host connected) - see revealTurn.
 				setTimeout(() => this.revealTurn(), TURN_REVEAL_FALLBACK_MS);
@@ -565,6 +642,12 @@ class GameStore {
 				this.hunterAuthorized = true;
 				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good');
 				break;
+			case 'ShotStatus': {
+				const text = formatShotStatus(event.canShoot, i18n.lang);
+				this.logActivity(text);
+				this.showInfoPopup(text, event.canShoot ? 'good' : 'bad', 8000);
+				break;
+			}
 			case 'HunterDenied':
 				this.logActivity(formatHunterDenied(i18n.lang));
 				this.showInfoPopup(formatHunterDenied(i18n.lang), 'bad');

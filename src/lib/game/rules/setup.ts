@@ -72,6 +72,7 @@ const UNIQUE_ROLES: ReadonlySet<RoleId> = new Set([
 	'THIEF',
 	'WILD_CHILD',
 	'WOLF_KING',
+	'BLACK_WOLF_KING',
 	'WOLF_BEAUTY'
 ]);
 

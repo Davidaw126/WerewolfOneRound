@@ -52,7 +52,13 @@ import {
 	type NightRuleError
 } from './rules/nightRules';
 import { checkWinCondition, baseCamp } from './rules/winCondition';
-import { ROLE_META } from './roleMeta';
+import {
+	ROLE_META,
+	PACK_KILL_ROLES,
+	PACK_MEMBER_ROLES,
+	STATUS_STAGE_ROLES,
+	actsInStage
+} from './roleMeta';
 
 // ---------------------------------------------------------------------------
 // withEffects - the immer + side-channel-effects-array pattern every handler
@@ -101,7 +107,7 @@ function computeStageOrder(state: GameState): NightStage[] {
 }
 
 function roleHasLivingHolder(state: GameState, role: RoleId): boolean {
-	return Object.values(state.players).some((p) => !p.isDead && p.role === role);
+	return Object.values(state.players).some((p) => !p.isDead && actsInStage(role, p.role));
 }
 
 /** Finds the next stage after `fromKey` (null = before the first stage),
@@ -142,6 +148,7 @@ function enterStage(draft: GameState, effects: EngineEffect[], stage: NightStage
 		return;
 	}
 	draft.currentStepKey = stageKey(stage);
+	draft.stageConfirms = [];
 	effects.push({ kind: 'BROADCAST', payload: { kind: 'StageChanged', stage } });
 	if (stage.kind === 'ROLE_TURN') {
 		effects.push(...notifyRoleHolders(draft, stage.role));
@@ -160,6 +167,7 @@ function advanceToNextNight(draft: GameState, effects: EngineEffect[]): void {
 	draft.charmedSeat = null;
 	draft.fearedSeat = null;
 	draft.currentStepKey = null;
+	draft.dayDecided = false;
 	effects.push({
 		kind: 'BROADCAST',
 		payload: { kind: 'PhaseChanged', phase: 'NIGHT', nightNumber: draft.round }
@@ -242,9 +250,16 @@ function handleAnnounceNightResults(state: GameState): EngineResult {
 		// 'poison' matches the old app's literal reason string; a house rule
 		// that denies e.g. canShootWhenWolfKilled would also land here without
 		// actually being a poison denial. SPEC-GAP: no distinct reason per cause.
-		for (const d of deaths) {
+		if (draft.ruleConfig.shotsAtTable) {
+			// The shot happens at the table and the host records its victim
+			// with DAY_OUT - just tell each fallen shooter whether they may.
+			pushShotStatus(draft, effects, deaths);
+			draft.pendingShoots = [];
+		}
+		for (const d of draft.ruleConfig.shotsAtTable ? [] : deaths) {
 			const player = draft.players[d.seat];
-			if (player?.role === 'HUNTER' && !draft.pendingShoots.includes(d.seat)) {
+			// 黑狼王 too: poison is likewise his only reachable night denial.
+			if (player && STATUS_STAGE_ROLES.has(player.role) && !draft.pendingShoots.includes(d.seat)) {
 				effects.push({
 					kind: 'PRIVATE',
 					seat: d.seat,
@@ -395,7 +410,7 @@ function handleNextSpeaker(state: GameState): EngineResult {
 
 function handleBeginVote(state: GameState): EngineResult {
 	return withEffects(state, (draft, effects) => {
-		if (draft.phase !== 'DISCUSSION') return;
+		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
 		draft.phase = 'VOTE';
 		draft.votes = {};
 		draft.pkCandidates = [];
@@ -404,6 +419,17 @@ function handleBeginVote(state: GameState): EngineResult {
 			kind: 'BROADCAST',
 			payload: { kind: 'PhaseChanged', phase: 'VOTE', nightNumber: draft.round }
 		});
+	});
+}
+
+function handleEndDay(state: GameState): EngineResult {
+	return withEffects(state, (draft, effects) => {
+		if (draft.phase !== 'DISCUSSION' && draft.phase !== 'VOTE' && draft.phase !== 'VOTE_PK') return;
+		// Any votes cast so far are void - nobody is exiled today.
+		draft.votes = {};
+		draft.pkCandidates = [];
+		draft.currentSpeaker = null;
+		enterHunterShootOrContinue(draft, effects, [], 'NIGHT');
 	});
 }
 
@@ -420,8 +446,23 @@ function handleSubmitNightAction(
 	action: Extract<EngineAction, { type: 'SUBMIT_NIGHT_ACTION' }>
 ): EngineResult {
 	return withEffects(state, (draft, effects) => {
-		const { seat, role, action: a } = action;
+		const { seat, action: a } = action;
 		const cfg = draft.ruleConfig;
+
+		// Which turn this is decides what the submission means, not just the
+		// submitter's card: a 狼美人 in the pack's WEREWOLF stage is choosing
+		// the kill, in her own stage she's charming. Status stages (猎人 /
+		// 黑狼王 确认开枪状态) take no submission at all - without this a 黑狼王
+		// on his status stage could still make a pack kill.
+		const stepKey = draft.currentStepKey;
+		const inPackStage =
+			stepKey === stageKey({ kind: 'ROLE_TURN', role: 'WEREWOLF' }) &&
+			PACK_MEMBER_ROLES.has(action.role);
+		const inOwnStage =
+			stepKey === stageKey({ kind: 'ROLE_TURN', role: action.role }) &&
+			!STATUS_STAGE_ROLES.has(action.role);
+		if (!inPackStage && !inOwnStage) return reject(effects, seat, 'not_your_turn');
+		const role: RoleId = inPackStage ? 'WEREWOLF' : action.role;
 		const alreadySubmitted = draft.submittedRoles.includes(role);
 
 		// §4.2/B49: a seat 恶灵骑士 feared earlier THIS SAME night (NIGHTMARE's
@@ -430,13 +471,41 @@ function handleSubmitNightAction(
 		// of the next night (advanceToNextNight), so this also naturally
 		// covers "no voting tomorrow" being a day-phase-only concern (see
 		// handleCastVote's own identical guard).
-		if (draft.fearedSeat === seat && role !== 'NIGHTMARE') {
-			return reject(effects, seat, 'feared');
+		if (draft.fearedSeat === seat && action.role !== 'NIGHTMARE') {
+			// Any real choice is blocked - but a feared player must still be able
+			// to PASS, or nobody can end this turn: only COUPLE_REVEAL/HUNTER are
+			// host-advanced, so a rejected-only turn froze the whole night.
+			const isPass = Object.keys(a).length === 0;
+			if (!isPass) return reject(effects, seat, 'feared');
+			// The wolf kill is shared: a feared wolf passing must not use up the
+			// pack's kill while an unfeared wolf can still make it.
+			if (inPackStage) {
+				const otherWolfCanAct = Object.values(draft.players).some(
+					(p) =>
+						!p.isDead &&
+						p.seat !== seat &&
+						p.seat !== draft.fearedSeat &&
+						PACK_MEMBER_ROLES.has(p.role)
+				);
+				if (otherWolfCanAct) return reject(effects, seat, 'feared');
+			} else {
+				// Same for a 上帝之手 duplicate of any other role: the pass is
+				// just this seat sitting the turn out, not the turn itself.
+				const otherHolderCanAct = Object.values(draft.players).some(
+					(p) =>
+						!p.isDead && p.seat !== seat && p.seat !== draft.fearedSeat && p.role === action.role
+				);
+				if (otherHolderCanAct) return;
+			}
+			if (!draft.submittedRoles.includes(role)) draft.submittedRoles.push(role);
+			effects.push({ kind: 'BROADCAST', payload: { kind: 'NightActionAck', role } });
+			return;
 		}
 
 		switch (role) {
 			case 'WEREWOLF':
-			case 'WOLF_KING': {
+			case 'WOLF_KING':
+			case 'BLACK_WOLF_KING': {
 				// WOLF_KING shares this same collective kill decision - no
 				// separate night stage or nightActions field of its own (see
 				// roleMeta.ts's WOLF_KING.nightOrder comment). Every wolf-team
@@ -448,16 +517,23 @@ function handleSubmitNightAction(
 				// (not just this submitter's own `role`/the generic
 				// `alreadySubmitted` above), since a WEREWOLF submitting first
 				// must also block a WOLF_KING's later submission and vice versa.
-				if (
-					draft.submittedRoles.includes('WEREWOLF') ||
-					draft.submittedRoles.includes('WOLF_KING')
-				) {
+				if (draft.submittedRoles.some((r) => PACK_KILL_ROLES.has(r))) {
 					return reject(effects, seat, 'already_submitted');
 				}
 				const target = a.wolfKillTarget ?? null;
 				const error = validateWolfKillAction(cfg, target);
 				if (error) return reject(effects, seat, error);
 				draft.nightActions.wolfKillTarget = target;
+				// The rest of the pack is still awake looking at their prompt -
+				// tell them a teammate settled it, so they can close their eyes.
+				for (const p of Object.values(draft.players)) {
+					if (p.seat === seat || p.isDead || !actsInStage('WEREWOLF', p.role)) continue;
+					effects.push({
+						kind: 'PRIVATE',
+						seat: p.seat,
+						payload: { kind: 'PackKillChosen', bySeat: seat, target }
+					});
+				}
 				break;
 			}
 			case 'WITCH': {
@@ -608,6 +684,16 @@ function handleSubmitNightAction(
 
 		if (!draft.submittedRoles.includes(role)) draft.submittedRoles.push(role);
 		effects.push({ kind: 'BROADCAST', payload: { kind: 'NightActionAck', role } });
+		// Every role but the pack's is one per board - unless 上帝之手 handed
+		// out a second copy. Then the other holder, still looking at the
+		// prompt, is told the turn is already taken (the pack's own version,
+		// with the target, is PackKillChosen above).
+		if (!inPackStage) {
+			for (const p of Object.values(draft.players)) {
+				if (p.seat === seat || p.isDead || !actsInStage(role, p.role)) continue;
+				effects.push({ kind: 'PRIVATE', seat: p.seat, payload: { kind: 'RoleDoneByOther' } });
+			}
+		}
 	});
 }
 
@@ -633,6 +719,51 @@ function handleAdvanceStage(
 // ---------------------------------------------------------------------------
 // CAST_VOTE / TALLY_VOTES
 // ---------------------------------------------------------------------------
+
+/** The stages where everyone else has their eyes shut, so the host can't
+ * see when to move on: the 猎人/黑狼王 checking their 开枪状态, and the
+ * couple recognising each other. The player(s) themselves tap 确认; once
+ * the stage is complete (stageConfirmComplete) the IO shell advances it
+ * after the same pause as any other finished turn.
+ * Anyone else's tap is a no-op (every phone shows the same button during
+ * 情侣相认, so the button itself can't give the couple away). */
+function handleConfirmStage(
+	state: GameState,
+	action: Extract<EngineAction, { type: 'CONFIRM_STAGE' }>
+): EngineResult {
+	return withEffects(state, (draft, effects) => {
+		if (draft.phase !== 'FIRST_NIGHT' && draft.phase !== 'NIGHT') return;
+		const key = draft.currentStepKey;
+		const player = draft.players[action.seat];
+		if (!key || !player || player.isDead) return;
+		if (key === stageKey({ kind: 'COUPLE_REVEAL' })) {
+			const lovers = (draft.lovers ?? []).filter((s) => !draft.players[s]?.isDead);
+			const confirms = draft.stageConfirms ?? [];
+			if (!lovers.includes(action.seat) || confirms.includes(action.seat)) return;
+			draft.stageConfirms = [...confirms, action.seat];
+			effects.push({ kind: 'PRIVATE', seat: action.seat, payload: { kind: 'StageConfirmed' } });
+			return;
+		}
+
+		const role = key.startsWith('role:') ? (key.slice('role:'.length) as RoleId) : null;
+		if (!role || !STATUS_STAGE_ROLES.has(role) || !actsInStage(role, player.role)) return;
+		if ((draft.stageConfirms ?? []).includes(action.seat)) return;
+		draft.stageConfirms = [...(draft.stageConfirms ?? []), action.seat];
+		effects.push({ kind: 'PRIVATE', seat: action.seat, payload: { kind: 'StageConfirmed' } });
+	});
+}
+
+/** Whether everyone the current stage waits on has tapped 确认 - the
+ * shooter on a 开枪状态 stage, every living lover on 情侣相认. */
+export function stageConfirmComplete(state: GameState): boolean {
+	const key = state.currentStepKey;
+	const confirms = state.stageConfirms ?? [];
+	if (key === stageKey({ kind: 'COUPLE_REVEAL' })) {
+		const lovers = (state.lovers ?? []).filter((s) => !state.players[s]?.isDead);
+		return lovers.length > 0 && lovers.every((s) => confirms.includes(s));
+	}
+	return confirms.length > 0;
+}
 
 function handleCastVote(
 	state: GameState,
@@ -666,6 +797,117 @@ function handleCastVote(
 			kind: 'BROADCAST',
 			payload: { kind: 'VoteUpdated', votedSeats, totalVoters }
 		});
+	});
+}
+
+/** The exile itself, shared by TALLY_VOTES and the host's EXILE.
+ * §9.5 / B16-B19: a not-yet-revealed IDIOT flips their card instead of
+ * dying - no death cascade at all (not even a T1 lover-suicide check,
+ * matching the spec's "不进入死亡结算" exactly), loses their vote (default),
+ * keeps their seat and speech right. Everyone else dies of VOTE_OUT, with
+ * the usual cascade (殉情, a queued hunter/wolf-king shot). */
+function applyExile(
+	draft: GameState,
+	seat: Seat
+): { idiotRevealed: boolean; exiledDeaths: Death[]; followDeathSeat: Seat | null } {
+	const cfg = draft.ruleConfig;
+	const player = draft.players[seat];
+	if (player && player.role === 'IDIOT' && !player.isRevealedIdiot && cfg.idiot.revealOnExile) {
+		player.isRevealedIdiot = true;
+		player.revealedRole = 'IDIOT';
+		if (cfg.idiot.losesVoteRight) player.hasVoteRight = false;
+		// Sheriff-badge handling (B18: tearsBadgeIfSheriff) deferred - no
+		// sheriff mechanic exists yet for a revealed idiot to hold a badge.
+		return { idiotRevealed: true, exiledDeaths: [], followDeathSeat: null };
+	}
+	const exiledDeaths = cascadeDeaths(draft, [{ seat, cause: 'VOTE_OUT' }], {
+		ruleConfig: cfg
+	});
+	const followDeathSeat = exiledDeaths.find((d) => d.seat !== seat)?.seat ?? null;
+	return { idiotRevealed: false, exiledDeaths, followDeathSeat };
+}
+
+function handleExile(
+	state: GameState,
+	action: Extract<EngineAction, { type: 'EXILE' }>
+): EngineResult {
+	return withEffects(state, (draft, effects) => {
+		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
+		const target = draft.players[action.seat];
+		// A flipped 白痴 can't be exiled again to any effect (B19).
+		if (!target || target.isDead || target.isRevealedIdiot) return;
+
+		draft.dayDecided = true;
+		const { idiotRevealed, exiledDeaths, followDeathSeat } = applyExile(draft, action.seat);
+		effects.push({
+			kind: 'BROADCAST',
+			payload: {
+				kind: 'DayResolved',
+				eliminatedSeat: action.seat,
+				// Not revealed: an exiled player's card stays face down (only
+				// the 白痴's flip is public, via idiotRevealed).
+				identity: null,
+				tie: false,
+				followDeathSeat,
+				followDeathIdentity: null,
+				idiotRevealed
+			}
+		});
+		effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
+		const lastWordsSeats = lastWordsFrom(exiledDeaths, draft.ruleConfig.lastWords.exiledPlayer);
+		// Back to DISCUSSION (not NIGHT) once any shot resolves - the host
+		// starts the night with 进入下一夜.
+		enterHunterShootOrContinue(draft, effects, lastWordsSeats, 'DISCUSSION');
+	});
+}
+
+/** Privately tells every fallen 猎人/狼王/黑狼王 whether this death lets
+ * them shoot - read off pendingShoots, which cascadeDeaths just filled via
+ * canTriggerShoot. Only the app knows some causes (a 狼美人 link, a poisoned
+ * lover), so the shooter can't always work it out at the table. */
+function pushShotStatus(draft: GameState, effects: EngineEffect[], deaths: Death[]): void {
+	for (const d of deaths) {
+		const role = draft.players[d.seat]?.role;
+		if (!role || !(STATUS_STAGE_ROLES.has(role) || role === 'WOLF_KING')) continue;
+		effects.push({
+			kind: 'PRIVATE',
+			seat: d.seat,
+			payload: { kind: 'ShotStatus', canShoot: draft.pendingShoots.includes(d.seat) }
+		});
+	}
+}
+
+/** The host records who left the table today - exiled, self-exploded or shot,
+ * all of which the table already saw happen. The app only adds what the
+ * table can't see: a lover's 殉情. A flipped 白痴 is simply not marked.
+ * Never queues a shot (a shooter among them fires at the table too) and
+ * never leaves DISCUSSION - the host may mark more, then 进入下一夜. */
+function handleDayOut(
+	state: GameState,
+	action: Extract<EngineAction, { type: 'DAY_OUT' }>
+): EngineResult {
+	return withEffects(state, (draft, effects) => {
+		if (draft.phase !== 'DISCUSSION') return;
+		const seats = [...new Set(action.seats)]
+			.filter((seat) => draft.players[seat] && !draft.players[seat].isDead)
+			.sort((a, b) => a - b);
+		if (seats.length === 0) return;
+
+		const deaths = cascadeDeaths(
+			draft,
+			seats.map((seat) => ({ seat, cause: 'DAY_OUT' as const })),
+			{ ruleConfig: draft.ruleConfig }
+		);
+		// A marked seat knows how they left (and so whether they may shoot);
+		// one dragged along by the cascade may not.
+		const follow = deaths.filter((d) => !seats.includes(d.seat));
+		pushShotStatus(draft, effects, follow);
+		draft.pendingShoots = [];
+		const followDeaths = follow.map((d) => d.seat).sort((a, b) => a - b);
+		effects.push({ kind: 'BROADCAST', payload: { kind: 'DayOut', seats, followDeaths } });
+
+		const winner = checkWinCondition(draft);
+		if (winner) endGame(draft, effects, winner);
 	});
 }
 
@@ -731,63 +973,23 @@ function handleTallyVotes(
 			}
 		}
 
-		let identity: RoleId | null = null;
 		let followDeathSeat: Seat | null = null;
-		let followDeathIdentity: RoleId | null = null;
 		let idiotRevealed = false;
 		let exiledDeaths: Death[] = [];
 		if (eliminated !== null) {
-			const eliminatedPlayer = draft.players[eliminated];
-			identity = eliminatedPlayer?.role ?? null;
-
-			// §9.5 / B16-B19: an exiled, not-yet-revealed IDIOT flips their card
-			// instead of dying - no death cascade at all (not even a T1
-			// lover-suicide check, matching the spec's "不进入死亡结算" exactly),
-			// loses their vote (default), keeps their seat and speech right, and
-			// can be exiled again later with no further effect (B19 - already
-			// true here for free, since isRevealedIdiot re-entering this branch
-			// is excluded by the check below, falling through to a normal - but
-			// by then impossible, since a dead-or-revealed idiot can't be voted
-			// for meaningfully twice in the same way - VOTE_OUT death; a second
-			// exile of an already-revealed idiot is a day-phase/UI concern for
-			// M5, not reachable from TALLY_VOTES alone).
-			if (
-				eliminatedPlayer &&
-				eliminatedPlayer.role === 'IDIOT' &&
-				!eliminatedPlayer.isRevealedIdiot &&
-				cfg.idiot.revealOnExile
-			) {
-				eliminatedPlayer.isRevealedIdiot = true;
-				eliminatedPlayer.revealedRole = 'IDIOT';
-				if (cfg.idiot.losesVoteRight) eliminatedPlayer.hasVoteRight = false;
-				idiotRevealed = true;
-				// Sheriff-badge handling (B18: tearsBadgeIfSheriff) deferred to
-				// M5 - no sheriff mechanic exists yet for a revealed idiot to hold
-				// a badge in the first place.
-			} else {
-				exiledDeaths = cascadeDeaths(draft, [{ seat: eliminated, cause: 'VOTE_OUT' }], {
-					ruleConfig: draft.ruleConfig
-				});
-				const follow = exiledDeaths.find((d) => d.seat !== eliminated);
-				if (follow) {
-					followDeathSeat = follow.seat;
-					followDeathIdentity = draft.players[follow.seat]?.role ?? null;
-				}
-			}
+			({ idiotRevealed, exiledDeaths, followDeathSeat } = applyExile(draft, eliminated));
 		}
 		effects.push({
 			kind: 'BROADCAST',
 			payload: {
 				kind: 'DayResolved',
 				eliminatedSeat: eliminated,
-				identity,
+				// Cards stay face down on exile (same as EXILE) - only the
+				// 白痴's flip is public, via idiotRevealed.
+				identity: null,
 				tie,
 				followDeathSeat,
-				followDeathIdentity,
-				// Not yet part of the old wire DayResolved event (no client UI
-				// consumes it until M5's exile flow lands) - the M1 effect
-				// translator already only forwards the fields the old event
-				// shape declares, so this is harmlessly dropped there for now.
+				followDeathIdentity: null,
 				idiotRevealed
 			}
 		});
@@ -830,7 +1032,10 @@ function handleHunterShoot(
 		let shotDeaths: Death[] = [];
 		if (action.targetSeat !== null) {
 			const shooter = draft.players[action.shooterSeat];
-			const cause: DeathCause = shooter?.role === 'WOLF_KING' ? 'WOLF_KING_SHOT' : 'HUNTER_SHOT';
+			const cause: DeathCause =
+				shooter?.role === 'WOLF_KING' || shooter?.role === 'BLACK_WOLF_KING'
+					? 'WOLF_KING_SHOT'
+					: 'HUNTER_SHOT';
 			shotDeaths = cascadeDeaths(draft, [{ seat: action.targetSeat, cause }], {
 				ruleConfig: draft.ruleConfig
 			});
@@ -869,7 +1074,7 @@ function handleSelfExplode(
 	action: Extract<EngineAction, { type: 'SELF_EXPLODE' }>
 ): EngineResult {
 	return withEffects(state, (draft, effects) => {
-		if (draft.phase !== 'DISCUSSION') return;
+		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
 		const player = draft.players[action.seat];
 		if (!player || player.isDead) return;
 		// "必须是狼阵营，服务端校验" - baseCamp, not getCamp: a cross-camp-couple
@@ -887,17 +1092,15 @@ function handleSelfExplode(
 		effects.push({ kind: 'BROADCAST', payload: { kind: 'SelfExploded', seat: action.seat } });
 
 		const lastWordsSeats = lastWordsFrom(deaths, draft.ruleConfig.wolf.selfExplodeHasLastWords);
-		// A non-default config where the day continues after an explosion still
-		// goes through the shared tail (not just a bare winner check) - a
-		// queued wolf-king shot from the cascade above now correctly gets its
-		// own HUNTER_SHOOT detour here instead of silently waiting for
-		// TALLY_VOTES to eventually notice it.
-		enterHunterShootOrContinue(
-			draft,
-			effects,
-			lastWordsSeats,
-			draft.ruleConfig.wolf.selfExplodeEndsDay ? 'NIGHT' : 'DISCUSSION'
-		);
+		// selfExplodeEndsDay: no exile today. The day still waits for the
+		// host's 进入下一夜 rather than dropping straight into night while the
+		// table is still reacting. Goes through the shared tail so a queued
+		// wolf-king shot gets its HUNTER_SHOOT detour first.
+		if (draft.ruleConfig.wolf.selfExplodeEndsDay) {
+			draft.dayDecided = true;
+			effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
+		}
+		enterHunterShootOrContinue(draft, effects, lastWordsSeats, 'DISCUSSION');
 	});
 }
 
@@ -906,7 +1109,7 @@ function handleKnightDuel(
 	action: Extract<EngineAction, { type: 'KNIGHT_DUEL' }>
 ): EngineResult {
 	return withEffects(state, (draft, effects) => {
-		if (draft.phase !== 'DISCUSSION') return;
+		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
 		if (draft.knightUsed) return; // knight.onceOnly - the spec's only configured value
 		if (action.knightSeat === action.targetSeat) return; // canTargetSelf: false
 
@@ -922,31 +1125,58 @@ function handleKnightDuel(
 		// the duel itself, win or lose for the knight.
 		target.revealedRole = target.role;
 
+		// Everyone the duel kills: its loser plus anyone the cascade drags
+		// along (a lover, a 狼美人's charmed seat) - the phones only learn of
+		// those through `deaths`. In the table flow a shooter among them fires at the
+		// table, like any other day shot.
+		const settle = (deaths: Death[], loser: Seat): Seat[] => {
+			if (draft.ruleConfig.shotsAtTable) {
+				pushShotStatus(
+					draft,
+					effects,
+					deaths.filter((d) => d.seat !== loser)
+				);
+				draft.pendingShoots = [];
+			}
+			return deaths.map((d) => d.seat).sort((a, b) => a - b);
+		};
+
 		if (targetIsWolf) {
-			cascadeDeaths(draft, [{ seat: action.targetSeat, cause: 'KNIGHT_DUEL' }], {
-				ruleConfig: draft.ruleConfig
-			});
+			const deaths = settle(
+				cascadeDeaths(draft, [{ seat: action.targetSeat, cause: 'KNIGHT_DUEL' }], {
+					ruleConfig: draft.ruleConfig
+				}),
+				action.targetSeat
+			);
 			effects.push({
 				kind: 'BROADCAST',
 				payload: {
 					kind: 'KnightDuelResolved',
 					knightSeat: action.knightSeat,
 					targetSeat: action.targetSeat,
-					targetWasWolf: true
+					targetWasWolf: true,
+					deaths
 				}
 			});
 			if (draft.ruleConfig.knight.duelEndsDayIfWolf) {
 				// SPEC-GAP: no lastWords.* switch covers KNIGHT_DUEL - the duel
 				// already publicly reveals the target's identity, unlike every
-				// other last-words-eligible death cause.
-				enterHunterShootOrContinue(draft, effects, [], 'NIGHT');
+				// other last-words-eligible death cause. Like a self-explosion,
+				// the day is over but waits for the host's 进入下一夜.
+				draft.dayDecided = true;
+				effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
+				enterHunterShootOrContinue(draft, effects, [], 'DISCUSSION');
 				return;
 			}
 		} else {
+			let deaths: Seat[] = [];
 			if (draft.ruleConfig.knight.knightDiesIfGood) {
-				cascadeDeaths(draft, [{ seat: action.knightSeat, cause: 'KNIGHT_DUEL_FAIL' }], {
-					ruleConfig: draft.ruleConfig
-				});
+				deaths = settle(
+					cascadeDeaths(draft, [{ seat: action.knightSeat, cause: 'KNIGHT_DUEL_FAIL' }], {
+						ruleConfig: draft.ruleConfig
+					}),
+					action.knightSeat
+				);
 			} else {
 				// House rule: the knight survives a failed duel - still exposed,
 				// same as the always-revealed target above.
@@ -958,7 +1188,8 @@ function handleKnightDuel(
 					kind: 'KnightDuelResolved',
 					knightSeat: action.knightSeat,
 					targetSeat: action.targetSeat,
-					targetWasWolf: false
+					targetWasWolf: false,
+					deaths
 				}
 			});
 			// "白天继续，进入投票" - stays in DISCUSSION, no phase transition (the
@@ -985,22 +1216,65 @@ function handleHostOverride(
 		if (!player) return;
 		draft.hostOverrideCount += 1;
 
+		let deaths: Seat[] = [];
 		if (action.kind === 'KILL') {
-			if (!player.isDead)
-				cascadeDeaths(draft, [{ seat: action.seat, cause: 'HOST_OVERRIDE' }], {
+			if (!player.isDead) {
+				const killed = cascadeDeaths(draft, [{ seat: action.seat, cause: 'HOST_OVERRIDE' }], {
 					ruleConfig: draft.ruleConfig
 				});
+				// A lover dragged along may be a shooter: same table-flow
+				// handling as DAY_OUT, so no stale pendingShoots survives to
+				// pull a later END_DAY into HUNTER_SHOOT.
+				if (draft.ruleConfig.shotsAtTable) {
+					pushShotStatus(
+						draft,
+						effects,
+						killed.filter((d) => d.seat !== action.seat)
+					);
+					draft.pendingShoots = [];
+				}
+				deaths = killed.map((d) => d.seat).sort((a, b) => a - b);
+			}
 		} else if (action.kind === 'REVIVE') {
 			player.isDead = false;
 			player.deathCause = undefined;
 			player.deathRound = undefined;
 		} else if (action.kind === 'SET_ROLE' && action.role) {
 			player.role = action.role;
+			// Their phone has to learn the new card - it used to keep showing
+			// the old one.
+			effects.push({
+				kind: 'PRIVATE',
+				seat: action.seat,
+				payload: { kind: 'YourRole', role: action.role }
+			});
+			// Mid-night: if the new role's turn is happening right now (and
+			// hasn't been used yet), wake them for it. A turn already past
+			// tonight is simply missed; later stages pick the new role up on
+			// their own, since the stage order is recomputed each step.
+			const key = draft.currentStepKey;
+			if ((draft.phase === 'FIRST_NIGHT' || draft.phase === 'NIGHT') && key?.startsWith('role:')) {
+				const stageRole = key.slice('role:'.length) as RoleId;
+				if (
+					!player.isDead &&
+					actsInStage(stageRole, action.role) &&
+					!draft.submittedRoles.includes(stageRole)
+				) {
+					effects.push(
+						...notifyRoleHolders(draft, stageRole).filter((e) => e.seat === action.seat)
+					);
+				}
+			}
 		}
 
 		effects.push({
 			kind: 'BROADCAST',
-			payload: { kind: 'HostOverrideApplied', seat: action.seat, overrideKind: action.kind }
+			payload: {
+				kind: 'HostOverrideApplied',
+				seat: action.seat,
+				overrideKind: action.kind,
+				deaths
+			}
 		});
 
 		const winner = checkWinCondition(draft);
@@ -1081,6 +1355,7 @@ export function startGame(params: StartGameParams): EngineResult {
 		witchAntidoteUsed: false,
 		witchPoisonUsed: false,
 		knightUsed: false,
+		dayDecided: false,
 		hostOverrideCount: 0,
 		timeline: [],
 		winner: null
@@ -1112,6 +1387,14 @@ export function reduce(state: GameState, action: EngineAction): EngineResult {
 			return handleNextSpeaker(state);
 		case 'BEGIN_VOTE':
 			return handleBeginVote(state);
+		case 'END_DAY':
+			return handleEndDay(state);
+		case 'DAY_OUT':
+			return handleDayOut(state, action);
+		case 'CONFIRM_STAGE':
+			return handleConfirmStage(state, action);
+		case 'EXILE':
+			return handleExile(state, action);
 		case 'CAST_VOTE':
 			return handleCastVote(state, action);
 		case 'TALLY_VOTES':

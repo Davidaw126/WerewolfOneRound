@@ -3,6 +3,7 @@ import type { RoomPublicState } from '../../shared/gameTypes';
 import type { ValidationIssue } from '../../game/rules/setup';
 import { getPublicState, getRevealedRoleIfAny } from '../rooms/roomRepo';
 import { emitToSession } from './emit';
+import { replayTurnPromptIfAny } from '../game/turnReplay';
 import { checkRateLimit } from './rateLimit';
 import { ActionError, requireRoomCode, type GameSocket } from './handlers/helpers';
 import {
@@ -20,13 +21,18 @@ import {
 	handleNightSubmitAction,
 	handleNightAdvanceStage,
 	handleNightAnnounceResults,
-	handleNightNarrationStarted
+	handleNightNarrationStarted,
+	handleNightPass,
+	handleNightConfirmStage
 } from './handlers/night';
 import { handleVoteCast, handleVoteEnd } from './handlers/vote';
 import { handleHunterShoot } from './handlers/hunter';
 import {
 	handleNextSpeaker,
 	handleBeginVote,
+	handleEndDay,
+	handleExile,
+	handleDayOut,
 	handleSelfExplode,
 	handleKnightDuel
 } from './handlers/discussion';
@@ -74,12 +80,22 @@ export async function dispatchAction(
 				return await handleNightAdvanceStage(socket);
 			case 'NightAnnounceResults':
 				return await handleNightAnnounceResults(socket);
+			case 'NightPass':
+				return await handleNightPass(socket);
+			case 'NightConfirmStage':
+				return await handleNightConfirmStage(socket);
 			case 'NightNarrationStarted':
 				return await handleNightNarrationStarted(socket, action.role);
 			case 'DayNextSpeaker':
 				return await handleNextSpeaker(socket);
 			case 'DayBeginVote':
 				return await handleBeginVote(socket);
+			case 'DayEndDay':
+				return await handleEndDay(socket);
+			case 'DayExile':
+				return await handleExile(socket, action.seat);
+			case 'DayOut':
+				return await handleDayOut(socket, action.seats);
 			case 'DaySelfExplode':
 				return await handleSelfExplode(socket, action.seat);
 			case 'DayKnightDuel':
@@ -99,6 +115,7 @@ export async function dispatchAction(
 				if (revealedRole) {
 					emitToSession(socket.data.sessionId, { kind: 'YourRole', role: revealedRole });
 				}
+				await replayTurnPromptIfAny(code, socket.data.sessionId);
 				return { ok: true, state: state ?? undefined };
 			}
 		}

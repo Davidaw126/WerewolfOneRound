@@ -21,8 +21,15 @@
 	const killedSeat = $derived(witch?.killedSeat ?? null);
 	const guardLastSeat = $derived(ctx?.guard?.lastProtectedSeat ?? null);
 	const wolfTeammates = $derived(ctx?.wolf?.teammateSeats ?? []);
-	/** The witch was the one attacked tonight - she may not save herself. */
-	const isSelfKill = $derived(killedSeat !== null && killedSeat === ctx?.seat);
+	/** The pack's kill turn - 狼美人/恶灵骑士 pick the kill here, not their skill. */
+	const packTurn = $derived(ctx?.packKill === true);
+	/** The witch was the one attacked tonight, and tonight's rules don't let
+	 * her save herself (selfRescue is often FIRST_NIGHT_ONLY). */
+	const isSelfKill = $derived(
+		killedSeat !== null && killedSeat === ctx?.seat && !witch?.selfRescueAllowed
+	);
+	/** One potion per night unless the room's rules allow both. */
+	const onePotionOnly = $derived(!witch?.bothPotionsSameNight);
 
 	let submitted = $state(false);
 	// Single-target roles (wolf/seer/guard/wolf-beauty).
@@ -66,18 +73,15 @@
 		submitted = true;
 		const res = await sendAction<AckResponse>(action);
 		if (!res.ok) {
+			// The reason pops up via sendAction's global error handler.
 			submitted = false;
-			const messages = t.ruleMessages;
-			gameStore.showToast(
-				(messages as unknown as Record<string, string>)[res.error] ?? messages.fallback
-			);
 			return;
 		}
 		gameStore.logActivity(description);
 		// A page-level banner (not nested in this component) so it survives if
 		// the server advances the stage - and unmounts this whole prompt -
 		// before the 3s would otherwise have elapsed.
-		gameStore.showConfirm(`✓ ${description}`, 3000);
+		gameStore.showConfirm(t.doneCloseEyes(description), 4000);
 	}
 </script>
 
@@ -88,8 +92,36 @@
 			<span>{t.yourTurn(roleName(role, i18n.lang))}</span>
 		</h3>
 
-		{#if submitted}
-			<p class="text-sm text-zinc-400">{t.submittedWaiting}</p>
+		{#if submitted || gameStore.packKill || gameStore.roleDoneByOther}
+			<p class="text-sm font-semibold text-village">
+				{submitted
+					? t.submittedWaiting
+					: gameStore.packKill
+						? t.packKillChosen(gameStore.packKill.bySeat, gameStore.packKill.target)
+						: t.roleDoneByOther}
+			</p>
+			{#if role === '预言家' && gameStore.lastSeerResult}
+				<!-- Kept on screen after submitting: the result popup alone is
+				     gone in a few seconds. -->
+				<p
+					class="text-sm font-semibold {gameStore.lastSeerResult.isWolf
+						? 'text-wolf'
+						: 'text-village'}"
+				>
+					{t.checkResult(gameStore.lastSeerResult.targetSeat, gameStore.lastSeerResult.isWolf)}
+				</p>
+			{/if}
+		{:else if ctx?.feared && role !== '恶灵骑士'}
+			<!-- 恶灵骑士 blocked this seat's skill tonight. Passing still goes
+			     through the normal submit + auto-advance, so the pause before
+			     the next role is the same as for a real action. -->
+			<p class="text-sm text-wolf">{t.fearedTonight}</p>
+			<button
+				onclick={() => submit({ kind: 'NightPass' }, t.descFearedPassed)}
+				class="btn-primary w-full"
+			>
+				{t.fearedPass}
+			</button>
 			{#if role === '预言家' && gameStore.lastSeerResult}
 				<p class="text-sm">
 					<span
@@ -99,8 +131,35 @@
 					</span>
 				</p>
 			{/if}
-		{:else if role === '普通狼人' || role === '预言家' || role === '守卫' || role === '狼美人' || role === '野孩子' || role === '摄梦人' || role === '恶灵骑士'}
-			{#if role === '普通狼人' || role === '狼美人' || role === '恶灵骑士'}
+		{:else if role === '猎人' || (role === '黑狼王' && ctx?.hunter)}
+			<!-- The live thumbs up/down a physical host gives the hunter (and
+			     黑狼王, on his own 确认开枪状态 stage - his pack-kill turn has no
+			     `hunter` context) each night. Same verdict the server will
+			     apply if they die tonight, so the two can never disagree. -->
+			{#if ctx?.hunter}
+				{#if ctx.hunter.canShoot}
+					<p class="text-sm font-semibold text-village">{t.hunterCanShoot}</p>
+				{:else}
+					<p class="text-sm font-semibold text-wolf">{t.hunterPoisonedNoShoot}</p>
+				{/if}
+			{/if}
+			{#if gameStore.stageConfirmed}
+				<p class="text-sm text-zinc-400">{strings(i18n.lang).room.stageConfirmedWait}</p>
+			{:else}
+				<p class="text-sm text-zinc-400">
+					{role === '猎人' ? t.hunterNoActionNeeded : t.statusNoActionNeeded}
+				</p>
+				<!-- Everyone else - the host included - has their eyes shut, so
+				     the shooter moves the night on themselves. -->
+				<button
+					onclick={() => sendAction<AckResponse>({ kind: 'NightConfirmStage' })}
+					class="btn-primary w-full"
+				>
+					{t.statusConfirm}
+				</button>
+			{/if}
+		{:else if role === '普通狼人' || role === '白狼王' || role === '黑狼王' || role === '预言家' || role === '守卫' || role === '狼美人' || role === '野孩子' || role === '摄梦人' || role === '恶灵骑士'}
+			{#if role === '普通狼人' || role === '白狼王' || role === '黑狼王' || role === '狼美人' || role === '恶灵骑士'}
 				<p class="text-sm text-wolf">
 					{wolfTeammates.length > 0
 						? t.wolfTeammates(wolfTeammates.map((s) => seatLabel(s, i18n.lang)).join('、'))
@@ -113,13 +172,17 @@
 				</p>
 			{/if}
 			<p class="text-sm text-zinc-400">
-				{role === '普通狼人' ? t.selectWolfTarget : ''}
-				{role === '预言家' ? t.selectSeerTarget : ''}
-				{role === '守卫' ? t.selectGuardTarget : ''}
-				{role === '狼美人' ? t.selectWolfBeautyTarget : ''}
-				{role === '野孩子' ? t.selectWildChildTarget : ''}
-				{role === '摄梦人' ? t.selectDreamWeaverTarget : ''}
-				{role === '恶灵骑士' ? t.selectNightmareTarget : ''}
+				{#if packTurn}
+					{t.selectWolfTarget}
+				{:else}
+					{role === '普通狼人' || role === '白狼王' || role === '黑狼王' ? t.selectWolfTarget : ''}
+					{role === '预言家' ? t.selectSeerTarget : ''}
+					{role === '守卫' ? t.selectGuardTarget : ''}
+					{role === '狼美人' ? t.selectWolfBeautyTarget : ''}
+					{role === '野孩子' ? t.selectWildChildTarget : ''}
+					{role === '摄梦人' ? t.selectDreamWeaverTarget : ''}
+					{role === '恶灵骑士' ? t.selectNightmareTarget : ''}
+				{/if}
 			</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats as seat (seat.seatNumber)}
@@ -172,7 +235,7 @@
 				{killedSeat ? t.witchKilledTonight(killedSeat) : t.witchNoOneKilled}
 			</p>
 			{#if killedSeat !== null && witch?.antidoteAvailable}
-				{@const antidoteBlocked = isSelfKill || poisonTarget !== null}
+				{@const antidoteBlocked = isSelfKill || (onePotionOnly && poisonTarget !== null)}
 				<button
 					type="button"
 					disabled={antidoteBlocked}
@@ -180,7 +243,7 @@
 						// Mutual exclusion enforced in the handler too, so no tap
 						// order can build an invalid draft.
 						useAntidote = !useAntidote;
-						if (useAntidote) poisonTarget = null;
+						if (useAntidote && onePotionOnly) poisonTarget = null;
 					}}
 					class="flex w-full items-center gap-3 border-[3px] border-line p-2 text-left disabled:cursor-not-allowed disabled:opacity-50 {useAntidote
 						? 'bg-surface-2'
@@ -195,22 +258,22 @@
 				</button>
 				{#if isSelfKill}
 					<p class="text-sm text-wolf">{t.witchSelfSaveBlocked}</p>
-				{:else if poisonTarget !== null}
+				{:else if onePotionOnly && poisonTarget !== null}
 					<p class="text-sm text-zinc-400">{t.witchOnePotionPerNight}</p>
 				{/if}
 			{/if}
 			{#if witch?.poisonAvailable}
 				<p class="text-sm text-zinc-400">{t.witchSelectPoisonTarget}</p>
-				{#if useAntidote}
+				{#if onePotionOnly && useAntidote}
 					<p class="text-sm text-zinc-400">{t.witchAntidoteChosenAlready}</p>
 				{/if}
 				<div class="grid grid-cols-4 gap-2">
 					{#each livingSeats as seat (seat.seatNumber)}
 						<button
-							disabled={useAntidote}
+							disabled={onePotionOnly && useAntidote}
 							onclick={() => {
 								poisonTarget = poisonTarget === seat.seatNumber ? null : seat.seatNumber;
-								if (poisonTarget !== null) useAntidote = false;
+								if (poisonTarget !== null && onePotionOnly) useAntidote = false;
 							}}
 							class="seat-btn relative {poisonTarget === seat.seatNumber
 								? 'border-wolf bg-wolf/20 text-wolf'
@@ -343,18 +406,6 @@
 			{:else}
 				<p class="text-sm text-zinc-500">{t.thiefLoadingCards}</p>
 			{/if}
-		{:else if role === '猎人'}
-			<!-- The live thumbs up/down a physical host gives the hunter each
-			     night. Same hunterCanShoot() verdict the server will apply if
-			     they die tonight, so the two can never disagree. -->
-			{#if ctx?.hunter}
-				{#if ctx.hunter.canShoot}
-					<p class="text-sm font-semibold text-village">{t.hunterCanShoot}</p>
-				{:else}
-					<p class="text-sm font-semibold text-wolf">{t.hunterPoisonedNoShoot}</p>
-				{/if}
-			{/if}
-			<p class="text-sm text-zinc-400">{t.hunterNoActionNeeded}</p>
 		{/if}
 	</div>
 {/if}

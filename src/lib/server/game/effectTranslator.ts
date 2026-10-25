@@ -60,7 +60,8 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				emitToRoom(code, {
 					kind: 'HostOverrideApplied',
 					seat: payload.seat as number,
-					overrideKind: payload.overrideKind as 'KILL' | 'REVIVE' | 'SET_ROLE'
+					overrideKind: payload.overrideKind as 'KILL' | 'REVIVE' | 'SET_ROLE',
+					deaths: (payload.deaths as number[] | undefined) ?? []
 				});
 				continue;
 
@@ -93,6 +94,18 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				});
 				continue;
 
+			case 'DayDecided':
+				emitToRoom(code, { kind: 'DayDecided' });
+				continue;
+
+			case 'DayOut':
+				emitToRoom(code, {
+					kind: 'DayOut',
+					seats: payload.seats as number[],
+					followDeaths: payload.followDeaths as number[]
+				});
+				continue;
+
 			case 'SelfExploded':
 				emitToRoom(code, { kind: 'SelfExploded', seat: payload.seat as number });
 				continue;
@@ -102,7 +115,8 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 					kind: 'KnightDuelResolved',
 					knightSeat: payload.knightSeat as number,
 					targetSeat: payload.targetSeat as number,
-					targetWasWolf: payload.targetWasWolf as boolean
+					targetWasWolf: payload.targetWasWolf as boolean,
+					deaths: payload.deaths as number[]
 				});
 				continue;
 
@@ -125,6 +139,29 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 
 			case 'HunterAuthorized':
 				await emitPrivate(code, effect.seat!, { kind: 'HunterAuthorized' });
+				continue;
+
+			case 'PackKillChosen':
+				await emitPrivate(code, effect.seat!, {
+					kind: 'PackKillChosen',
+					bySeat: payload.bySeat as number,
+					target: payload.target as number | null
+				});
+				continue;
+
+			case 'RoleDoneByOther':
+				await emitPrivate(code, effect.seat!, { kind: 'RoleDoneByOther' });
+				continue;
+
+			case 'StageConfirmed':
+				await emitPrivate(code, effect.seat!, { kind: 'StageConfirmed' });
+				continue;
+
+			case 'ShotStatus':
+				await emitPrivate(code, effect.seat!, {
+					kind: 'ShotStatus',
+					canShoot: payload.canShoot as boolean
+				});
 				continue;
 
 			case 'HunterDenied':
@@ -154,6 +191,10 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 					tie: payload.tie as boolean,
 					followDeathSeat: payload.followDeathSeat as number | null,
 					followDeathIdentity: followDeathIdentity ? roleIdToLegacy(followDeathIdentity) : null,
+					// Previously dropped here, so every client treated the flipped
+					// idiot as dead: gone from every night-target list (wolves,
+					// witch, guard, seer) for the rest of the game.
+					...(payload.idiotRevealed === true ? { idiotRevealed: true } : {}),
 					...(pkCandidates ? { pkCandidates } : {})
 				});
 				continue;
@@ -230,7 +271,8 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				await emitPrivate(code, effect.seat!, {
 					kind: 'YourTurnPrompt',
 					role: roleIdToLegacy(payload.role as RoleId),
-					context
+					context,
+					...(payload.replay === true ? { replay: true } : {})
 				});
 				continue;
 			}

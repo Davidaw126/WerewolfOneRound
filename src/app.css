@@ -40,6 +40,28 @@ body {
 	color: var(--color-bone);
 	overscroll-behavior: none;
 	-webkit-tap-highlight-color: transparent;
+	/* A long press on a button/seat shouldn't select its text or pop the
+	   iOS callout (copy / look up / share) mid-game. */
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+/* ...but typing and copying still work where they make sense. */
+input,
+textarea,
+[contenteditable='true'],
+.selectable {
+	-webkit-user-select: text;
+	user-select: text;
+	-webkit-touch-callout: default;
+}
+
+/* Images/sprites: no drag ghost or "save image" sheet on long press. */
+img,
+svg,
+canvas {
+	-webkit-user-drag: none;
 }
 
 /* Pixel-styled scrollbar for WebKit/Blink to match the 8-bit chrome. */

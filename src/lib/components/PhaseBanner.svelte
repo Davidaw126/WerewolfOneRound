@@ -101,7 +101,10 @@
 		<div class="flex items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
 				<div class="chip">{t.phaseBanner.roomCode} {state.roomCode}</div>
-				<AudioToggleButtons />
+				<!-- Only the host's phone makes any sound (judge voice + night forest). -->
+				{#if isHost}
+					<AudioToggleButtons />
+				{/if}
 				<LanguageToggle />
 			</div>
 			<div class="flex items-center gap-2">
@@ -126,7 +129,9 @@
 			</div>
 		</div>
 
-		{#if canStop}
+		<!-- Not during SEATING: no game (and so no card to change) exists yet -
+		     the board itself is changed with 角色配置 / 重新发牌 there. -->
+		{#if canStop && state?.phase !== 'SEATING'}
 			<HostOverridePanel />
 		{/if}
 	</div>

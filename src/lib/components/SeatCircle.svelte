@@ -2,7 +2,7 @@
 	import { scale } from 'svelte/transition';
 	import type { Role } from '$lib/shared/roles';
 	import type { SeatState } from '$lib/shared/gameTypes';
-	import { strings } from '$lib/shared/i18n';
+	import { strings, roleName } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import PixelSprite from './PixelSprite.svelte';
 
@@ -55,6 +55,13 @@
 		>
 			{#if seat.sessionId === hostSessionId}
 				<span class="absolute -top-1.5 -right-1 text-[10px]" title={t.seatCircle.host}>👑</span>
+			{/if}
+			{#if seat.revealedIdiot && !seat.isDead}
+				<span
+					class="pointer-events-none absolute -bottom-1.5 rounded-sm border border-line bg-surface px-1 text-[8px] text-zinc-300"
+				>
+					{roleName('白痴', i18n.lang)}
+				</span>
 			{/if}
 			{#if seat.isDead}
 				<span

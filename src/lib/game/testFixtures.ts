@@ -78,6 +78,7 @@ export function makeState(
 		witchAntidoteUsed: false,
 		witchPoisonUsed: false,
 		knightUsed: false,
+		dayDecided: false,
 		hostOverrideCount: 0,
 		timeline: [],
 		winner: null,

@@ -10,6 +10,8 @@ import type { Lang } from './types';
 import type { Role } from '../roles';
 import type { Winner } from '../gameTypes';
 import { roleName } from './roles';
+import { zh } from './zh';
+import { en } from './en';
 
 /** "X号" / "Seat X" - the single-seat label used throughout the seat grid,
  * vote board, night prompts, etc. wherever a bare seat number needs to read
@@ -49,25 +51,39 @@ export function formatDayResult(params: {
 	eliminatedSeat: number | null;
 	identity: Role | null;
 	followDeathSeat: number | null;
+	idiotRevealed?: boolean;
 	lang: Lang;
 }): string {
 	const { tie, eliminatedSeat, identity, followDeathSeat, lang } = params;
-	const roleLabel = identity ? roleName(identity, lang) : lang === 'zh' ? '未知' : 'Unknown';
+	if (params.idiotRevealed && eliminatedSeat !== null) {
+		return lang === 'zh'
+			? `${eliminatedSeat} 号被放逐，翻牌为白痴，免于出局，之后不能再投票`
+			: `Seat ${eliminatedSeat} was exiled but revealed as the Idiot - they stay in the game, but can no longer vote.`;
+	}
+	// The exiled player's card stays face down - only a role the server
+	// chose to make public (none, today) would be named here.
+	const roleSuffix = identity
+		? lang === 'zh'
+			? `，身份是 ${roleName(identity, lang)}`
+			: ` Their role was ${roleName(identity, lang)}.`
+		: '';
 	const base =
 		lang === 'zh'
 			? tie
 				? '投票平票，无人出局'
 				: eliminatedSeat === null
 					? '本轮无人出局'
-					: `${eliminatedSeat} 号被投票出局，身份是 ${roleLabel}`
+					: `${eliminatedSeat} 号被放逐出局${roleSuffix}`
 			: tie
 				? 'The vote was tied — no one was eliminated.'
 				: eliminatedSeat === null
 					? 'No one was eliminated this round.'
-					: `Seat ${eliminatedSeat} was voted out. Their role was ${roleLabel}.`;
+					: `Seat ${eliminatedSeat} was exiled.${roleSuffix}`;
 	return appendFollowDeath(base, followDeathSeat, lang);
 }
 
+/** Shared by the hunter and both wolf kings - deliberately role-neutral, so
+ * the narration never calls a 黑狼王 "the hunter" out loud. */
 export function formatHunterResult(params: {
 	hunterSeat: number;
 	shotSeat: number | null;
@@ -78,11 +94,11 @@ export function formatHunterResult(params: {
 	const base =
 		lang === 'zh'
 			? shotSeat === null
-				? `${hunterSeat} 号猎人选择不开枪`
-				: `${hunterSeat} 号猎人开枪，带走了 ${shotSeat} 号玩家`
+				? `${hunterSeat} 号选择不开枪`
+				: `${hunterSeat} 号开枪，带走了 ${shotSeat} 号玩家`
 			: shotSeat === null
-				? `The hunter in seat ${hunterSeat} chose not to shoot.`
-				: `The hunter in seat ${hunterSeat} shot and took seat ${shotSeat} down with them.`;
+				? `Seat ${hunterSeat} chose not to shoot.`
+				: `Seat ${hunterSeat} shot and took seat ${shotSeat} down with them.`;
 	return appendFollowDeath(base, followDeathSeat, lang);
 }
 
@@ -101,6 +117,14 @@ export function formatGameOverText(
 				: 'The Village Wins';
 	if (!withGameOverSuffix) return lang === 'zh' ? zh : en;
 	return lang === 'zh' ? `${zh}，游戏结束` : `${en} — Game Over`;
+}
+
+export function formatDayOut(seats: number[], followDeaths: number[], lang: Lang): string {
+	const out = lang === 'zh' ? `${seats.join('、')} 号出局` : `Seat ${seats.join(', ')} out`;
+	if (followDeaths.length === 0) return out;
+	return lang === 'zh'
+		? `${out}，${followDeaths.join('、')} 号随之出局`
+		: `${out}; seat ${followDeaths.join(', ')} also leaves`;
 }
 
 export function formatSelfExplode(seat: number, lang: Lang): string {
@@ -159,8 +183,24 @@ export function formatRolesReshuffledConfirm(lang: Lang): string {
 	return lang === 'zh' ? '✓ 角色已重新分配' : '✓ Roles reshuffled';
 }
 
+/** The popup text for a failed action's ack error code - the night-rule
+ * codes (nightPrompt.ruleMessages) first, then the general table. */
+export function formatActionError(code: string, lang: Lang): string {
+	const t = lang === 'zh' ? zh : en;
+	const rule = (t.nightPrompt.ruleMessages as unknown as Record<string, string>)[code];
+	return rule ?? t.errors[code] ?? t.errors.fallback;
+}
+
 export function formatHunterDenied(lang: Lang): string {
 	return lang === 'zh' ? '你身中剧毒，无法开枪反击' : "You're poisoned and can't shoot back";
+}
+
+export function formatShotStatus(canShoot: boolean, lang: Lang): string {
+	if (lang === 'zh')
+		return canShoot ? '你出局了，可以开枪：在桌上亮牌并指定带走的人' : '你出局了，这次不能开枪';
+	return canShoot
+		? "You're out and may shoot: show your card at the table and name your target"
+		: "You're out and can't shoot this time";
 }
 
 export function formatHunterAuthorized(lang: Lang): string {

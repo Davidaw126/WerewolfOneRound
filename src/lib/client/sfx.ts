@@ -1,19 +1,21 @@
-// Programmatic 8-bit sound effects via the Web Audio API — no audio assets.
-// All functions are browser-only and no-op during SSR. The AudioContext is
-// created lazily and resumed on the first user gesture (autoplay policy).
+// Night ambience (water droplets and a distant wolf, synthesised with the Web
+// Audio API - no audio assets) plus the host phone's spoken narration further down. There
+// are no other sound effects: button clicks, whooshes and stings were
+// removed so the only sounds at the table are the judge's voice and, during
+// the night, the ambience. All browser-only; no-ops during SSR. The
+// AudioContext is created lazily and resumed on the first user gesture
+// (autoplay policy).
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 
-// Two independent user toggles. Deliberately NOT expressed as master.gain: the
-// ambient drone routes through master too, so zeroing it to mute effects would
-// silence the drone as a side effect and make the two toggles inseparable.
-// One-shots mute via an early return in blip()/noise() instead, and ambient
-// mutes by actually tearing down its oscillators (see syncAmbient) - which
-// also stops burning CPU on a phone.
-let effectsMuted = false;
+// Two independent user toggles: the ambience is mood you may want gone while
+// keeping the judge's voice, and the voice is the app actively telling you
+// things. The ambience mutes by actually tearing down its nodes (see
+// syncAmbient), which also stops burning CPU on a phone.
+let voiceMuted = false;
 let ambientEnabled = true;
-/** Whether the room page currently wants a drone (i.e. is mounted). */
+/** Whether it's currently night on the judge's phone (JudgeAudioPlayer). */
 let ambientRequested = false;
 
 function ac(): AudioContext | null {
@@ -37,16 +39,19 @@ function ac(): AudioContext | null {
 export function unlockAudio(): void {
 	const c = ac();
 	if (c && c.state === 'suspended') void c.resume();
+	// The ambience may have been asked for before the first tap made audio
+	// possible - build it now that it can actually play.
+	syncAmbient();
 }
 
 export function setEffectsEnabled(on: boolean): void {
-	effectsMuted = !on;
+	voiceMuted = !on;
 	// An utterance's volume is fixed when speak() is called, so muting mid-line
 	// otherwise lets it finish out loud. Cancelling is only safe once onstart
 	// has already fired: JudgeAudioPlayer relays that to the server, and every
 	// OTHER player's turn prompt stays hidden until it arrives - cancelling
 	// first would cost the whole room the 8s reveal fallback.
-	if (effectsMuted && startedFired && typeof window !== 'undefined' && window.speechSynthesis) {
+	if (voiceMuted && startedFired && typeof window !== 'undefined' && window.speechSynthesis) {
 		speechSynthesis.cancel();
 	}
 }
@@ -56,130 +61,163 @@ export function setAmbientEnabled(on: boolean): void {
 	syncAmbient();
 }
 
-function blip(
-	freq: number,
-	dur: number,
-	type: OscillatorType = 'square',
-	vol = 0.5,
-	slideTo?: number
-): void {
-	const c = ac();
-	if (!c || !master || effectsMuted) return;
-	const osc = c.createOscillator();
-	const g = c.createGain();
-	osc.type = type;
-	osc.frequency.setValueAtTime(freq, c.currentTime);
-	if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, c.currentTime + dur);
-	g.gain.setValueAtTime(vol, c.currentTime);
-	g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-	osc.connect(g);
-	g.connect(master);
-	osc.start();
-	osc.stop(c.currentTime + dur);
+// --- night ambience -----------------------------------------------------------
+// Relaxing and sparse: water droplets falling in a softly echoing space, and
+// once in a while a distant wolf howl. Nothing continuous - no wind, no drone
+// - so there's no background buzz under the judge's voice.
+
+interface Ambience {
+	bus: GainNode;
+	timers: ReturnType<typeof setTimeout>[];
 }
+let ambience: Ambience | null = null;
 
-function noise(dur: number, vol = 0.4, filterFrom = 6000, filterTo = 400): void {
-	const c = ac();
-	if (!c || !master || effectsMuted) return;
-	const frames = Math.floor(c.sampleRate * dur);
-	const buf = c.createBuffer(1, frames, c.sampleRate);
-	const data = buf.getChannelData(0);
-	for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
-	const src = c.createBufferSource();
-	src.buffer = buf;
-	const filt = c.createBiquadFilter();
-	filt.type = 'lowpass';
-	filt.frequency.setValueAtTime(filterFrom, c.currentTime);
-	filt.frequency.exponentialRampToValueAtTime(filterTo, c.currentTime + dur);
-	const g = c.createGain();
-	g.gain.setValueAtTime(vol, c.currentTime);
-	g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-	src.connect(filt);
-	filt.connect(g);
-	g.connect(master);
-	src.start();
-	src.stop(c.currentTime + dur);
-}
-
-/** Short tactile click for button presses. */
-export function sfxClick(): void {
-	blip(660, 0.06, 'square', 0.3, 440);
-}
-
-/** Card-deal / phase-sweep whoosh. */
-export function sfxWhoosh(): void {
-	noise(0.35, 0.35, 8000, 300);
-}
-
-/** A player is eliminated — descending sting + thud. */
-export function sfxDeath(): void {
-	blip(320, 0.5, 'sawtooth', 0.4, 60);
-	noise(0.4, 0.3, 2000, 120);
-}
-
-/** Bright confirm for game start / role reveal. */
-export function sfxReveal(): void {
-	blip(523, 0.08, 'square', 0.35);
-	setTimeout(() => blip(784, 0.14, 'square', 0.35), 80);
-}
-
-// --- low ambient night drone ------------------------------------------------
-let ambientNodes: { osc: OscillatorNode[]; lfo: OscillatorNode; gain: GainNode } | null = null;
-
-/** The room page asks for a drone on mount and drops it on destroy; the user's
- * toggle is separate. The nodes exist only when both agree, so muting really
- * stops the oscillators rather than running them silently. */
+/** Night falls: the judge's phone starts the ambience. */
 export function startAmbient(): void {
 	ambientRequested = true;
 	syncAmbient();
 }
 
+/** Day breaks (or the room is left): the ambience stops. */
 export function stopAmbient(): void {
 	ambientRequested = false;
 	syncAmbient();
 }
 
 function syncAmbient(): void {
-	if (ambientRequested && ambientEnabled) buildAmbient();
-	else teardownAmbient();
+	if (ambientRequested && ambientEnabled) buildAmbience();
+	else teardownAmbience();
 }
 
-function buildAmbient(): void {
-	const c = ac();
-	if (!c || !master || ambientNodes) return;
-	const gain = c.createGain();
-	gain.gain.value = 0.05;
-	const o1 = c.createOscillator();
-	o1.type = 'sine';
-	o1.frequency.value = 55;
-	const o2 = c.createOscillator();
-	o2.type = 'triangle';
-	o2.frequency.value = 82.5;
-	const lfo = c.createOscillator();
-	lfo.frequency.value = 0.12;
-	const lfoGain = c.createGain();
-	lfoGain.gain.value = 0.025;
-	lfo.connect(lfoGain);
-	lfoGain.connect(gain.gain);
-	o1.connect(gain);
-	o2.connect(gain);
-	gain.connect(master);
-	o1.start();
-	o2.start();
-	lfo.start();
-	ambientNodes = { osc: [o1, o2], lfo, gain };
-}
-
-function teardownAmbient(): void {
-	if (!ambientNodes) return;
-	try {
-		ambientNodes.osc.forEach((o) => o.stop());
-		ambientNodes.lfo.stop();
-		ambientNodes.gain.disconnect();
-	} catch {
-		/* already stopped */
+/** A soft room/cave echo: a stereo impulse response of fading noise. */
+function makeReverb(c: AudioContext, seconds: number): ConvolverNode {
+	const len = Math.floor(c.sampleRate * seconds);
+	const ir = c.createBuffer(2, len, c.sampleRate);
+	for (let ch = 0; ch < 2; ch++) {
+		const d = ir.getChannelData(ch);
+		for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
 	}
-	ambientNodes = null;
+	const conv = c.createConvolver();
+	conv.buffer = ir;
+	return conv;
+}
+
+function buildAmbience(): void {
+	const c = ac();
+	if (!c || !master || ambience || c.state !== 'running') return;
+
+	const bus = c.createGain();
+	bus.gain.setValueAtTime(0.0001, c.currentTime);
+	bus.gain.exponentialRampToValueAtTime(1, c.currentTime + 3); // fade in
+	bus.connect(master);
+	// Dry + echo: the echo is what makes single plinks sound like a cave.
+	const reverb = makeReverb(c, 2.8);
+	const wet = c.createGain();
+	wet.gain.value = 0.6;
+	reverb.connect(wet);
+	wet.connect(bus);
+
+	const a: Ambience = { bus, timers: [] };
+	ambience = a;
+	const later = (ms: number, fn: () => void) => {
+		a.timers.push(setTimeout(() => ambience === a && fn(), ms));
+	};
+	const out = (node: AudioNode, pan: number, dry: number) => {
+		const p = c.createStereoPanner();
+		p.pan.value = pan;
+		const g = c.createGain();
+		g.gain.value = dry;
+		node.connect(p);
+		p.connect(g);
+		g.connect(bus);
+		p.connect(reverb);
+	};
+
+	// One droplet: a short sine whose pitch flicks upward - the "plip".
+	const droplet = (at: number) => {
+		const base = 700 + Math.random() * 900;
+		const osc = c.createOscillator();
+		osc.type = 'sine';
+		osc.frequency.setValueAtTime(base, at);
+		osc.frequency.exponentialRampToValueAtTime(base * (1.5 + Math.random() * 0.4), at + 0.05);
+		const g = c.createGain();
+		g.gain.setValueAtTime(0.0001, at);
+		g.gain.exponentialRampToValueAtTime(0.07 + Math.random() * 0.05, at + 0.006);
+		g.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
+		osc.connect(g);
+		out(g, Math.random() * 1.4 - 0.7, 0.5);
+		osc.start(at);
+		osc.stop(at + 0.25);
+	};
+	const drip = () => {
+		const t0 = c.currentTime;
+		droplet(t0);
+		// Now and then two or three in a row, like a leak gathering pace.
+		if (Math.random() < 0.25) droplet(t0 + 0.18 + Math.random() * 0.2);
+		if (Math.random() < 0.08) droplet(t0 + 0.5 + Math.random() * 0.3);
+		later(700 + Math.random() * 2600, drip);
+	};
+
+	// A distant wolf: a soft tone rising, holding with a slight waver,
+	// then sinking - mostly heard through the echo, so it sits far away.
+	const howl = () => {
+		const t0 = c.currentTime;
+		const start = 260 + Math.random() * 60;
+		const peak = start * (1.7 + Math.random() * 0.2);
+		// Pure sine: anything with harmonics (triangle/square) reads as a
+		// retro buzz rather than a far-off wolf.
+		const osc = c.createOscillator();
+		osc.type = 'sine';
+		osc.frequency.setValueAtTime(start, t0);
+		osc.frequency.exponentialRampToValueAtTime(peak, t0 + 1.0);
+		osc.frequency.setValueAtTime(peak, t0 + 1.9);
+		osc.frequency.exponentialRampToValueAtTime(start * 1.15, t0 + 3.4);
+		const vib = c.createOscillator();
+		vib.frequency.value = 5;
+		const vibAmt = c.createGain();
+		vibAmt.gain.value = 6;
+		vib.connect(vibAmt);
+		vibAmt.connect(osc.frequency);
+		const lp = c.createBiquadFilter();
+		lp.type = 'lowpass';
+		lp.frequency.value = 1100;
+		const g = c.createGain();
+		g.gain.setValueAtTime(0.0001, t0);
+		g.gain.exponentialRampToValueAtTime(0.045, t0 + 0.7);
+		g.gain.setValueAtTime(0.045, t0 + 2.2);
+		g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.5);
+		osc.connect(lp);
+		lp.connect(g);
+		out(g, Math.random() * 1.2 - 0.6, 0.25);
+		osc.start(t0);
+		vib.start(t0);
+		osc.stop(t0 + 3.6);
+		vib.stop(t0 + 3.6);
+		later(60_000 + Math.random() * 60_000, howl); // rare: once every 1-2 minutes
+	};
+
+	later(600, drip);
+	later(20_000 + Math.random() * 20_000, howl);
+}
+
+function teardownAmbience(): void {
+	if (!ambience) return;
+	const a = ambience;
+	ambience = null;
+	a.timers.forEach(clearTimeout);
+	const c = ctx;
+	try {
+		if (c) {
+			a.bus.gain.cancelScheduledValues(c.currentTime);
+			a.bus.gain.setValueAtTime(Math.max(a.bus.gain.value, 0.0001), c.currentTime);
+			a.bus.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 1.5); // fade out
+		}
+		// Every source is a one-shot that stops itself; just unhook the bus
+		// once the fade (and the last echo tail) is done.
+		setTimeout(() => a.bus.disconnect(), 4500);
+	} catch {
+		/* context gone */
+	}
 }
 
 // --- narration via the Web Speech API ---------------------------------------
@@ -193,29 +231,92 @@ function teardownAmbient(): void {
 
 import type { Lang } from '$lib/shared/i18n';
 
-const cachedVoices: Partial<Record<Lang, SpeechSynthesisVoice | null>> = {};
+const cachedVoices: Partial<Record<Lang, SpeechSynthesisVoice>> = {};
+let voicesListenerAdded = false;
 
+/** Picks the best installed voice for `lang`. Mandarin specifically for zh:
+ * a bare startsWith('zh') happily lands on zh-HK (Cantonese) or zh-TW, which
+ * on iPhones is often listed first. Only a real hit is cached - Safari fills
+ * getVoices() in lazily and doesn't reliably fire voiceschanged, so an empty
+ * list must be retried on the next line rather than cached as "no voice". */
 function pickVoice(lang: Lang): SpeechSynthesisVoice | null {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-	if (lang in cachedVoices) return cachedVoices[lang] ?? null;
+	const cached = cachedVoices[lang];
+	if (cached) return cached;
 
 	const voices = speechSynthesis.getVoices();
 	if (voices.length === 0) {
-		// Voice list loads asynchronously in most browsers - retry once it's ready.
-		speechSynthesis.addEventListener(
-			'voiceschanged',
-			() => {
-				delete cachedVoices[lang];
-				pickVoice(lang);
-			},
-			{ once: true }
-		);
+		if (!voicesListenerAdded) {
+			voicesListenerAdded = true;
+			speechSynthesis.addEventListener?.('voiceschanged', () => {
+				for (const key of Object.keys(cachedVoices)) delete cachedVoices[key as Lang];
+			});
+		}
 		return null;
 	}
-	const prefix = lang === 'zh' ? 'zh' : 'en';
-	cachedVoices[lang] = voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) ?? null;
-	return cachedVoices[lang] ?? null;
+	const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
+	const preferred = lang === 'zh' ? ['zh-cn', 'zh-hans', 'cmn'] : ['en-us', 'en-gb', 'en'];
+	let voice: SpeechSynthesisVoice | undefined;
+	for (const prefix of preferred) {
+		const matches = voices.filter((v) => norm(v).startsWith(prefix));
+		// Local voices work offline and start faster than network ones.
+		voice = matches.find((v) => v.localService) ?? matches[0];
+		if (voice) break;
+	}
+	if (!voice && lang === 'zh') voice = voices.find((v) => norm(v).startsWith('zh'));
+	if (voice) cachedVoices[lang] = voice;
+	return voice ?? null;
 }
+
+/** Whether this browser can speak at all. Some in-app browsers (WeChat, a few
+ * Android webviews) have no speechSynthesis. */
+export function speechSupported(): boolean {
+	return typeof window !== 'undefined' && 'speechSynthesis' in window;
+}
+
+let speechPrimed = false;
+
+/**
+ * Must be called synchronously from inside a user gesture (pointerdown,
+ * click). iOS WebKit (Safari, and Chrome/Firefox on iPhone, which are WebKit
+ * underneath) refuses to start speech synthesis until a gesture-initiated
+ * speak() has happened; after that, lines triggered by socket events play
+ * normally. The priming utterance must be NON-empty - WebKit silently drops a
+ * whitespace-only utterance without counting it as the unlock (and without
+ * firing onend). It's spoken directly, not via the queue, so it never costs
+ * the queue's 3s gap. Safe to call on every gesture: after the first time it
+ * only nudges a paused engine back to life.
+ */
+export function primeSpeech(): void {
+	if (!speechSupported()) return;
+	if (speechSynthesis.paused) speechSynthesis.resume();
+	// iOS 17+: put the page's audio session in "playback" so Web Audio isn't
+	// silenced by the ring/silent switch.
+	const nav = navigator as Navigator & { audioSession?: { type: string } };
+	if (nav.audioSession) {
+		try {
+			nav.audioSession.type = 'playback';
+		} catch {
+			/* older engines throw on unknown values */
+		}
+	}
+	if (speechPrimed) return;
+	speechPrimed = true;
+	const u = new SpeechSynthesisUtterance('.');
+	u.volume = 0;
+	u.rate = 2;
+	keepAlive.add(u);
+	u.onend = u.onerror = () => keepAlive.delete(u);
+	speechSynthesis.speak(u);
+}
+
+/** Strong references to in-flight utterances. Both Chrome and Safari can
+ * garbage-collect a SpeechSynthesisUtterance that nothing references while
+ * it's still speaking - its onstart/onend then never fire, which wedged this
+ * queue until the 15s stuck-timer, and (because onstart is what relays
+ * NightNarrationStarted) held every other player's turn prompt back until
+ * its 8s fallback. */
+const keepAlive = new Set<SpeechSynthesisUtterance>();
 
 // Native back-to-back speechSynthesis.speak() calls queue with NO gap between
 // them, so consecutive lines ran straight into each other. This hand-rolled
@@ -230,10 +331,22 @@ interface NarrationItem {
 	text: string;
 	lang: Lang;
 	onStart?: () => void;
+	/** Lines sharing a tag can be dropped together while still queued - see
+	 * dropQueuedNarration. */
+	tag?: string;
 }
 
 const narrationQueue: NarrationItem[] = [];
 let speaking = false;
+/** When cancel() last ran - WebKit and Chrome both drop a speak() issued
+ * immediately after cancel(), so the next line waits a beat. */
+let lastCancelAt = 0;
+const POST_CANCEL_DELAY_MS = 250;
+/** If a line hasn't started speaking by this point, the engine almost
+ * certainly refused it (not unlocked, backgrounded) - relay its start signal
+ * anyway so the rest of the room isn't held up waiting on silence. */
+const START_GRACE_MS = 2500;
+let startGraceTimer: ReturnType<typeof setTimeout> | null = null;
 /** Whether the utterance currently in flight has already fired onstart (and
  * therefore already relayed its signal to the server). Only then is it safe to
  * cancel it - see setEffectsEnabled. */
@@ -249,11 +362,19 @@ let stuckTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Shared by the utterance's own onend/onerror AND the stuck-timer fallback
  * below - either way, the queue must move on exactly once per utterance. */
-function finishCurrent(): void {
+function clearTimers(): void {
 	if (stuckTimer) {
 		clearTimeout(stuckTimer);
 		stuckTimer = null;
 	}
+	if (startGraceTimer) {
+		clearTimeout(startGraceTimer);
+		startGraceTimer = null;
+	}
+}
+
+function finishCurrent(): void {
+	clearTimers();
 	speaking = false;
 	startedFired = false;
 	setTimeout(speakNext, NARRATION_GAP_MS);
@@ -261,8 +382,13 @@ function finishCurrent(): void {
 
 function speakNext(): void {
 	if (speaking) return;
-	const item = narrationQueue.shift();
-	if (item === undefined) return;
+	if (narrationQueue.length === 0) return;
+	const sinceCancel = Date.now() - lastCancelAt;
+	if (sinceCancel < POST_CANCEL_DELAY_MS) {
+		setTimeout(speakNext, POST_CANCEL_DELAY_MS - sinceCancel);
+		return;
+	}
+	const item = narrationQueue.shift()!;
 	speaking = true;
 	startedFired = false;
 
@@ -275,13 +401,41 @@ function speakNext(): void {
 	// Muting is volume-only, never an early return: the utterance must still
 	// run so onstart still fires, because the rest of the room's turn prompts
 	// are gated on the signal it relays.
-	utter.volume = effectsMuted ? 0 : 1;
-	utter.onstart = () => {
-		startedFired = true;
+	utter.volume = voiceMuted ? 0 : 1;
+	// onStart must fire exactly once per line, whichever comes first: the
+	// engine's real onstart, or the grace timer below.
+	let relayed = false;
+	const relayStart = () => {
+		if (relayed) return;
+		relayed = true;
 		item.onStart?.();
 	};
-	utter.onend = utter.onerror = finishCurrent;
+	utter.onstart = () => {
+		startedFired = true;
+		if (startGraceTimer) {
+			clearTimeout(startGraceTimer);
+			startGraceTimer = null;
+		}
+		relayStart();
+	};
+	const done = () => {
+		keepAlive.delete(utter);
+		// A stale event from an utterance already given up on (stuck timer,
+		// stopNarration) must not finish whatever is speaking now.
+		if (current !== utter) return;
+		current = null;
+		relayStart();
+		finishCurrent();
+	};
+	utter.onend = done;
+	utter.onerror = done;
+	keepAlive.add(utter);
+	current = utter;
+	// Chrome (and occasionally Safari) can leave the engine paused after the
+	// page was backgrounded; a paused engine queues forever without speaking.
+	if (speechSynthesis.paused) speechSynthesis.resume();
 	speechSynthesis.speak(utter);
+	startGraceTimer = setTimeout(relayStart, START_GRACE_MS);
 
 	// Many mobile browsers silently kill speech synthesis when the tab/app is
 	// backgrounded, WITHOUT ever firing onend/onerror - pause()/resume() and
@@ -291,9 +445,17 @@ function speakNext(): void {
 	// been "in flight" unreasonably long, force the queue to move on
 	// regardless of what speechSynthesis claims.
 	stuckTimer = setTimeout(() => {
-		if (speaking) finishCurrent();
+		if (speaking && current === utter) {
+			current = null;
+			keepAlive.delete(utter);
+			relayStart();
+			finishCurrent();
+		}
 	}, MAX_UTTERANCE_MS);
 }
+
+/** The utterance this queue is currently waiting on, if any. */
+let current: SpeechSynthesisUtterance | null = null;
 
 /** speechSynthesis.pause()/resume() is unreliable across engines, and a long
  * pause can swallow the terminal onend entirely - leaving `speaking` stuck true
@@ -307,10 +469,9 @@ function speakNext(): void {
 export function narrationWatchdog(): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return;
 	if (speaking && !speechSynthesis.speaking && !speechSynthesis.pending) {
-		if (stuckTimer) {
-			clearTimeout(stuckTimer);
-			stuckTimer = null;
-		}
+		clearTimers();
+		if (current) keepAlive.delete(current);
+		current = null;
 		speaking = false;
 		startedFired = false;
 		speakNext();
@@ -323,23 +484,33 @@ export function narrationWatchdog(): void {
  * merely queued) - callers that gate UI on narration timing rely on this. If
  * speech isn't going to happen at all (unsupported browser), `onStart` fires
  * immediately instead, so that gating degrades open rather than hanging. */
-export function narrate(text: string, lang: Lang, onStart?: () => void): void {
+export function narrate(text: string, lang: Lang, onStart?: () => void, tag?: string): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) {
 		onStart?.();
 		return;
 	}
-	narrationQueue.push({ text, lang, onStart });
+	narrationQueue.push({ text, lang, onStart, tag });
 	speakNext();
+}
+
+/** Removes still-queued (not yet speaking) lines with this tag. A role's
+ * call-out that hasn't started by the time its turn is over would otherwise
+ * play during a LATER role's turn - and every line after it shifts later
+ * too, so by mid-night of round 2+ the voice was calling roles out of step. */
+export function dropQueuedNarration(tag: string): void {
+	for (let i = narrationQueue.length - 1; i >= 0; i--) {
+		if (narrationQueue[i].tag === tag) narrationQueue.splice(i, 1);
+	}
 }
 
 /** Cuts off whatever narration is currently queued/speaking, if any. */
 export function stopNarration(): void {
 	if (typeof window === 'undefined' || !window.speechSynthesis) return;
-	if (stuckTimer) {
-		clearTimeout(stuckTimer);
-		stuckTimer = null;
-	}
+	clearTimers();
 	narrationQueue.length = 0;
+	current = null;
 	speaking = false;
+	startedFired = false;
+	lastCancelAt = Date.now();
 	speechSynthesis.cancel();
 }

@@ -5,11 +5,11 @@
 // turn built for them yet - see that field's own comment in roleMeta.ts.
 
 import type { RoleId } from '../types';
-import { ALL_ROLE_IDS, ROLE_META } from '../roleMeta';
+import { ALL_ROLE_IDS, PACK_MEMBER_ROLES, ROLE_META } from '../roleMeta';
 
 export type NightStage = { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' };
 
-/** §8.5 假环节 (M4, S5): these 5 P0 stages are announced on EVERY night,
+/** §8.5 假环节 (M4, S5): these stages are announced on EVERY night,
  * whether or not their current holder is still alive - a stage that silently
  * stops appearing between nights would otherwise reveal that role's holder
  * just died. This does NOT extend to a role that was never configured on
@@ -25,7 +25,10 @@ export const ALWAYS_ANNOUNCED_ROLES: ReadonlySet<RoleId> = new Set([
 	'GUARD',
 	'WITCH',
 	'SEER',
-	'HUNTER'
+	'HUNTER',
+	// 黑狼王's 确认开枪状态 stage: once configured it must keep running after
+	// he dies, or its disappearance would reveal which dead seat he was.
+	'BLACK_WOLF_KING'
 ]);
 
 function nightActiveRolesInOrder(
@@ -35,6 +38,12 @@ function nightActiveRolesInOrder(
 	const idSet = new Set(roleIds);
 	for (const r of ALWAYS_ANNOUNCED_ROLES) {
 		if ((roleConfig[r] ?? 0) > 0) idSet.add(r);
+	}
+	// Every pack member wakes in WEREWOLF's stage (the wolf kings have no
+	// stage of their own). Without this, a board whose wolves are all special
+	// (no plain 普通狼人) got no wolf turn - and no kill - at all.
+	for (const r of PACK_MEMBER_ROLES) {
+		if (idSet.has(r) || (roleConfig[r] ?? 0) > 0) idSet.add('WEREWOLF');
 	}
 	return Array.from(idSet)
 		.filter((id) => ROLE_META[id].nightOrder !== null && ROLE_META[id].implemented)

@@ -104,32 +104,26 @@ export function resolveNight(
 // ---------------------------------------------------------------------------
 
 /**
- * Live prediction for the 👍/👎 status shown during the hunter's OWN night
- * turn - "if I die tonight, can I shoot" - computed from tonight's poison
- * target alone, since HUNTER_STATUS always runs after WITCH_ACT (see
- * ROLE_META.nightOrder), so the poison target is already known. Ported
- * unchanged from the old app's hunterCanShoot(), now RuleConfig-driven
- * instead of hardcoding the poison-denies-shooting rule. Distinct from
- * canTriggerShoot below: that operates on an already-resolved Death with a
- * known cause; this runs before anyone has actually died.
+ * The verdict shown on a 确认开枪状态 stage (猎人 / 黑狼王): resolves the
+ * night so far on a throwaway copy and asks canTriggerShoot about this
+ * seat's own death, if any. Both status stages run after every other night
+ * action, so this is exactly what dawn will decide - including the indirect
+ * cases a poison-only check missed, e.g. dying of 殉情 because the lover was
+ * killed, under a rule that denies the shot for that. Not dying tonight
+ * means nothing blocks the shot, so that's a 👍.
  */
-export function predictHunterCanShoot(
-	cfg: RuleConfig,
-	state: GameState,
-	hunterSeat: Seat,
-	witchPoisonSeat: Seat | null
-): boolean {
-	if (witchPoisonSeat === null) return true;
-	if (hunterSeat === witchPoisonSeat) return cfg.hunter.canShootWhenPoisoned;
-	// House rule: a hunter whose linked partner (not the hunter themselves) is
-	// tonight's poison target is also denied, independent of the general
-	// lover-suicide permission above - matches the old app's unconditional
-	// check here exactly.
-	if (cfg.cupidPoisonBlocksHunter) {
-		const partner = getLoverPartner(state, hunterSeat);
-		if (partner === witchPoisonSeat) return false;
-	}
-	return true;
+export function predictCanShootTonight(state: GameState, seat: Seat): boolean {
+	// A plain copy: `state` is usually a live immer draft, and cascadeDeaths
+	// mutates whatever it's given.
+	const sim = JSON.parse(JSON.stringify(state)) as GameState;
+	const pending = resolveNight(
+		sim.ruleConfig,
+		{ lastDreamTarget: sim.lastDreamTarget },
+		sim.nightActions
+	);
+	const deaths = cascadeDeaths(sim, pending, { ruleConfig: sim.ruleConfig });
+	const mine = deaths.find((d) => d.seat === seat);
+	return mine ? canTriggerShoot(sim.ruleConfig, sim, mine) : true;
 }
 
 export function canTriggerShoot(cfg: RuleConfig, state: GameState, d: Death): boolean {
@@ -170,6 +164,19 @@ export function canTriggerShoot(cfg: RuleConfig, state: GameState, d: Death): bo
 			default:
 				return false;
 		}
+	}
+	if (role === 'BLACK_WOLF_KING') {
+		// 黑狼王 takes one player with him when he falls to the wolf kill, a
+		// vote, or a shot (chain-shot, like the hunter). Not when poisoned (the
+		// classic counter) and not on his own self-explosion; 殉情 is a house
+		// rule (wolf.blackWolfKingCanShootWhenLoverSuicide).
+		if (d.cause === 'LOVER_SUICIDE') return cfg.wolf.blackWolfKingCanShootWhenLoverSuicide;
+		return (
+			d.cause === 'WOLF_KILL' ||
+			d.cause === 'VOTE_OUT' ||
+			d.cause === 'HUNTER_SHOT' ||
+			d.cause === 'WOLF_KING_SHOT'
+		);
 	}
 	if (role === 'WOLF_KING' && d.cause === 'SELF_EXPLODE') {
 		return cfg.wolf.wolfKingExplodeCanShoot;

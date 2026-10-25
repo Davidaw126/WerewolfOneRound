@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveSeatCount, dealCards } from './deal';
+import { deriveSeatCount, dealCards, secureRandom } from './deal';
 import type { Role } from './roles';
 import { ALL_ROLES } from './roles';
 
@@ -58,6 +58,49 @@ describe('dealCards', () => {
 		const { identities } = dealCards(config, seededRng(4));
 		for (const role of Object.values(identities)) {
 			expect(ALL_ROLES).toContain(role);
+		}
+	});
+
+	it('anti-repeat: rarely gives a seat the same unique role twice in a row', () => {
+		const config: Partial<Record<Role, number>> = {
+			普通狼人: 2,
+			预言家: 1,
+			女巫: 1,
+			猎人: 1,
+			普通村民: 2
+		};
+		const rng = seededRng(5);
+		let previous = dealCards(config, rng).identities;
+		let repeatedSpecials = 0;
+		for (let round = 0; round < 200; round++) {
+			const next = dealCards(config, rng, previous).identities;
+			for (const seat of Object.keys(next)) {
+				const role = next[seat];
+				if (role === previous[seat] && (config[role] ?? 0) === 1) repeatedSpecials++;
+			}
+			previous = next;
+		}
+		// A plain shuffle repeats one of the 3 specials ~3/7 per deal (~85 in
+		// 200); anti-repeat should all but eliminate it.
+		expect(repeatedSpecials).toBeLessThan(5);
+	});
+
+	it('anti-repeat still deals every configured card exactly once', () => {
+		const config: Partial<Record<Role, number>> = { 普通狼人: 2, 预言家: 1, 普通村民: 3, 盗贼: 1 };
+		const previous = dealCards(config, seededRng(6)).identities;
+		const { identities, buried } = dealCards(config, seededRng(7), previous);
+		const counts: Partial<Record<Role, number>> = {};
+		for (const role of [...Object.values(identities), ...(buried ?? [])]) {
+			counts[role] = (counts[role] ?? 0) + 1;
+		}
+		expect(counts).toEqual(config);
+	});
+
+	it('secureRandom stays within [0, 1)', () => {
+		for (let i = 0; i < 1000; i++) {
+			const x = secureRandom();
+			expect(x).toBeGreaterThanOrEqual(0);
+			expect(x).toBeLessThan(1);
 		}
 	});
 });

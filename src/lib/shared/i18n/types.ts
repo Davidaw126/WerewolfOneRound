@@ -49,8 +49,6 @@ export interface Strings {
 		waitingHostConfig: (hostUsername: string) => string;
 		announceButton: string;
 		seatingWaitingHost: string;
-		nameTaken: string;
-		seatTaken: string;
 		playAgain: string;
 		restarting: string;
 		backToLobby: string;
@@ -61,6 +59,10 @@ export interface Strings {
 		coupleNotLinked: string;
 		continueButton: string;
 		closingEyes: string;
+		coupleConfirm: string;
+		stageConfirmedWait: string;
+		forceContinue: string;
+		confirmForceContinue: string;
 		reroll: string;
 		startGame: string;
 		voteWaitAnnounceHost: string;
@@ -82,9 +84,17 @@ export interface Strings {
 		stopGameConfirm: string;
 		stopGameAria: string;
 	};
+	/** Ack error codes -> popup text (formatActionError); `fallback` covers any code not listed. */
+	errors: Record<string, string> & { fallback: string };
 	nightPrompt: {
 		yourTurn: (role: string) => string;
 		submittedWaiting: string;
+		doneCloseEyes: (description: string) => string;
+		packKillChosen: (bySeat: number, target: number | null) => string;
+		roleDoneByOther: string;
+		fearedTonight: string;
+		fearedPass: string;
+		descFearedPassed: string;
 		checkResult: (seat: number, isWolf: boolean) => string;
 		wolfTeammates: (seats: string) => string;
 		soloWolf: string;
@@ -117,6 +127,8 @@ export interface Strings {
 		hunterCanShoot: string;
 		hunterPoisonedNoShoot: string;
 		hunterNoActionNeeded: string;
+		statusNoActionNeeded: string;
+		statusConfirm: string;
 		ruleMessages: {
 			antidote_spent: string;
 			poison_spent: string;
@@ -125,6 +137,7 @@ export interface Strings {
 			no_kill_to_save: string;
 			guard_repeat_target: string;
 			already_submitted: string;
+			not_your_turn: string;
 			not_your_role: string;
 			feared: string;
 			thief_must_take_wolf: string;
@@ -168,6 +181,8 @@ export interface Strings {
 		witchCanPoisonSelf: string;
 		witchBothPotionsSameNight: string;
 		hunterHeader: string;
+		blackWolfKingHeader: string;
+		blackWolfKingCanShootWhenLoverSuicide: string;
 		hunterCanShootWhenPoisoned: string;
 		hunterCanShootWhenExiled: string;
 		hunterCanShootWhenWolfKilled: string;
@@ -182,18 +197,23 @@ export interface Strings {
 	};
 	discussion: {
 		lastWordsTitle: string;
-		discussionTitle: string;
 		currentSpeaker: (seat: number, username: string) => string;
 		lastWordsEnded: string;
-		discussionEnded: string;
 		next: string;
-		startVote: string;
-		selfExplodeButton: string;
+		dayTitle: string;
+		outHeader: string;
+		outHint: string;
+		outButton: (seats: number[]) => string;
+		outPickFirst: string;
+		confirmOut: (seats: number[]) => string;
+		dayDecided: string;
+		enterNight: string;
+		confirmEnterNight: string;
+		confirmEnterNightPlain: string;
+		playerWaiting: string;
 		knightDuelButton: string;
-		selectExplodeSeat: string;
 		selectKnightSeat: string;
 		selectDuelTargetSeat: string;
-		confirmExplode: (seat: number) => string;
 		confirmDuel: (knightSeat: number, targetSeat: number) => string;
 		confirm: string;
 		cancel: string;
@@ -204,6 +224,7 @@ export interface Strings {
 		day: string;
 		votedCount: (voted: number, total: number) => string;
 		pkCandidateNote: string;
+		revealedIdiotNote: string;
 		abstain: string;
 		endVote: string;
 		myVoteAbstain: string;
@@ -213,6 +234,11 @@ export interface Strings {
 		toggle: string;
 		warning: string;
 		selectPlayer: string;
+		selected: (seat: number) => string;
+		voiceTest: string;
+		voiceTestLine: string;
+		voiceUnsupported: string;
+		boardRolesOnly: string;
 		kill: string;
 		revive: string;
 		setRoleTo: (role: string) => string;
@@ -287,10 +313,18 @@ export interface Strings {
 		cupidTurn: string;
 		thiefTurn: string;
 		hunterTurn: string;
+		blackWolfKingTurn: string;
+		wildChildTurn: string;
+		dreamWeaverTurn: string;
+		nightmareTurn: string;
 		cupidClose: string;
 		coupleReveal: string;
 		nightBegins: string;
 		dawnBreaks: string;
 		allEyesClosed: string;
+		/** Host-only button shown while narration isn't enabled on this device. */
+		enableVoice: string;
+		/** Shown instead when this browser has no speech synthesis at all. */
+		voiceUnsupported: string;
 	};
 }

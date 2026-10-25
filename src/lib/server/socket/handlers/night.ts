@@ -1,24 +1,18 @@
 import { applyGameAction, loadGameState } from '../../game/gameStateRepo';
-import { syncAndBroadcast } from '../../game/gameSync';
+import { syncAndBroadcast, postActionPauseMs } from '../../game/gameSync';
+import { stageConfirmComplete } from '../../../game/engine';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import { stageOf } from '../../game/projection';
 import { emitToRoom } from '../emit';
 import type { AckResponse, NightActionSubmission } from '../../../shared/events';
 import type { Role } from '../../../shared/roles';
-import type { NightActions, Player } from '../../../game/types';
+import type { NightActions, Player, RoleId } from '../../../game/types';
 import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
 
-// Small pacing beat after a player's night action, before the next role gets
-// prompted (or the night resolves) - gives the group a moment to notice the
-// turn actually changed, rather than the next prompt appearing instantly. In
-// practice this also gives the host device's narration line for the role
-// that just acted time to finish speaking before the next one is queued,
-// since acting always takes longer than the ~1-2s these lines take to speak.
-// Ported from the pre-M1 stateMachine.ts, which this app's actual live flow
-// still depends on - losing it would mean the host has to manually tap
-// "advance" after every single role's turn, all night. MUST stay equal to
-// gameSync.ts's FAKE_STAGE_PAUSE_MS - see that constant's own comment.
-const POST_ACTION_PAUSE_MS = 4000;
+// Pacing beat after a player's night action (or 确认), before the next role
+// gets prompted (or the night resolves) - gives the group a moment to notice
+// the turn actually changed, and the host device's narration time to finish.
+// Random 3-5 s each time - see gameSync.ts's postActionPauseMs.
 
 /** Not awaited by the caller - the pause is pacing for the *next* prompt, not
  * part of the submitting player's own acknowledgment, so it must not extend
@@ -34,7 +28,7 @@ function scheduleAutoAdvance(code: string, expectedStepKey: string | null): void
 				syncAndBroadcast(code, result, previousLegacyPhase)
 			)
 			.catch((err) => console.error('scheduleAutoAdvance failed', err));
-	}, POST_ACTION_PAUSE_MS);
+	}, postActionPauseMs());
 }
 
 /**
@@ -53,6 +47,7 @@ function buildNightAction(action: NightActionSubmission, player: Player): Partia
 	switch (action.role) {
 		case '普通狼人':
 		case '白狼王': // shares 普通狼人's collective kill decision - see roleMeta.ts
+		case '黑狼王':
 			return { wolfKillTarget: action.targetSeat };
 		case '预言家':
 			return { seerCheckTarget: action.targetSeat };
@@ -103,9 +98,60 @@ export async function handleNightSubmitAction(
 		return { ok: false, error: 'not_your_role' };
 	}
 
+	// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
+	// 恶灵骑士 would otherwise be read as their own skill's target.
+	const nightAction =
+		state.currentStepKey === 'role:WEREWOLF' && 'targetSeat' in action
+			? { wolfKillTarget: action.targetSeat }
+			: buildNightAction(action, player);
+	return submitForSeat(code, seat, roleId, nightAction);
+}
+
+/** A feared player (恶灵骑士) ends their turn without acting. The engine only
+ * accepts it for a seat that really is feared tonight - for anyone else an
+ * empty submission is a silent no-op - and it goes through the same
+ * auto-advance as a real action, so the pause is indistinguishable. */
+export async function handleNightPass(socket: GameSocket): Promise<AckResponse> {
+	const code = requireRoomCode(socket);
+	const seat = await requireSeat(code, socket.data.sessionId);
+	const state = await loadGameState(code);
+	if (!state) return { ok: false, error: 'game_not_started' };
+	const player = state.players[seat];
+	if (!player) return { ok: false, error: 'not_your_role' };
+	if (state.fearedSeat !== seat) return { ok: false, error: 'not_feared' };
+	return submitForSeat(code, seat, player.role, {});
+}
+
+export async function handleNightConfirmStage(socket: GameSocket): Promise<AckResponse> {
+	const code = requireRoomCode(socket);
+	const seat = await requireSeat(code, socket.data.sessionId);
 	const { result, previousLegacyPhase } = await applyGameAction(
 		code,
-		{ type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: buildNightAction(action, player) },
+		{ type: 'CONFIRM_STAGE', seat },
+		Date.now()
+	);
+	if (result.effects.length === 0) {
+		// 情侣相认 shows the same button on every phone, so a non-lover's tap
+		// must look exactly like a lover's - no error popup to give it away.
+		if (result.state.currentStepKey === 'couple_reveal') return { ok: true };
+		return { ok: false, error: 'not_your_turn' };
+	}
+	await syncAndBroadcast(code, result, previousLegacyPhase);
+	// Same pause as after any other finished turn before the next role.
+	if (stageConfirmComplete(result.state)) scheduleAutoAdvance(code, result.state.currentStepKey);
+	return { ok: true };
+}
+
+async function submitForSeat(
+	code: string,
+	seat: number,
+	roleId: RoleId,
+	nightAction: Partial<NightActions>
+): Promise<AckResponse> {
+	const before = await loadGameState(code);
+	const { result, previousLegacyPhase } = await applyGameAction(
+		code,
+		{ type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction },
 		Date.now()
 	);
 
@@ -129,7 +175,12 @@ export async function handleNightSubmitAction(
 	// today, but the exclusion is spelled out for when that changes. Every
 	// other role that reaches here just submitted a real decision, so the
 	// stage should move on without the host needing to tap anything.
-	if (roleId !== 'HUNTER') {
+	// Only schedule when the submission actually landed - a silently ignored
+	// one (e.g. an empty pass from a seat that isn't feared) mustn't skip the
+	// turn for everyone else.
+	const changed =
+		JSON.stringify(before?.submittedRoles) !== JSON.stringify(result.state.submittedRoles);
+	if (roleId !== 'HUNTER' && changed) {
 		scheduleAutoAdvance(code, result.state.currentStepKey);
 	}
 
@@ -144,6 +195,7 @@ export async function handleNightAdvanceStage(socket: GameSocket): Promise<AckRe
 		{ type: 'ADVANCE_STAGE' },
 		Date.now()
 	);
+	if (result.effects.length === 0) return { ok: false, error: 'invalid_phase' };
 	await syncAndBroadcast(code, result, previousLegacyPhase);
 	return { ok: true };
 }

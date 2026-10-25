@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
+	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
@@ -33,6 +34,10 @@
 	);
 	const alreadyVoted = $derived(mySeat !== null && votedSeats.includes(mySeat));
 	const iAmDead = $derived(mySeat !== null && seats.find((s) => s.seatNumber === mySeat)?.isDead);
+	/** A flipped 白痴 stays in the game but has lost their vote. */
+	const iAmRevealedIdiot = $derived(
+		mySeat !== null && !!seats.find((s) => s.seatNumber === mySeat)?.revealedIdiot
+	);
 	const iAmPkCandidate = $derived(mySeat !== null && pkCandidates.includes(mySeat));
 
 	// Client-local only (not server state) - purely so the button I picked
@@ -58,6 +63,11 @@
 	async function endVote() {
 		await sendAction<AckResponse>({ kind: 'VoteEnd' });
 	}
+
+	async function enterNight() {
+		if (!(await askConfirm(t.discussion.confirmEnterNight))) return;
+		await sendAction<AckResponse>({ kind: 'DayEndDay' });
+	}
 </script>
 
 <div class="space-y-4">
@@ -70,6 +80,9 @@
 		>
 	</div>
 
+	{#if iAmRevealedIdiot}
+		<p class="text-center text-sm text-zinc-500">{t.vote.revealedIdiotNote}</p>
+	{/if}
 	{#if iAmPkCandidate}
 		<p class="text-center text-sm text-zinc-500">{t.vote.pkCandidateNote}</p>
 	{:else}
@@ -77,7 +90,7 @@
 			{#each targetSeats as seat (seat.seatNumber)}
 				<button
 					onclick={() => vote(seat.seatNumber)}
-					disabled={mySeat === null || iAmDead || alreadyVoted}
+					disabled={mySeat === null || iAmDead || iAmRevealedIdiot || alreadyVoted}
 					class="seat-btn w-full {myVoteTarget === seat.seatNumber
 						? 'border-ember bg-ember/20 text-ember'
 						: ''}"
@@ -90,7 +103,7 @@
 
 		<button
 			onclick={() => vote('abstain')}
-			disabled={mySeat === null || iAmDead || alreadyVoted}
+			disabled={mySeat === null || iAmDead || iAmRevealedIdiot || alreadyVoted}
 			class="btn-ghost w-full py-2 text-sm {myVoteTarget === 'abstain'
 				? 'border-ember text-ember'
 				: ''}"
@@ -101,5 +114,8 @@
 
 	{#if isHost}
 		<button onclick={endVote} class="btn-primary w-full">{t.vote.endVote}</button>
+		<button onclick={enterNight} class="btn-ghost w-full py-2 text-sm"
+			>{t.discussion.enterNight}</button
+		>
 	{/if}
 </div>

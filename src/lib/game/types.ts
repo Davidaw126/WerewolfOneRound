@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 // §4.1 Roles - the spec's 15-role roster, adopted exactly (a deliberate,
 // user-confirmed decision to drop the current app's 8 extra mechanics-less
-// roles: 禁言长老/高级村民/老流氓/黑狼王/隐狼/恶魔/机械狼, and to merge 梦魇
+// roles: 禁言长老/高级村民/老流氓/隐狼/恶魔/机械狼, and to merge 梦魇
 // into NIGHTMARE). Dropping 隐狼 also retires the open "hidden wolf leaks
 // into the visible teammate list" concern from the old roleTeam()-based
 // model - there's no longer a role that needs to be wolf-team for counting
@@ -28,6 +28,7 @@ export type RoleId =
 	| 'WILD_CHILD' // 野孩子
 	| 'WEREWOLF' // 普通狼人
 	| 'WOLF_KING' // 白狼王
+	| 'BLACK_WOLF_KING' // 黑狼王
 	| 'WOLF_BEAUTY' // 狼美人
 	| 'NIGHTMARE'; // 恶灵骑士 (spec merges 梦魇 into this single role)
 
@@ -55,7 +56,8 @@ export type DeathCause =
 	| 'KNIGHT_DUEL'
 	| 'KNIGHT_DUEL_FAIL'
 	| 'DREAM_WEAVER'
-	| 'HOST_OVERRIDE';
+	| 'HOST_OVERRIDE'
+	| 'DAY_OUT';
 
 export interface Death {
 	seat: Seat;
@@ -135,6 +137,10 @@ export interface RuleConfig {
 	 * of the spec's automatic-on-DAWN announcement - see the M0 plan's
 	 * decision 7. That's an architectural difference, not a switch. */
 	announceDeathBeforeSheriff: boolean;
+	/** default true - a 猎人/黑狼王 shot is public, so it happens at the table
+	 * and the host records the victim with DAY_OUT, instead of the app
+	 * stopping in HUNTER_SHOOT for the shooter to pick on their phone. */
+	shotsAtTable: boolean;
 
 	// ===== C. 夜晚 =====
 	stepTimeoutSec: number; // default 30, 0 = unlimited
@@ -150,6 +156,8 @@ export interface RuleConfig {
 		selfExplodeEndsDay: boolean; // default true
 		selfExplodeHasLastWords: boolean; // default false
 		wolfKingExplodeCanShoot: boolean; // default true
+		/** 黑狼王 dying of 殉情 still gets his shot. Default false. */
+		blackWolfKingCanShootWhenLoverSuicide: boolean;
 	};
 	seer: {
 		/** Default TRUE, not the spec's stated false - today's night-action
@@ -355,6 +363,14 @@ export interface GameState {
 	witchAntidoteUsed: boolean;
 	witchPoisonUsed: boolean;
 	knightUsed: boolean;
+	/** Today's outcome is settled - someone was exiled (or flipped as the
+	 * 白痴), or a self-explosion / successful duel ended the day. The host's
+	 * only move left is 进入下一夜 (END_DAY). Cleared each night. */
+	dayDecided: boolean;
+	/** Seats that tapped 确认 on the current eyes-open-only stage (情侣相认
+	 * needs every living lover) - reset on every stage change. Optional so a
+	 * game saved before this field existed still loads. */
+	stageConfirms?: Seat[];
 	hostOverrideCount: number;
 	timeline: TimelineEvent[];
 
@@ -390,6 +406,17 @@ export type EngineAction =
 	| { type: 'NEXT_SPEAKER' }
 	/** Host-only, §9.4 step 1 - "房主点击 [开始投票]". DISCUSSION -> VOTE. */
 	| { type: 'BEGIN_VOTE' }
+	/** Host-only "进入黑夜": ends the day with no exile - e.g. a wolf
+	 * self-exploded at the table. DISCUSSION/VOTE/VOTE_PK -> NIGHT, after
+	 * the usual winner check. */
+	| { type: 'END_DAY' }
+	/** Host-only: the table voted by hand and the host records who is
+	 * exiled (DISCUSSION, once per day). Same consequences as a tallied vote
+	 * - 白痴 flip, 殉情, hunter/wolf-king shot, winner check - but the day
+	 * then waits for END_DAY instead of starting the night itself. */
+	| { type: 'EXILE'; seat: Seat }
+	| { type: 'DAY_OUT'; seats: Seat[] }
+	| { type: 'CONFIRM_STAGE'; seat: Seat }
 	| { type: 'CAST_VOTE'; seat: Seat; target: Seat | 'ABSTAIN' }
 	/** `random`, when present, picks the tied leader for tieBreak='RANDOM'
 	 * (index into the seat-ascending leader list, wrapped via modulo) - kept

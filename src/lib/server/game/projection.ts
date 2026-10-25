@@ -41,10 +41,9 @@ export function mapToLegacyPhase(state: GameState): LegacyPhase {
 		case 'DAWN':
 			return 'NIGHT_ACTIONS';
 		case 'HUNTER_SHOOT':
-			// returnPhase records which branch queued this shot: 'VOTE' means
-			// night resolution did (-> NIGHT_HUNTER_SHOT), 'NIGHT' means a
-			// day-vote elimination did (-> DAY_HUNTER_SHOT).
-			return state.returnPhase === 'NIGHT' ? 'DAY_HUNTER_SHOT' : 'NIGHT_HUNTER_SHOT';
+			// Always daytime: even a night death's shot only happens after the
+			// host announces the night's results in the morning.
+			return 'DAY_HUNTER_SHOT';
 		case 'LAST_WORDS':
 			return 'LAST_WORDS';
 		case 'DISCUSSION':

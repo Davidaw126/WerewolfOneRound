@@ -15,6 +15,7 @@ export async function handleNextSpeaker(socket: GameSocket): Promise<AckResponse
 		{ type: 'NEXT_SPEAKER' },
 		Date.now()
 	);
+	if (result.effects.length === 0) return { ok: false, error: 'invalid_phase' };
 	await syncAndBroadcast(code, result, previousLegacyPhase);
 	return { ok: true };
 }
@@ -27,6 +28,48 @@ export async function handleBeginVote(socket: GameSocket): Promise<AckResponse> 
 		{ type: 'BEGIN_VOTE' },
 		Date.now()
 	);
+	if (result.effects.length === 0) return { ok: false, error: 'invalid_phase' };
+	await syncAndBroadcast(code, result, previousLegacyPhase);
+	return { ok: true };
+}
+
+export async function handleEndDay(socket: GameSocket): Promise<AckResponse> {
+	const code = requireRoomCode(socket);
+	await requireHost(code, socket.data.sessionId);
+	const { result, previousLegacyPhase } = await applyGameAction(
+		code,
+		{ type: 'END_DAY' },
+		Date.now()
+	);
+	if (result.effects.length === 0) return { ok: false, error: 'invalid_phase' };
+	await syncAndBroadcast(code, result, previousLegacyPhase);
+	return { ok: true };
+}
+
+export async function handleExile(socket: GameSocket, seat: number): Promise<AckResponse> {
+	const code = requireRoomCode(socket);
+	await requireHost(code, socket.data.sessionId);
+	const { result, previousLegacyPhase } = await applyGameAction(
+		code,
+		{ type: 'EXILE', seat },
+		Date.now()
+	);
+	// The engine ignores an exile it can't apply (already decided today, a
+	// dead or flipped seat) - say so instead of a silent no-op.
+	if (result.effects.length === 0) return { ok: false, error: 'cannot_exile' };
+	await syncAndBroadcast(code, result, previousLegacyPhase);
+	return { ok: true };
+}
+
+export async function handleDayOut(socket: GameSocket, seats: number[]): Promise<AckResponse> {
+	const code = requireRoomCode(socket);
+	await requireHost(code, socket.data.sessionId);
+	const { result, previousLegacyPhase } = await applyGameAction(
+		code,
+		{ type: 'DAY_OUT', seats },
+		Date.now()
+	);
+	if (result.effects.length === 0) return { ok: false, error: 'cannot_mark_out' };
 	await syncAndBroadcast(code, result, previousLegacyPhase);
 	return { ok: true };
 }
@@ -39,6 +82,7 @@ export async function handleSelfExplode(socket: GameSocket, seat: number): Promi
 		{ type: 'SELF_EXPLODE', seat },
 		Date.now()
 	);
+	if (result.effects.length === 0) return { ok: false, error: 'cannot_self_explode' };
 	await syncAndBroadcast(code, result, previousLegacyPhase);
 	return { ok: true };
 }
@@ -55,6 +99,7 @@ export async function handleKnightDuel(
 		{ type: 'KNIGHT_DUEL', knightSeat, targetSeat },
 		Date.now()
 	);
+	if (result.effects.length === 0) return { ok: false, error: 'cannot_duel' };
 	await syncAndBroadcast(code, result, previousLegacyPhase);
 	return { ok: true };
 }

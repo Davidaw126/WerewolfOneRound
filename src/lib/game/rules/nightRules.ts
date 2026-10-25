@@ -3,13 +3,9 @@
 // that were sent, who dies"). Ported from the old shared/nightRules.ts,
 // keeping that file's own separation of concerns intact.
 //
-// The old hunterCanShoot() (a live-prediction helper for the 👍/👎 status
-// indicator shown during the hunter's own turn) is ported to
-// predictHunterCanShoot() in nightResolution.ts, next to canTriggerShoot and
-// getLoverPartner - it can't just call canTriggerShoot with a hypothetical
-// Death, because the cupidPoisonBlocksHunter check depends on the partner's
-// ALREADY-RESOLVED deathCause, which doesn't exist yet at prediction time
-// (nobody has died - this runs during the hunter's own live turn).
+// The old hunterCanShoot() (the 👍/👎 shown during the hunter's own turn)
+// is predictCanShootTonight() in nightResolution.ts: it resolves the night
+// so far on a copy and asks canTriggerShoot about the seat's own death.
 
 import type { RuleConfig, Seat } from '../types';
 
@@ -25,6 +21,9 @@ export type NightRuleError =
 	| 'seer_no_self_check'
 	| 'wolf_empty_kill_not_allowed'
 	| 'already_submitted'
+	/** Submitted outside this role's own stage (e.g. 黑狼王 picking a kill
+	 * during his 确认开枪状态 stage, after the pack's turn has closed). */
+	| 'not_your_turn'
 	/** §4.2/B49 - 恶灵骑士 feared this seat last night; no skill use until the
 	 * fear clears at the start of the next night. */
 	| 'feared'

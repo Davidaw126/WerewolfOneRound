@@ -15,6 +15,7 @@ import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { Phase as LegacyPhase } from '../../shared/gameTypes';
 import { ALWAYS_ANNOUNCED_ROLES } from '../../game/rules/nightOrder';
+import { actsInStage, STATUS_STAGE_ROLES } from '../../game/roleMeta';
 import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
 import { applyGameAction } from './gameStateRepo';
@@ -28,16 +29,30 @@ async function writeLegacyPhase(
 	await touchRoomTtl(code);
 }
 
-// Same pacing beat as night.ts's POST_ACTION_PAUSE_MS (submission-triggered
-// auto-advance) - §8.5 假环节 requires a fake stage to take a duration
-// consistent with a real one's, and this app already treats this as that
-// beat everywhere else. The two MUST stay equal: a fake stage timed
-// differently from a real one would itself become a timing side-channel a
-// player could use to infer who's actually there.
-const FAKE_STAGE_PAUSE_MS = 4000;
+const randomMs = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
+
+/** The beat after a finished turn (an action submitted, a 确认 tapped)
+ * before the next role is called: 3-5 s, random each time, so the gap
+ * doesn't tick like a metronome the table can count. */
+export function postActionPauseMs(): number {
+	return randomMs(3000, 5000);
+}
+
+/** §8.5 假环节: a turn with nobody alive to take it must last about as long
+ * as a real one, or a short turn tells the table that role is dead. A real
+ * turn is the call-out + the player thinking + the post-action pause, so a
+ * fake one waits a made-up think time on top of that same pause: short for
+ * a 确认开枪状态 glance, longer for a real decision. Never more than 10 s in
+ * total (5-8 s for a status glance, 6-10 s for a decision). */
+function fakeStageDurationMs(role: RoleId): number {
+	const think = STATUS_STAGE_ROLES.has(role) ? randomMs(2000, 3000) : randomMs(3000, 5000);
+	return think + postActionPauseMs();
+}
 
 function roleHasLivingHolder(state: GameState, role: RoleId): boolean {
-	return Object.values(state.players).some((p) => !p.isDead && p.role === role);
+	// actsInStage, not role equality: a lone surviving wolf king is the real
+	// holder of the WEREWOLF stage, not an absent role to auto-skip.
+	return Object.values(state.players).some((p) => !p.isDead && actsInStage(role, p.role));
 }
 
 /** §8.5 假环节: a stage for a role with no living holder never gets a
@@ -69,7 +84,7 @@ function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 				syncAndBroadcast(code, result, previousLegacyPhase)
 			)
 			.catch((err) => console.error('fake-stage auto-advance failed', err));
-	}, FAKE_STAGE_PAUSE_MS);
+	}, fakeStageDurationMs(role));
 }
 
 /** Used by every steady-state action (night submit/advance/announce, vote

@@ -28,9 +28,51 @@ export function disconnectSocket(): void {
 	}
 }
 
-export function sendAction<T extends AckResponse = AckResponse>(action: ClientAction): Promise<T> {
+/** Long enough for a slow mobile network, short enough that a dead
+ * connection doesn't leave a button that silently does nothing. */
+const ACK_TIMEOUT_MS = 10_000;
+
+let actionErrorHandler: ((error: string) => void) | null = null;
+
+/** Registered once by the game store: every failed action (unless sent with
+ * `quiet`) is reported here so the player always sees why nothing happened,
+ * instead of a tap that silently does nothing. */
+export function onActionError(handler: (error: string) => void): void {
+	actionErrorHandler = handler;
+}
+
+/** `quiet`: the caller shows its own error UI (e.g. the lobby's inline
+ * messages), or the action is background plumbing nobody tapped. */
+export function sendAction<T extends AckResponse = AckResponse>(
+	action: ClientAction,
+	opts: { quiet?: boolean } = {}
+): Promise<T> {
 	return new Promise((resolve) => {
-		getSocket().emit('client:action', action, (res: T) => resolve(res));
+		const finish = (res: T) => {
+			if (!res.ok && !opts.quiet) actionErrorHandler?.(res.error);
+			resolve(res);
+		};
+		const sock = getSocket();
+		const send = () =>
+			sock
+				.timeout(ACK_TIMEOUT_MS)
+				.emit('client:action', action, (err: Error | null, res: T) =>
+					finish(err ? ({ ok: false, error: 'timeout' } as T) : res)
+				);
+		if (sock.connected) return send();
+		// Not connected yet (first load) or mid-reconnect: wait for it rather
+		// than letting socket.io buffer the emit - a buffered emit would be
+		// replayed on reconnect after we'd already reported a failure, so a
+		// retry tap could apply the action twice.
+		const timer = setTimeout(() => {
+			sock.off('connect', onConnect);
+			finish({ ok: false, error: 'disconnected' } as T);
+		}, ACK_TIMEOUT_MS);
+		const onConnect = () => {
+			clearTimeout(timer);
+			send();
+		};
+		sock.once('connect', onConnect);
 	});
 }
 

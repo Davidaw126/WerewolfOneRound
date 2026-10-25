@@ -35,6 +35,9 @@ export interface SeatState {
 	sessionId: string | null;
 	username: string | null;
 	isDead: boolean;
+	/** A 白痴 who flipped after being voted out: alive, still a legal night
+	 * target, still speaks, but can no longer vote. Public information. */
+	revealedIdiot?: boolean;
 }
 
 export interface RoomPublicState {
@@ -83,6 +86,11 @@ export interface RoomPublicState {
 	 * actual death list itself is deliberately NOT part of the public state -
 	 * only this boolean - so it can't leak before the host announces it. */
 	pendingNightAnnounce: boolean;
+	/** Day only: today's outcome is settled (someone exiled, or a
+	 * self-explosion / duel ended the day) - only 进入下一夜 is left. */
+	dayDecided: boolean;
+	/** The 骑士 has dueled (once per game) - public, the duel was announced. */
+	knightUsed: boolean;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
 	identities?: Record<number, Role>;
 }

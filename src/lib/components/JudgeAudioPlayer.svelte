@@ -1,14 +1,20 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { gameStore } from '$lib/client/gameStore.svelte';
-	import { narrate, stopNarration } from '$lib/client/sfx';
+	import {
+		narrate,
+		stopNarration,
+		primeSpeech,
+		dropQueuedNarration,
+		startAmbient,
+		stopAmbient
+	} from '$lib/client/sfx';
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import {
 		strings,
 		formatNightDeaths,
 		formatDayResult,
-		formatHunterResult,
 		formatGameOverText,
 		type Strings
 	} from '$lib/shared/i18n';
@@ -19,7 +25,6 @@
 	let lastStageKey: string | null = null;
 	let lastNightDeaths: number[] | null = null;
 	let lastDayResult: unknown = null;
-	let lastHunterResult: unknown = null;
 	let lastGameOver: unknown = null;
 	let lastPendingNightAnnounce = false;
 
@@ -34,31 +39,53 @@
 		狼美人: 'wolfBeautyTurn',
 		丘比特: 'cupidTurn',
 		盗贼: 'thiefTurn',
-		猎人: 'hunterTurn'
+		猎人: 'hunterTurn',
+		// Only his own 确认开枪状态 stage reaches here: during the pack's turn
+		// the host's stage is 普通狼人.
+		黑狼王: 'blackWolfKingTurn',
+		// Without a line these three never relayed NightNarrationStarted, so
+		// their holder's prompt always sat behind the 8s fallback.
+		野孩子: 'wildChildTurn',
+		摄梦人: 'dreamWeaverTurn',
+		恶灵骑士: 'nightmareTurn'
 	};
 
 	function unlockAudio() {
+		// iOS WebKit only lets speech start after a gesture-initiated speak();
+		// primeSpeech does that with a silent, non-empty utterance (see its
+		// own comment for why the old whitespace-only line never worked on
+		// iPhone). Runs on EVERY tap, not just the first: after the first it
+		// only nudges a paused engine back awake, which iOS needs after the
+		// app has been backgrounded.
+		primeSpeech();
 		unlocked = true;
-		// Some browsers only allow speechSynthesis to actually produce audio
-		// after a real user gesture - a near-silent utterance here "unlocks"
-		// the pipeline the same way the old silent-clip trick did.
-		narrate(' ', i18n.lang);
 	}
 
 	onMount(() => {
-		// Piggyback on whatever the player naturally taps first on this page
-		// (their seat, a config control, the start button) instead of a
-		// dedicated "enable sound" prompt - by the time NIGHT_ACTIONS begins
-		// they've long since tapped something, so narration just starts with
-		// no separate visible step.
-		document.addEventListener('pointerdown', unlockAudio, { capture: true, once: true });
+		// Piggyback on whatever the host naturally taps (their seat, a config
+		// control, the start button) - by the time NIGHT_ACTIONS begins they've
+		// long since tapped something. If they haven't (e.g. the page reloaded
+		// mid-game), the enable button below asks for that one tap.
+		document.addEventListener('pointerdown', unlockAudio, { capture: true });
 		return () => document.removeEventListener('pointerdown', unlockAudio, { capture: true });
 	});
+
 	onDestroy(() => {
 		stopNarration();
+		stopAmbient();
 	});
 
-	function say(text: string, onStart?: () => void) {
+	// The night ambience plays on the judge's phone only (this component is
+	// host-only), and only while it's night - from nightfall until dawn breaks.
+	// Nine phones playing it out of sync would just be noise.
+	$effect(() => {
+		const s = gameStore.state;
+		const night = s?.phase === 'NIGHT_ACTIONS' && !s.pendingNightAnnounce;
+		if (night) startAmbient();
+		else stopAmbient();
+	});
+
+	function say(text: string, onStart?: () => void, tag?: string) {
 		if (!unlocked) {
 			// Audio never got enabled on this device - fire the start signal
 			// immediately so anything gating on it (a role's turn prompt, on
@@ -67,9 +94,40 @@
 			onStart?.();
 			return;
 		}
-		narrate(text, i18n.lang, onStart);
+		narrate(text, i18n.lang, onStart, tag);
 	}
 
+	// ORDER MATTERS: Svelte runs these effects in declaration order, and a
+	// single server batch often carries several at once - the day's vote
+	// result, PhaseChanged to night, and the first role's turn all arrive
+	// together after a vote. Results are declared first so they're spoken
+	// first; the phase line and then the role call-out follow.
+	// The following four cover events that never had a recorded clip at all -
+	// each guarded the same way as lastPhase/lastStageKey above, so a reactive
+	// re-run (e.g. an unrelated state field changing) doesn't repeat itself.
+	$effect(() => {
+		const deaths = gameStore.lastNightDeaths;
+		if (deaths === lastNightDeaths) return;
+		lastNightDeaths = deaths;
+		if (deaths === null) return;
+		say(formatNightDeaths(deaths, i18n.lang));
+	});
+
+	$effect(() => {
+		const result = gameStore.lastDayResult;
+		if (result === lastDayResult) return;
+		lastDayResult = result;
+		if (!result) return;
+		say(formatDayResult({ ...result, lang: i18n.lang }));
+	});
+
+	$effect(() => {
+		const result = gameStore.gameOverResult;
+		if (result === lastGameOver) return;
+		lastGameOver = result;
+		if (!result) return;
+		say(formatGameOverText(result.winner, i18n.lang, true));
+	});
 	$effect(() => {
 		const phase = gameStore.state?.phase;
 		if (!phase || phase === lastPhase) return;
@@ -103,52 +161,33 @@
 		const stage = gameStore.hostStage;
 		const key = stage ? (stage.kind === 'ROLE_TURN' ? stage.role : 'COUPLE_REVEAL') : null;
 		if (key === lastStageKey) return;
+		const leftCouple = lastStageKey === 'COUPLE_REVEAL';
 		lastStageKey = key;
+		// The previous turn is over - its call-out is useless if it hasn't
+		// started speaking yet (see dropQueuedNarration).
+		dropQueuedNarration('stage');
+		// The lovers confirm on their own phones now, so the closing cue is
+		// said here on the way out rather than by the host's 继续 button.
+		if (leftCouple) say(t.allEyesClosed, undefined, 'stage');
 		if (key === 'COUPLE_REVEAL') {
-			say(t.cupidClose);
-			say(t.coupleReveal);
+			say(t.cupidClose, undefined, 'stage');
+			say(t.coupleReveal, undefined, 'stage');
 		} else if (key && roleLineKeys[key as Role]) {
 			// Every other client's NightActionPrompt for this role is held back
 			// until this specific line actually starts speaking (see gameStore's
 			// pendingTurnRole) - relay the moment it does, not just when it's queued.
-			say(t[roleLineKeys[key as Role]!], () => {
-				void sendAction({ kind: 'NightNarrationStarted', role: key as Role });
-			});
+			say(
+				t[roleLineKeys[key as Role]!],
+				() => {
+					void sendAction({ kind: 'NightNarrationStarted', role: key as Role }, { quiet: true });
+				},
+				'stage'
+			);
 		}
 	});
-
-	// The following four cover events that never had a recorded clip at all -
-	// each guarded the same way as lastPhase/lastStageKey above, so a reactive
-	// re-run (e.g. an unrelated state field changing) doesn't repeat itself.
-	$effect(() => {
-		const deaths = gameStore.lastNightDeaths;
-		if (deaths === lastNightDeaths) return;
-		lastNightDeaths = deaths;
-		if (deaths === null) return;
-		say(formatNightDeaths(deaths, i18n.lang));
-	});
-
-	$effect(() => {
-		const result = gameStore.lastDayResult;
-		if (result === lastDayResult) return;
-		lastDayResult = result;
-		if (!result) return;
-		say(formatDayResult({ ...result, lang: i18n.lang }));
-	});
-
-	$effect(() => {
-		const result = gameStore.lastHunterResult;
-		if (result === lastHunterResult) return;
-		lastHunterResult = result;
-		if (!result) return;
-		say(formatHunterResult({ ...result, lang: i18n.lang }));
-	});
-
-	$effect(() => {
-		const result = gameStore.gameOverResult;
-		if (result === lastGameOver) return;
-		lastGameOver = result;
-		if (!result) return;
-		say(formatGameOverText(result.winner, i18n.lang, true));
-	});
 </script>
+
+<!-- No 点击开启语音播报 banner: any tap on the page unlocks the voice (see
+     onMount), and the host has always tapped plenty by nightfall. The manual
+     test/unlock lives in 上帝之手 (HostOverridePanel) for the odd case, e.g. a
+     refresh mid-night. -->

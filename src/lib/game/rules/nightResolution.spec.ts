@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	resolveNight,
 	cascadeDeaths,
-	predictHunterCanShoot,
+	predictCanShootTonight,
 	canTriggerShoot,
 	getLoverPartner,
 	type NightResolutionContext
@@ -245,40 +245,61 @@ describe('getLoverPartner', () => {
 	});
 });
 
-describe('predictHunterCanShoot (live turn-time prediction, before anyone has died)', () => {
-	it('no poison used at all -> can shoot', () => {
-		const state = makeState({ 1: 'HUNTER' });
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, null)).toBe(true);
+describe('predictCanShootTonight (确认开枪状态 verdict, resolved on a copy)', () => {
+	const at = (
+		roles: Parameters<typeof makeState>[0],
+		nightActions: NightActions,
+		overrides: Partial<GameState> = {}
+	) => makeState(roles, { nightActions, ...overrides });
+
+	it('not dying tonight -> can shoot', () => {
+		expect(predictCanShootTonight(at({ 1: 'HUNTER', 4: 'VILLAGER' }, {}), 1)).toBe(true);
+		expect(
+			predictCanShootTonight(at({ 1: 'HUNTER', 4: 'VILLAGER' }, { witchPoisonTarget: 4 }), 1)
+		).toBe(true);
 	});
 
-	it('someone else was poisoned -> can still shoot', () => {
-		const state = makeState({ 1: 'HUNTER', 4: 'VILLAGER' });
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, 4)).toBe(true);
+	it('wolf-killed -> can shoot; poisoned -> denied', () => {
+		expect(predictCanShootTonight(at({ 1: 'HUNTER' }, { wolfKillTarget: 1 }), 1)).toBe(true);
+		expect(predictCanShootTonight(at({ 1: 'HUNTER' }, { witchPoisonTarget: 1 }), 1)).toBe(false);
 	});
 
-	it('the hunter themself was poisoned -> denied', () => {
-		const state = makeState({ 1: 'HUNTER' });
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, 1)).toBe(false);
+	it("doesn't touch the real state", () => {
+		const state = at({ 1: 'HUNTER' }, { wolfKillTarget: 1 });
+		predictCanShootTonight(state, 1);
+		expect(state.players[1].isDead).toBe(false);
 	});
 
 	it('partner poisoned + cupidPoisonBlocksHunter on -> denied', () => {
 		const cfg: RuleConfig = { ...defaultRuleConfig(), cupidPoisonBlocksHunter: true };
-		const state = makeState({ 1: 'HUNTER', 4: 'VILLAGER' }, { ruleConfig: cfg, lovers: [1, 4] });
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, 4)).toBe(false);
-	});
-
-	it('partner poisoned but the house rule is off -> can shoot', () => {
-		const state = makeState({ 1: 'HUNTER', 4: 'VILLAGER' }, { lovers: [1, 4] });
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, 4)).toBe(true);
-	});
-
-	it('house rule on but the hunter is not in the couple -> can shoot', () => {
-		const cfg: RuleConfig = { ...defaultRuleConfig(), cupidPoisonBlocksHunter: true };
-		const state = makeState(
-			{ 1: 'HUNTER', 2: 'VILLAGER', 4: 'VILLAGER' },
-			{ ruleConfig: cfg, lovers: [2, 4] }
+		const state = at(
+			{ 1: 'HUNTER', 4: 'VILLAGER' },
+			{ witchPoisonTarget: 4 },
+			{ ruleConfig: cfg, lovers: [1, 4] }
 		);
-		expect(predictHunterCanShoot(state.ruleConfig, state, 1, 4)).toBe(true);
+		expect(predictCanShootTonight(state, 1)).toBe(false);
+	});
+
+	it('lover killed by wolves -> 殉情, follows canShootWhenLoverSuicide', () => {
+		const roles = { 1: 'HUNTER', 4: 'VILLAGER' } as const;
+		const allowed = at(roles, { wolfKillTarget: 4 }, { lovers: [1, 4] });
+		expect(predictCanShootTonight(allowed, 1)).toBe(true);
+		const cfg = defaultRuleConfig();
+		cfg.hunter.canShootWhenLoverSuicide = false;
+		const denied = at(roles, { wolfKillTarget: 4 }, { lovers: [1, 4], ruleConfig: cfg });
+		expect(predictCanShootTonight(denied, 1)).toBe(false);
+	});
+
+	it('黑狼王: wolf-killed yes, poisoned no, 殉情 per house rule', () => {
+		const roles = { 1: 'BLACK_WOLF_KING', 4: 'VILLAGER' } as const;
+		expect(predictCanShootTonight(at(roles, { wolfKillTarget: 1 }), 1)).toBe(true);
+		expect(predictCanShootTonight(at(roles, { witchPoisonTarget: 1 }), 1)).toBe(false);
+		const lover = at(roles, { wolfKillTarget: 4 }, { lovers: [1, 4] });
+		expect(predictCanShootTonight(lover, 1)).toBe(false);
+		const cfg = defaultRuleConfig();
+		cfg.wolf.blackWolfKingCanShootWhenLoverSuicide = true;
+		const loverAllowed = at(roles, { wolfKillTarget: 4 }, { lovers: [1, 4], ruleConfig: cfg });
+		expect(predictCanShootTonight(loverAllowed, 1)).toBe(true);
 	});
 });
 

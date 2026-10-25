@@ -29,6 +29,7 @@ import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
 import { startAndSaveGame, deleteGameState, clearGameActions } from '../../game/gameStateRepo';
 import { syncAndBroadcastGameStart } from '../../game/gameSync';
+import { replayTurnPromptIfAny } from '../../game/turnReplay';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
 import {
@@ -102,6 +103,7 @@ export async function handleRoomJoin(
 	// prompt for a role they've already seen.
 	const revealedRole = await getRevealedRoleIfAny(roomCode, socket.data.sessionId);
 	if (revealedRole) emitToSession(socket.data.sessionId, { kind: 'YourRole', role: revealedRole });
+	await replayTurnPromptIfAny(roomCode, socket.data.sessionId);
 
 	return { ok: true, state: state ?? undefined };
 }
@@ -270,7 +272,23 @@ export async function handleRoomRerollRoles(socket: GameSocket): Promise<AckResp
 	const room = await readRoomHash(code);
 	if (!room || room.phase !== 'SEATING') return { ok: false, error: 'invalid_phase' };
 
-	const deal = dealCards(room.roleConfig);
+	await redealIdentities(code, room.roleConfig);
+	emitToRoom(code, { kind: 'RolesRerolled' });
+	return { ok: true };
+}
+
+/** Deals a fresh set of identities for the room's existing roleConfig,
+ * steering away from the deal it replaces (see dealCards' `previous`) so the
+ * same seat rarely gets the same special role twice running. Used by the
+ * host's explicit reshuffle and by every return to SEATING (再来一局), which
+ * used to keep the old deal - silently giving everyone the exact role they
+ * just played unless the host remembered to tap reshuffle. */
+async function redealIdentities(
+	code: string,
+	roleConfig: Partial<Record<Role, number>>
+): Promise<void> {
+	const previous = await getIdentities(code);
+	const deal = dealCards(roleConfig, undefined, previous);
 	const identitiesFlat: Record<string, Role> = { ...deal.identities };
 	if (deal.buried) {
 		identitiesFlat['buried1'] = deal.buried[0];
@@ -283,9 +301,6 @@ export async function handleRoomRerollRoles(socket: GameSocket): Promise<AckResp
 	// Every previous reveal is now stale - clear it so players must re-tap to
 	// see the role they were actually just reshuffled into.
 	await redis.del(revealedKey(code));
-
-	emitToRoom(code, { kind: 'RolesRerolled' });
-	return { ok: true };
 }
 
 // Phases with an active turn/vote in flight - one player leaving mid-way
@@ -303,16 +318,18 @@ const IN_PROGRESS_PHASES: Phase[] = [
 ];
 
 /** Resets an in-progress (or just-finished) round back to SEATING without
- * touching roleConfig/numberOfSeats/identities/seats - so whoever's already
- * seated stays seated, the vacated-or-not seats keep whatever role was
- * already dealt to them, and the host can just re-lock and start again with
- * the exact same setup instead of reconfiguring roles from scratch. Only
+ * touching roleConfig/numberOfSeats/seats - so whoever's already seated stays
+ * seated and the host can just re-lock and start again with the exact same
+ * setup instead of reconfiguring roles from scratch. Identities ARE re-dealt
+ * (redealIdentities): a new round should never silently replay the old one's
+ * roles. Only
  * state specific to the aborted round (the engine's own GameState/action log,
  * plus the legacy deaths/votes/couple-link keys nothing writes anymore but
  * are still cleared for tidiness) is cleared. Shared by the host's explicit
  * RoomStopGame/GameOverScreen's "再来一局" and a non-host's mid-game
  * RoomLeave. */
 async function softResetToSeating(code: string): Promise<void> {
+	const room = await readRoomHash(code);
 	await redis.hset(roomKey(code), {
 		phase: 'SEATING',
 		lockStatus: '0',
@@ -325,6 +342,9 @@ async function softResetToSeating(code: string): Promise<void> {
 	await redis.del(coupleSeatsKey(code));
 	await deleteGameState(code);
 	await clearGameActions(code);
+	// A new round gets a new deal (same roleConfig) - see redealIdentities.
+	if (room && Object.keys(room.roleConfig).length > 0)
+		await redealIdentities(code, room.roleConfig);
 
 	const state = await getPublicState(code);
 	if (state) emitToRoom(code, { kind: 'StateSnapshot', state });

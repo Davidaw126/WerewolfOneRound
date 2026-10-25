@@ -4,7 +4,6 @@
 	import { goto } from '$app/navigation';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { getSocket, sendAction } from '$lib/client/socket';
-	import { startAmbient, stopAmbient, sfxDeath, narrate } from '$lib/client/sfx';
 	import { askConfirm, showAlert } from '$lib/client/confirmDialog.svelte';
 	import { leaveConfirmMessage } from '$lib/client/leaveRoom';
 	import { i18n } from '$lib/client/i18n.svelte';
@@ -12,7 +11,6 @@
 		strings,
 		formatNightDeaths,
 		formatDayResult,
-		formatHunterResult,
 		formatRoomClosedByHost
 	} from '$lib/shared/i18n';
 	import type { AckResponse } from '$lib/shared/events';
@@ -27,6 +25,7 @@
 	import HunterShotPrompt from '$lib/components/HunterShotPrompt.svelte';
 	import GameOverScreen from '$lib/components/GameOverScreen.svelte';
 	import JudgeAudioPlayer from '$lib/components/JudgeAudioPlayer.svelte';
+	import { keepScreenAwake } from '$lib/client/wakeLock';
 	import PhaseBanner from '$lib/components/PhaseBanner.svelte';
 	import DayNightTransition from '$lib/components/DayNightTransition.svelte';
 	import ActivityLogButton from '$lib/components/ActivityLogButton.svelte';
@@ -45,7 +44,10 @@
 
 	function resync() {
 		if (!joined) return;
-		sendAction<AckResponse & { state?: RoomPublicState }>({ kind: 'ResyncRequest' }).then((res) => {
+		sendAction<AckResponse & { state?: RoomPublicState }>(
+			{ kind: 'ResyncRequest' },
+			{ quiet: true }
+		).then((res) => {
 			if (res.ok && res.state) gameStore.applyState(res.state);
 		});
 	}
@@ -53,7 +55,7 @@
 	onMount(() => {
 		gameStore.resetForRoomVisit();
 		gameStore.connect();
-		startAmbient();
+		releaseWakeLock = keepScreenAwake();
 		const socket = getSocket();
 		// Socket.IO auto-reconnects the transport after any drop (mobile
 		// backgrounding, screen lock, a wifi/cellular handoff), and the room
@@ -61,11 +63,24 @@
 		// without this, whatever happened during the gap (a vote, a phase
 		// change, a death) would just be missing until a full page reload.
 		socket.on('connect', resync);
+		// iOS Safari often leaves a socket that still reports "connected" after
+		// the screen was locked, but missed everything sent meanwhile (most
+		// importantly a one-shot YourTurnPrompt). Resync whenever the page comes
+		// back to the foreground; the server replays any turn we're owed.
+		const onVisible = () => {
+			if (!document.hidden) resync();
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		window.addEventListener('pageshow', onVisible);
+		removeVisibilityResync = () => {
+			document.removeEventListener('visibilitychange', onVisible);
+			window.removeEventListener('pageshow', onVisible);
+		};
 
-		sendAction<AckResponse & { state?: RoomPublicState }>({
-			kind: 'RoomJoin',
-			roomCode: data.roomCode
-		}).then((res) => {
+		sendAction<AckResponse & { state?: RoomPublicState }>(
+			{ kind: 'RoomJoin', roomCode: data.roomCode },
+			{ quiet: true }
+		).then((res) => {
 			if (!res.ok) {
 				// Room expired/gone between this page's SSR load and the socket
 				// actually joining it - there's nothing to recover into, so bounce
@@ -75,41 +90,21 @@
 			}
 			joined = true;
 			if (res.state) gameStore.applyState(res.state);
-			sendAction<AckResponse & { state?: RoomPublicState }>({ kind: 'ResyncRequest' }).then(
-				(r2) => {
-					if (r2.ok && r2.state) gameStore.applyState(r2.state);
-				}
-			);
+			sendAction<AckResponse & { state?: RoomPublicState }>(
+				{ kind: 'ResyncRequest' },
+				{ quiet: true }
+			).then((r2) => {
+				if (r2.ok && r2.state) gameStore.applyState(r2.state);
+			});
 		});
 	});
+	let removeVisibilityResync: (() => void) | null = null;
+	let releaseWakeLock: (() => void) | null = null;
 	onDestroy(() => {
+		removeVisibilityResync?.();
+		releaseWakeLock?.();
 		getSocket().off('connect', resync);
 		gameStore.disconnect();
-		stopAmbient();
-	});
-
-	// A death sting whenever a new elimination is announced (night deaths, a day
-	// vote-out, or a hunter shot). Tracks the previous values so it fires once
-	// per event, not on every reactive re-run.
-	let prevNightDeaths: number[] | null = null;
-	let prevDaySeat: number | null = null;
-	let prevHunterShot: number | null = null;
-	$effect(() => {
-		const nd = gameStore.lastNightDeaths;
-		if (nd !== prevNightDeaths) {
-			if (nd && nd.length > 0) sfxDeath();
-			prevNightDeaths = nd;
-		}
-		const ds = gameStore.lastDayResult?.eliminatedSeat ?? null;
-		if (ds !== prevDaySeat) {
-			if (ds !== null) sfxDeath();
-			prevDaySeat = ds;
-		}
-		const hs = gameStore.lastHunterResult?.shotSeat ?? null;
-		if (hs !== prevHunterShot) {
-			if (hs !== null) sfxDeath();
-			prevHunterShot = hs;
-		}
 	});
 
 	// The host leaving destroys the room server-side - nothing left here to
@@ -147,7 +142,8 @@
 		return (
 			hostStage !== null &&
 			(hostStage.kind === 'COUPLE_REVEAL' ||
-				(hostStage.kind === 'ROLE_TURN' && hostStage.role === '猎人'))
+				(hostStage.kind === 'ROLE_TURN' &&
+					(hostStage.role === '猎人' || hostStage.role === '黑狼王')))
 		);
 	});
 
@@ -175,10 +171,8 @@
 	});
 
 	async function takeSeat(seatNumber: number) {
-		const res = await sendAction<AckResponse>({ kind: 'SeatTake', seatNumber });
-		if (!res.ok) {
-			gameStore.showToast(res.error === 'name_taken' ? t.room.nameTaken : t.room.seatTaken);
-		}
+		// A failure (seat taken, name clash) pops up via the global handler.
+		await sendAction<AckResponse>({ kind: 'SeatTake', seatNumber });
 	}
 	async function startGame() {
 		await sendAction<AckResponse>({ kind: 'RoomLockSeats', locked: true });
@@ -187,22 +181,23 @@
 	async function rerollRoles() {
 		await sendAction<AckResponse>({ kind: 'RoomRerollRoles' });
 	}
-	let advancingCoupleReveal = $state(false);
-
+	/** Fallback only - the players on these stages confirm for themselves
+	 * (NightConfirmStage); the host's eyes are shut too. The closing cue is
+	 * JudgeAudioPlayer's, on the stage change, however it happens. */
 	async function advanceStage() {
-		if (stage?.kind === 'COUPLE_REVEAL') {
-			// Say the closing cue and hold for the same 3s beat used everywhere
-			// else in this app for "let that line land before moving on"
-			// (server's POST_ACTION_PAUSE_MS / sfx's NARRATION_GAP_MS) - purely
-			// local timing, since only the host's device narrates at all; other
-			// players just see the phase change whenever the request lands.
-			advancingCoupleReveal = true;
-			await new Promise<void>((resolveNarration) => {
-				narrate(t.narration.allEyesClosed, i18n.lang, () => setTimeout(resolveNarration, 3000));
-			});
-			advancingCoupleReveal = false;
-		}
+		if (!(await askConfirm(t.room.confirmForceContinue))) return;
 		await sendAction<AckResponse>({ kind: 'NightAdvanceStage' });
+	}
+
+	// Per-stage: reset whenever the stage changes.
+	let coupleConfirmed = $state(false);
+	$effect(() => {
+		void stage;
+		coupleConfirmed = false;
+	});
+	async function confirmCouple() {
+		const res = await sendAction<AckResponse>({ kind: 'NightConfirmStage' });
+		if (res.ok) coupleConfirmed = true;
 	}
 	async function announceNightResults() {
 		await sendAction<AckResponse>({ kind: 'NightAnnounceResults' });
@@ -305,12 +300,6 @@
 					</div>
 				{/if}
 
-				{#if gameStore.lastHunterResult}
-					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{formatHunterResult({ ...gameStore.lastHunterResult, lang: i18n.lang })}
-					</div>
-				{/if}
-
 				{#if gameStore.toast}
 					<div class="panel border-wolf/40 px-4 py-2 text-sm text-wolf">
 						{gameStore.toast}
@@ -326,7 +315,9 @@
 				{#if roomState.phase === 'LOBBY'}
 					<div class="text-center">
 						<p class="text-xs text-zinc-500">{t.room.shareCode}</p>
-						<p class="title-glow font-display text-4xl font-black tracking-[0.3em] text-ember">
+						<p
+							class="selectable title-glow font-display text-4xl font-black tracking-[0.3em] text-ember"
+						>
 							{data.roomCode}
 						</p>
 					</div>
@@ -476,17 +467,27 @@
 								     pair - if only the linked two had a button at all, a neighbor
 								     glancing at screens could tell who's linked just from which
 								     screens have a button, without even seeing its content. -->
-								<button
-									onclick={() =>
-										gameStore.showInfoPopup(
-											gameStore.myPartnerSeat !== null
-												? t.room.coupleLinked(gameStore.myPartnerSeat)
-												: t.room.coupleNotLinked
-										)}
-									class="btn-primary w-full"
-								>
-									{t.room.viewCouple}
-								</button>
+								{#if coupleConfirmed}
+									<p class="text-center text-sm text-zinc-500">{t.room.stageConfirmedWait}</p>
+								{:else}
+									<button
+										onclick={() =>
+											gameStore.showInfoPopup(
+												gameStore.myPartnerSeat !== null
+													? t.room.coupleLinked(gameStore.myPartnerSeat)
+													: t.room.coupleNotLinked
+											)}
+										class="btn-primary w-full"
+									>
+										{t.room.viewCouple}
+									</button>
+									<!-- The lovers move the night on themselves once both have
+									     tapped; on every other phone it's the same button doing
+									     nothing, so screens can't give the couple away. -->
+									<button onclick={confirmCouple} class="btn-ghost w-full">
+										{t.room.coupleConfirm}
+									</button>
+								{/if}
 							{:else}
 								<p class="text-center text-sm text-zinc-500">{t.room.waitingOthers}</p>
 							{/if}
@@ -494,10 +495,9 @@
 						{#if isHost && needsHostAdvance}
 							<button
 								onclick={advanceStage}
-								disabled={advancingCoupleReveal}
-								class="btn-ghost w-full hover:bg-ember/10"
+								class="btn-ghost w-full py-1.5 text-xs text-zinc-500 hover:bg-ember/10"
 							>
-								{advancingCoupleReveal ? t.room.closingEyes : t.room.continueButton}
+								{t.room.forceContinue}
 							</button>
 						{/if}
 					</div>

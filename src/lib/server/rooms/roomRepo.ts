@@ -220,7 +220,8 @@ export async function getPublicState(
 			seatNumber: i,
 			sessionId,
 			username: sessionId ? (players[sessionId]?.username ?? null) : null,
-			isDead: deadSet.has(i)
+			isDead: deadSet.has(i),
+			...(gameState?.players[i]?.isRevealedIdiot ? { revealedIdiot: true } : {})
 		});
 	}
 
@@ -252,7 +253,9 @@ export async function getPublicState(
 		speechOrder: gameState ? speechOrderOf(gameState) : [],
 		pkCandidates: gameState ? pkCandidatesOf(gameState) : [],
 		winner: gameState ? winnerOf(gameState) : null,
-		pendingNightAnnounce: gameState ? gameState.pendingNightDeaths !== null : false
+		pendingNightAnnounce: gameState ? gameState.pendingNightDeaths !== null : false,
+		dayDecided: gameState?.dayDecided ?? false,
+		knightUsed: gameState?.knightUsed ?? false
 	};
 
 	if (room.phase === 'GAME_OVER' && gameState) {

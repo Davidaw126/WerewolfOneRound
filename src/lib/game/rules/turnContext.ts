@@ -7,7 +7,8 @@
 // turning effects into actual socket emits.
 
 import type { EngineEffect, GameState, RoleId, Seat } from '../types';
-import { predictHunterCanShoot } from './nightResolution';
+import { predictCanShootTonight } from './nightResolution';
+import { actsInStage } from '../roleMeta';
 
 export interface TurnContext {
 	seat: Seat;
@@ -15,10 +16,17 @@ export interface TurnContext {
 		killedSeat: Seat | null;
 		antidoteAvailable: boolean;
 		poisonAvailable: boolean;
+		selfRescueAllowed: boolean;
+		bothPotionsSameNight: boolean;
 	};
 	hunter?: { canShoot: boolean };
 	guard?: { lastProtectedSeat: Seat | null };
 	wolf?: { teammateSeats: Seat[] };
+	/** 恶灵骑士 feared this seat tonight: no skill, only a pass. */
+	feared?: boolean;
+	/** This is the pack's kill turn - a 狼美人/恶灵骑士 prompted now picks the
+	 * kill, not their own skill (that comes in their own stage). */
+	packKill?: boolean;
 }
 
 // Matches ROLE_META's visibleTeammates lists exactly (NIGHTMARE included,
@@ -28,6 +36,7 @@ export interface TurnContext {
 const WOLF_TEAM_TURN_ROLES: ReadonlySet<RoleId> = new Set([
 	'WEREWOLF',
 	'WOLF_KING',
+	'BLACK_WOLF_KING',
 	'WOLF_BEAUTY',
 	'NIGHTMARE'
 ]);
@@ -45,10 +54,6 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 	// to use the antidote.
 	const killedSeat = state.nightActions.wolfKillTarget ?? null;
 
-	// HUNTER_STATUS always runs after WITCH_ACT (see ROLE_META.nightOrder), so
-	// tonight's poison target is already known by the time we get here.
-	let hunterContext: { canShoot: boolean } | undefined;
-
 	// Living wolf-team seats, for the wolves' own eyes only.
 	let wolfSeats: Seat[] = [];
 	if (WOLF_TEAM_TURN_ROLES.has(role)) {
@@ -60,8 +65,7 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 
 	// WOLF_KING has no night stage of its own - it shares WEREWOLF's (see
 	// roleMeta.ts) - so the WEREWOLF stage must wake WOLF_KING holders too.
-	const matchesStage = (playerRole: RoleId): boolean =>
-		playerRole === role || (role === 'WEREWOLF' && playerRole === 'WOLF_KING');
+	const matchesStage = (playerRole: RoleId): boolean => actsInStage(role, playerRole);
 
 	for (const player of Object.values(state.players)) {
 		if (player.isDead) continue;
@@ -73,30 +77,37 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		// dealt), even though the stage itself is keyed 'WEREWOLF'.
 		const promptRole = player.role;
 		const context: TurnContext = { seat: player.seat };
+		if (role === 'WEREWOLF') context.packKill = true;
+		// Not on 黑狼王's status stage: confirming his shot isn't a skill use,
+		// and a pass there would be read as the pack's kill submission.
+		if (
+			state.fearedSeat === player.seat &&
+			player.role !== 'NIGHTMARE' &&
+			role !== 'BLACK_WOLF_KING'
+		)
+			context.feared = true;
 		if (role === 'WITCH') {
 			context.witch = {
 				killedSeat,
 				antidoteAvailable: !state.witchAntidoteUsed,
-				poisonAvailable: !state.witchPoisonUsed
+				poisonAvailable: !state.witchPoisonUsed,
+				// Same verdicts nightRules.ts's validateWitchAction applies on submit.
+				selfRescueAllowed:
+					state.ruleConfig.witch.selfRescue === 'ALWAYS' ||
+					(state.ruleConfig.witch.selfRescue === 'FIRST_NIGHT_ONLY' && state.isFirstNight),
+				bothPotionsSameNight: state.ruleConfig.witch.bothPotionsSameNight
 			};
 		}
-		if (role === 'HUNTER') {
-			if (!hunterContext) {
-				hunterContext = {
-					canShoot: predictHunterCanShoot(
-						state.ruleConfig,
-						state,
-						player.seat,
-						state.nightActions.witchPoisonTarget ?? null
-					)
-				};
-			}
-			context.hunter = hunterContext;
+		// 确认开枪状态 (猎人 / 黑狼王): both stages run after every other night
+		// action (see ROLE_META.nightOrder), so the verdict is final. 黑狼王
+		// reuses the `hunter` field - the prompt renders the same thumbs.
+		if (role === 'HUNTER' || role === 'BLACK_WOLF_KING') {
+			context.hunter = { canShoot: predictCanShootTonight(state, player.seat) };
 		}
 		if (role === 'GUARD') {
 			context.guard = { lastProtectedSeat: state.lastGuardTarget };
 		}
-		if (WOLF_TEAM_TURN_ROLES.has(role)) {
+		if (WOLF_TEAM_TURN_ROLES.has(role) && role !== 'BLACK_WOLF_KING') {
 			context.wolf = { teammateSeats: wolfSeats.filter((s) => s !== player.seat) };
 		}
 

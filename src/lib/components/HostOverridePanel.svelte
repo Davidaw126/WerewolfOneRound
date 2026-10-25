@@ -3,6 +3,7 @@
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { SUPPORTED_LEGACY_ROLES } from '$lib/game/roleBridge';
+	import { primeSpeech, narrate, speechSupported } from '$lib/client/sfx';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
@@ -15,6 +16,19 @@
 
 	const roomState = $derived(gameStore.state);
 	const seats = $derived(roomState?.seats.filter((s) => s.sessionId !== null) ?? []);
+	// Only this board's roles: a role with no stage tonight would leave the
+	// player holding a card the night never calls.
+	const boardRoles = $derived(
+		SUPPORTED_LEGACY_ROLES.filter((r) => (roomState?.roleConfig?.[r] ?? 0) > 0)
+	);
+
+	const voiceSupported = speechSupported();
+	/** Manual voice check/unlock - a tap here is itself the gesture iOS wants
+	 * before speech may play (normally any tap on the page does it). */
+	function testVoice() {
+		primeSpeech();
+		narrate(t.hostOverride.voiceTestLine, i18n.lang);
+	}
 
 	async function override(overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE') {
 		if (seat === null) return;
@@ -46,14 +60,33 @@
 		<div class="panel mt-2 space-y-3 border-ember/30 p-4">
 			<p class="text-xs text-zinc-500">{t.hostOverride.warning}</p>
 
+			{#if voiceSupported}
+				<button onclick={testVoice} class="btn-ghost w-full py-2 text-xs">
+					{t.hostOverride.voiceTest}
+				</button>
+			{:else}
+				<p class="text-xs text-wolf">{t.hostOverride.voiceUnsupported}</p>
+			{/if}
+
 			<div>
-				<p class="mb-1 text-xs text-zinc-400">{t.hostOverride.selectPlayer}</p>
+				<p class="mb-1 text-xs text-zinc-400">
+					{seat === null ? t.hostOverride.selectPlayer : t.hostOverride.selected(seat)}
+				</p>
 				<div class="grid grid-cols-4 gap-2">
 					{#each seats as s (s.seatNumber)}
 						<button
-							onclick={() => (seat = s.seatNumber)}
-							class="seat-btn {seat === s.seatNumber ? 'border-ember bg-ember/20 text-ember' : ''}"
+							onclick={() => (seat = seat === s.seatNumber ? null : s.seatNumber)}
+							aria-pressed={seat === s.seatNumber}
+							class="seat-btn relative {seat === s.seatNumber
+								? 'border-ember bg-ember/30 font-bold text-ember ring-2 ring-ember'
+								: ''} {s.isDead ? 'opacity-50' : ''}"
 						>
+							{#if seat === s.seatNumber}
+								<span
+									class="absolute -top-1.5 -right-1.5 grid h-4 w-4 place-items-center rounded-full bg-ember text-[10px] leading-none text-ink"
+									>✓</span
+								>
+							{/if}
 							{seatLabel(s.seatNumber, i18n.lang)}
 						</button>
 					{/each}
@@ -78,13 +111,16 @@
 			</div>
 
 			<div class="space-y-2">
-				<p class="text-xs text-zinc-400">{t.hostOverride.changeRoleTo}</p>
+				<p class="text-xs text-zinc-400">
+					{t.hostOverride.changeRoleTo}
+					<span class="text-zinc-600">({t.hostOverride.boardRolesOnly})</span>
+				</p>
 				<select
 					bind:value={role}
 					class="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm"
 				>
 					<option value={null}>{t.hostOverride.selectRolePlaceholder}</option>
-					{#each SUPPORTED_LEGACY_ROLES as r (r)}
+					{#each boardRoles as r (r)}
 						<option value={r}>{roleName(r, i18n.lang)}</option>
 					{/each}
 				</select>

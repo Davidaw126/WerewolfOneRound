@@ -251,7 +251,7 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		targetCount: 1,
 		canTargetSelf: true, // B11: 狼人刀自己人 allowed
 		canTargetDead: false,
-		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
+		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
 		implemented: true
 	},
@@ -275,7 +275,29 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		targetCount: 1,
 		canTargetSelf: true,
 		canTargetDead: false,
-		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
+		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
+		maxUses: null,
+		implemented: true
+	},
+	// 黑狼王: wakes with the pack and shares its one kill (actsInStage below).
+	// When he dies to the wolf kill, a vote, or a shot, he takes one player
+	// with him like the hunter - but not when poisoned, when he
+	// self-explodes, or via 殉情 (see nightResolution.ts's canTriggerShoot).
+	// His own stage is the hunter's 确认开枪状态 counterpart: a status
+	// confirmation after the witch, not a decision.
+	BLACK_WOLF_KING: {
+		id: 'BLACK_WOLF_KING',
+		name: '黑狼王',
+		legacyRole: '黑狼王',
+		camp: 'WEREWOLF',
+		isGod: false,
+		nightOrder: 51, // BLACK_WOLF_KING_STATUS - right after HUNTER_STATUS
+		firstNightOnly: false,
+		actsOnFirstNight: true,
+		targetCount: 1,
+		canTargetSelf: true,
+		canTargetDead: false,
+		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
 		implemented: true
 	},
@@ -291,7 +313,7 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		targetCount: 1,
 		canTargetSelf: false,
 		canTargetDead: false,
-		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
+		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
 		implemented: true
 	},
@@ -307,7 +329,7 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		targetCount: 1,
 		canTargetSelf: false,
 		canTargetDead: false,
-		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
+		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
 		implemented: true
 	}
@@ -329,5 +351,42 @@ export const P0_ROLES: RoleId[] = [
 	'IDIOT',
 	'WEREWOLF'
 ];
-export const P1_ROLES: RoleId[] = ['CUPID', 'WOLF_KING', 'WOLF_BEAUTY', 'KNIGHT'];
+export const P1_ROLES: RoleId[] = [
+	'CUPID',
+	'WOLF_KING',
+	'BLACK_WOLF_KING',
+	'WOLF_BEAUTY',
+	'KNIGHT'
+];
+
+/** Roles that wake in the shared WEREWOLF stage and make its one collective
+ * kill. The single source of truth: a hard-coded "WEREWOLF or WOLF_KING"
+ * check elsewhere is how a lone surviving wolf king's real turn ended up
+ * treated as an absent role's 假环节 stage (auto-skipped after 4s, kill
+ * lost) once the regular wolves were dead. */
+export const PACK_KILL_ROLES: ReadonlySet<RoleId> = new Set([
+	'WEREWOLF',
+	'WOLF_KING',
+	'BLACK_WOLF_KING'
+]);
+
+/** Status-only stages (确认开枪状态): nothing to submit, the host advances. */
+export const STATUS_STAGE_ROLES: ReadonlySet<RoleId> = new Set(['HUNTER', 'BLACK_WOLF_KING']);
+
+/** Every wolf who wakes in the WEREWOLF stage and helps choose its kill:
+ * the wolf kings, plus 狼美人 and 恶灵骑士 - who also keep their own later
+ * stage for their own skill (charm / fear). A kill made by any of them is
+ * recorded in submittedRoles as 'WEREWOLF'. */
+export const PACK_MEMBER_ROLES: ReadonlySet<RoleId> = new Set([
+	...PACK_KILL_ROLES,
+	'WOLF_BEAUTY',
+	'NIGHTMARE'
+]);
+
+/** Whether a holder of `playerRole` acts during `stageRole`'s night stage. */
+export function actsInStage(stageRole: RoleId, playerRole: RoleId): boolean {
+	return (
+		playerRole === stageRole || (stageRole === 'WEREWOLF' && PACK_MEMBER_ROLES.has(playerRole))
+	);
+}
 export const P2_ROLES: RoleId[] = ['THIEF', 'WILD_CHILD', 'DREAM_WEAVER', 'NIGHTMARE'];

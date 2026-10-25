@@ -14,7 +14,9 @@ import type { RuleConfig } from './types';
  * default. */
 export interface RuleConfigOverrides {
 	winCondition?: RuleConfig['winCondition'];
-	wolf?: Partial<Pick<RuleConfig['wolf'], 'allowEmptyKill'>>;
+	wolf?: Partial<
+		Pick<RuleConfig['wolf'], 'allowEmptyKill' | 'blackWolfKingCanShootWhenLoverSuicide'>
+	>;
 	guard?: Partial<Pick<RuleConfig['guard'], 'sameGuardSameSave'>>;
 	witch?: Partial<
 		Pick<RuleConfig['witch'], 'selfRescue' | 'canPoisonSelf' | 'bothPotionsSameNight'>
@@ -50,13 +52,17 @@ export function defaultRuleConfig(): RuleConfig {
 		tieBreak: 'PK_THEN_NO_EXILE',
 		allowAbstain: true,
 		sheriffMustVote: true,
+		// All off: last words happen at the table, and the app doesn't run a
+		// speaker queue the host has to tap through (LAST_WORDS stays
+		// supported for a rule set that turns these back on).
 		lastWords: {
-			firstNightVictim: true,
-			exiledPlayer: true,
-			hunterShotVictim: true,
+			firstNightVictim: false,
+			exiledPlayer: false,
+			hunterShotVictim: false,
 			nightVictimAfterFirst: false
 		},
 		announceDeathBeforeSheriff: false,
+		shotsAtTable: true,
 
 		stepTimeoutSec: 30,
 		timeoutBehavior: 'SKIP',
@@ -67,7 +73,8 @@ export function defaultRuleConfig(): RuleConfig {
 			allowSelfExplode: true,
 			selfExplodeEndsDay: true,
 			selfExplodeHasLastWords: false,
-			wolfKingExplodeCanShoot: true
+			wolfKingExplodeCanShoot: true,
+			blackWolfKingCanShootWhenLoverSuicide: false
 		},
 		seer: {
 			canCheckSelf: true,

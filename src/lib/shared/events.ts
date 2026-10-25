@@ -20,7 +20,12 @@ const roleEnum = z.enum(ALL_ROLES as unknown as [Role, ...Role[]]);
 export const RuleConfigOverridesSchema = z
 	.object({
 		winCondition: z.enum(['SIDE_KILL', 'TOTAL_KILL']),
-		wolf: z.object({ allowEmptyKill: z.boolean() }).partial(),
+		wolf: z
+			.object({
+				allowEmptyKill: z.boolean(),
+				blackWolfKingCanShootWhenLoverSuicide: z.boolean()
+			})
+			.partial(),
 		guard: z.object({ sameGuardSameSave: z.enum(['TARGET_DIES', 'TARGET_LIVES']) }).partial(),
 		witch: z
 			.object({
@@ -60,6 +65,8 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 	// nullable target - it has no separate night action of its own (see
 	// roleMeta.ts's WOLF_KING.nightOrder comment).
 	z.object({ role: z.literal('白狼王'), targetSeat: z.number().int().positive().nullable() }),
+	// 黑狼王 also shares the pack's kill - his own skill is the death shot.
+	z.object({ role: z.literal('黑狼王'), targetSeat: z.number().int().positive().nullable() }),
 	z.object({ role: z.literal('预言家'), targetSeat: z.number().int().positive() }),
 	z.object({
 		role: z.literal('女巫'),
@@ -98,13 +105,28 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('RoomLeave') }),
 	z.object({ kind: z.literal('RoomStopGame') }),
 	z.object({ kind: z.literal('NightSubmitAction'), action: NightActionSubmissionSchema }),
+	// A feared player's only move: end their turn without using their skill.
+	z.object({ kind: z.literal('NightPass') }),
 	z.object({ kind: z.literal('NightAdvanceStage') }),
 	z.object({ kind: z.literal('NightAnnounceResults') }),
 	// M5 §9.1/9.3 - host-only queue advancement, shared by LAST_WORDS and
 	// DISCUSSION (see engine.ts's NEXT_SPEAKER handler).
 	z.object({ kind: z.literal('DayNextSpeaker') }),
 	z.object({ kind: z.literal('DayBeginVote') }),
+	// Host-only "进入黑夜": skip (the rest of) today's vote and start the night.
+	z.object({ kind: z.literal('DayEndDay') }),
+	// Host-only: record who the table voted out by hand (once per day).
+	z.object({ kind: z.literal('DayExile'), seat: z.number().int().positive() }),
+	// Host-only: the seats that left the table today (exile, self-explode,
+	// a shot) - several at once; the server adds any 殉情.
+	z.object({
+		kind: z.literal('DayOut'),
+		seats: z.array(z.number().int().positive()).min(1).max(20)
+	}),
 	z.object({ kind: z.literal('DaySelfExplode'), seat: z.number().int().positive() }),
+	// A player's own 确认 on the 开枪状态 / 情侣相认 stages (eyes shut for
+	// everyone else, including the host).
+	z.object({ kind: z.literal('NightConfirmStage') }),
 	z.object({
 		kind: z.literal('DayKnightDuel'),
 		knightSeat: z.number().int().positive(),
@@ -157,6 +179,9 @@ export type ServerEvent =
 			 * 殉情 - null if there's no couple or the elimination didn't touch it. */
 			followDeathSeat: number | null;
 			followDeathIdentity: Role | null;
+			/** §9.5: the exiled seat was a not-yet-revealed 白痴 - they flipped
+			 * their card and STAY ALIVE (without a vote) instead of leaving. */
+			idiotRevealed?: boolean;
 			/** M5 §9.4 - present only when a first-round tie just opened a
 			 * VOTE_PK re-vote (eliminatedSeat stays null in that case) - the tied
 			 * seats about to be re-voted on. */
@@ -169,15 +194,34 @@ export type ServerEvent =
 	| { kind: 'DiscussionSpeakerChanged'; seat: number | null; order: number[] }
 	// M5 §9.6 狼人自爆.
 	| { kind: 'SelfExploded'; seat: number }
+	/** Today's outcome is settled - see RoomPublicState.dayDecided. */
+	| { kind: 'DayDecided' }
+	/** The host recorded these seats as out; followDeaths are the 殉情
+	 * deaths the app added on top. */
+	| { kind: 'DayOut'; seats: number[]; followDeaths: number[] }
 	// M5 §9.6 骑士决斗 - targetWasWolf tells every client which of the two
 	// possible outcomes just happened (both are always fully public: the
 	// duel reveals whoever it was aimed at regardless of the result).
-	| { kind: 'KnightDuelResolved'; knightSeat: number; targetSeat: number; targetWasWolf: boolean }
+	| {
+			kind: 'KnightDuelResolved';
+			knightSeat: number;
+			targetSeat: number;
+			targetWasWolf: boolean;
+			/** Everyone who died: the loser (unless a house rule spares a
+			 * knight) and anyone who fell with them (殉情 etc.). */
+			deaths: number[];
+	  }
 	// M6 §10.5 上帝之手 - announces THAT the host overrode something, never the
 	// new role for a SET_ROLE override (that would leak straight past every
 	// secrecy mechanism this app has); a KILL/REVIVE's effect is already
 	// visible via deadSeats changing.
-	| { kind: 'HostOverrideApplied'; seat: number; overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE' }
+	| {
+			kind: 'HostOverrideApplied';
+			seat: number;
+			overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE';
+			/** KILL: everyone who died - the seat plus any 殉情 it caused. */
+			deaths: number[];
+	  }
 	| { kind: 'HunterPending'; hunterSeat: number }
 	| {
 			kind: 'HunterResolved';
@@ -228,11 +272,22 @@ export interface TurnContext {
 		 * which the UI derives and the server re-checks on submit. */
 		antidoteAvailable: boolean;
 		poisonAvailable: boolean;
+		/** Tonight's verdicts for the room's house rules (RuleConfig.witch), so
+		 * the panel matches what the server will accept. Optional for wire
+		 * compatibility; absent = the old strict UI (no self-save, one potion). */
+		selfRescueAllowed?: boolean;
+		bothPotionsSameNight?: boolean;
 	};
 	/** Sent on every 猎人 turn: the same hunterCanShoot() verdict the server
 	 * will apply if they die tonight, shown live the way a physical host gives
 	 * the hunter a thumbs up or down. */
 	hunter?: { canShoot: boolean };
+	/** The pack's kill turn: a 狼美人/恶灵骑士 prompted now is choosing the
+	 * kill with the other wolves (their own skill comes in their own turn). */
+	packKill?: boolean;
+	/** 恶灵骑士 feared this seat tonight - its skill is blocked, and the
+	 * prompt only offers a pass (NightPass) so the turn can still end. */
+	feared?: boolean;
 	guard?: { lastProtectedSeat: number | null };
 	/** Living wolf-team seats other than the recipient's own. */
 	wolf?: { teammateSeats: number[] };
@@ -243,9 +298,20 @@ export type PrivateInfo =
 	| { kind: 'SeerResult'; targetSeat: number; isWolf: boolean }
 	| { kind: 'CoupleRevealed'; partnerSeat: number }
 	| { kind: 'ThiefChoice'; buried: [Role, Role] }
-	| { kind: 'YourTurnPrompt'; role: Role; context: TurnContext }
+	// `replay`: re-sent after a reconnect/reload (see turnReplay.ts) - the
+	// stage's narration already played, so the client shows it immediately
+	// instead of waiting on a StageNarrationStarted that won't come again.
+	| { kind: 'YourTurnPrompt'; role: Role; context: TurnContext; replay?: boolean }
 	| { kind: 'HunterAuthorized' }
 	| { kind: 'HunterDenied'; reason: 'poison' }
+	/** You (猎人/狼王/黑狼王) just died - may you shoot, at the table? */
+	| { kind: 'ShotStatus'; canShoot: boolean }
+	/** Your 确认 on an eyes-open-only stage (开枪状态/情侣相认) landed. */
+	| { kind: 'StageConfirmed' }
+	/** Another holder of your role already used tonight's turn. */
+	| { kind: 'RoleDoneByOther' }
+	/** A teammate made tonight's pack kill (null = 空刀) - close your eyes. */
+	| { kind: 'PackKillChosen'; bySeat: number; target: number | null }
 	// S4: acknowledges a role's submission - host-only (see effectTranslator's
 	// emitToHost), since broadcasting it to everyone would out that role's
 	// current holder as having just acted.
