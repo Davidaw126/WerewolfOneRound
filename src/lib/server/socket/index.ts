@@ -7,6 +7,7 @@ import { authMiddleware } from './authMiddleware';
 import { setIoInstance } from './emit';
 import { dispatchAction } from './dispatch';
 import { ClientActionSchema } from '../../shared/events';
+import { resumeNightTimers } from '../game/gameSync';
 import type { ClientToServerEvents, ServerToClientEvents, SocketData } from './types';
 
 type AnyHttpServer = Http1Server | Http2SecureServer;
@@ -53,6 +54,8 @@ export function attachSocketIO(httpServer: AnyHttpServer): Server {
 
 	setIoInstance(io);
 	attachedTo = httpServer;
+	// After a restart mid-game, pick the running nights back up.
+	resumeNightTimers().catch((err) => console.error('resumeNightTimers failed', err));
 	(httpServer as unknown as { io: Server }).io = io;
 	return io;
 }

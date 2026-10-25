@@ -670,6 +670,7 @@ function handleSubmitNightAction(
 				// way GUARD/WITCH need one across repeated nights.
 				const idol = a.wildChildIdol;
 				if (idol === undefined) return;
+				if (idol === seat) return reject(effects, seat, 'invalid_target');
 				draft.nightActions.wildChildIdol = idol;
 				// Persistent identity link (not just tonight's nightActions) - T3 in
 				// nightResolution.ts's cascadeDeaths reads these every night from

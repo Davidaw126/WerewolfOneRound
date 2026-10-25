@@ -21,7 +21,8 @@ export interface TurnContext {
 	};
 	hunter?: { canShoot: boolean };
 	guard?: { lastProtectedSeat: Seat | null };
-	wolf?: { teammateSeats: Seat[] };
+	/** allowEmptyKill: only on the pack's kill turn, when the room allows 空刀. */
+	wolf?: { teammateSeats: Seat[]; allowEmptyKill?: boolean };
 	/** 恶灵骑士 feared this seat tonight: no skill, only a pass. */
 	feared?: boolean;
 	/** This is the pack's kill turn - a 狼美人/恶灵骑士 prompted now picks the
@@ -110,6 +111,8 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		}
 		if (WOLF_TEAM_TURN_ROLES.has(role) && role !== 'BLACK_WOLF_KING') {
 			context.wolf = { teammateSeats: wolfSeats.filter((s) => s !== player.seat) };
+			if (role === 'WEREWOLF' && state.ruleConfig.wolf.allowEmptyKill)
+				context.wolf.allowEmptyKill = true;
 		}
 
 		effects.push({

@@ -14,10 +14,11 @@ import { touchRoomTtl } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { Phase as LegacyPhase } from '../../shared/gameTypes';
-import { actsInStage, STATUS_STAGE_ROLES } from '../../game/roleMeta';
+import { actsInStage, PACK_KILL_ROLES, STATUS_STAGE_ROLES } from '../../game/roleMeta';
+import { stageConfirmComplete } from '../../game/engine';
 import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
-import { applyGameAction } from './gameStateRepo';
+import { applyGameAction, loadGameState } from './gameStateRepo';
 
 async function writeLegacyPhase(
 	code: string,
@@ -78,13 +79,50 @@ function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 	// mid-turn (上帝之手 kills or recasts them), and that stage must not freeze.
 	if (roleHasLivingHolder(state, role)) return; // real stage - HUNTER waits for the host; every other role's submission-triggered timer (night.ts) handles it
 
+	scheduleAdvance(code, key, fakeStageDurationMs(role));
+}
+
+/** Moves the night on from `expectedStepKey` after `ms` - a no-op if the
+ * stage has already moved on by then (the host advanced it, or another
+ * timer won the race). */
+export function scheduleAdvance(code: string, expectedStepKey: string | null, ms: number): void {
 	setTimeout(() => {
-		applyGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey: key }, Date.now())
+		applyGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey }, Date.now())
 			.then(({ result, previousLegacyPhase }) =>
 				syncAndBroadcast(code, result, previousLegacyPhase)
 			)
-			.catch((err) => console.error('fake-stage auto-advance failed', err));
-	}, fakeStageDurationMs(role));
+			.catch((err) => console.error('auto-advance failed', err));
+	}, ms);
+}
+
+/** The current night stage got everything it waits for (a submission, or
+ * every 确认) and only the pause before the next role is left. */
+function stageFinished(state: GameState): boolean {
+	const key = state.currentStepKey;
+	if (!key) return false;
+	if (key === 'couple_reveal') return stageConfirmComplete(state);
+	const role = key.slice('role:'.length) as RoleId;
+	if (STATUS_STAGE_ROLES.has(role)) return stageConfirmComplete(state);
+	if (role === 'WEREWOLF') return state.submittedRoles.some((r) => PACK_KILL_ROLES.has(r));
+	return state.submittedRoles.includes(role);
+}
+
+/** The pacing timers live in memory, so a server restart (a deploy during a
+ * game) dropped them and the night sat still until the host forced it on.
+ * On startup, re-arm whatever each running night was waiting on. */
+export async function resumeNightTimers(): Promise<void> {
+	let cursor = '0';
+	do {
+		const [next, keys] = await redis.scan(cursor, 'MATCH', 'wolf:room:*:gameState', 'COUNT', 100);
+		cursor = next;
+		for (const key of keys) {
+			const code = key.slice('wolf:room:'.length, -':gameState'.length);
+			const state = await loadGameState(code);
+			if (!state || (state.phase !== 'NIGHT' && state.phase !== 'FIRST_NIGHT')) continue;
+			if (stageFinished(state)) scheduleAdvance(code, state.currentStepKey, postActionPauseMs());
+			else maybeScheduleFakeStageAdvance(code, state);
+		}
+	} while (cursor !== '0');
 }
 
 /** Used by every steady-state action (night submit/advance/announce, vote

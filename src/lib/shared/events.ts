@@ -74,7 +74,8 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 		useAntidote: z.boolean()
 	}),
 	z.object({ role: z.literal('守卫'), targetSeat: z.number().int().positive() }),
-	z.object({ role: z.literal('狼美人'), targetSeat: z.number().int().positive() }),
+	// Nullable only for the pack's 空刀 - they join the pack's kill turn too.
+	z.object({ role: z.literal('狼美人'), targetSeat: z.number().int().positive().nullable() }),
 	z.object({
 		role: z.literal('丘比特'),
 		seatA: z.number().int().positive(),
@@ -84,7 +85,7 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 	// M7
 	z.object({ role: z.literal('野孩子'), targetSeat: z.number().int().positive() }),
 	z.object({ role: z.literal('摄梦人'), targetSeat: z.number().int().positive() }),
-	z.object({ role: z.literal('恶灵骑士'), targetSeat: z.number().int().positive() })
+	z.object({ role: z.literal('恶灵骑士'), targetSeat: z.number().int().positive().nullable() })
 ]);
 export type NightActionSubmission = z.infer<typeof NightActionSubmissionSchema>;
 
@@ -290,7 +291,7 @@ export interface TurnContext {
 	feared?: boolean;
 	guard?: { lastProtectedSeat: number | null };
 	/** Living wolf-team seats other than the recipient's own. */
-	wolf?: { teammateSeats: number[] };
+	wolf?: { teammateSeats: number[]; allowEmptyKill?: boolean };
 }
 
 export type PrivateInfo =

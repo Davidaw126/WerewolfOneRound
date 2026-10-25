@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { startGame, reduce } from './engine';
+import { notifyRoleHolders } from './rules/turnContext';
 import { buildSetup } from './rules/setup';
 import { defaultRuleConfig, makeState, kill } from './testFixtures';
 import type { EngineEffect, GameState, RoleId, Seat } from './types';
@@ -1287,5 +1288,68 @@ describe('上帝之手 edge cases', () => {
 		expect(state.phase).toBe('GAME_OVER');
 		const { effects } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'REVIVE', seat: 1 });
 		expect(effects).toHaveLength(0);
+	});
+});
+
+describe('空刀 and self-picks', () => {
+	it('offers 空刀 to the pack only when the room allows it, and accepts it', () => {
+		const roles = {
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WOLF_BEAUTY'
+		} as const;
+		let { state } = start(roles);
+		state = {
+			...state,
+			ruleConfig: { ...state.ruleConfig, wolf: { ...state.ruleConfig.wolf, allowEmptyKill: true } }
+		};
+		const prompts = effectsOfKind(notifyRoleHolders(state, 'WEREWOLF'), 'YourTurnPrompt');
+		expect(prompts.length).toBe(2);
+		for (const p of prompts)
+			expect(
+				(payload(p) as { context: { wolf?: { allowEmptyKill?: boolean } } }).context.wolf
+			).toMatchObject({ allowEmptyKill: true });
+		const r = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 5,
+			role: 'WOLF_BEAUTY',
+			action: { wolfKillTarget: null }
+		});
+		expect(effectsOfKind(r.effects, 'NightActionRejected')).toHaveLength(0);
+		expect(r.state.nightActions.wolfKillTarget).toBeNull();
+
+		const base = start(roles).state;
+		const plain = {
+			...base,
+			ruleConfig: { ...base.ruleConfig, wolf: { ...base.ruleConfig.wolf, allowEmptyKill: false } }
+		};
+		const p0 = payload(
+			effectsOfKind(notifyRoleHolders(plain, 'WEREWOLF'), 'YourTurnPrompt')[0]
+		) as {
+			context: { wolf?: { allowEmptyKill?: boolean } };
+		};
+		expect(p0.context.wolf?.allowEmptyKill).toBeUndefined();
+	});
+
+	it('refuses a 野孩子 picking themselves as idol', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'WILD_CHILD',
+			3: 'VILLAGER',
+			4: 'SEER',
+			5: 'WEREWOLF'
+		});
+		state = { ...state, currentStepKey: 'role:WILD_CHILD' };
+		const r = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 2,
+			role: 'WILD_CHILD',
+			action: { wildChildIdol: 2 }
+		});
+		expect(payload(effectsOfKind(r.effects, 'NightActionRejected')[0])).toMatchObject({
+			error: 'invalid_target'
+		});
 	});
 });

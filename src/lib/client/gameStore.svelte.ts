@@ -233,6 +233,9 @@ class GameStore {
 		this.turnContext = this.pendingTurnContext;
 	}
 
+	/** Bumped per turn prompt and per stage change - see YourTurnPrompt. */
+	private turnToken = 0;
+
 	private unsubscribers: (() => void)[] = [];
 
 	private roundLabel(): string {
@@ -435,6 +438,7 @@ class GameStore {
 				this.pendingTurnContext = null;
 				break;
 			case 'StageChanged':
+				this.turnToken++;
 				this.state = { ...this.state, stage: event.stage };
 				this.stageConfirmed = false;
 				this.packKill = null;
@@ -672,8 +676,14 @@ class GameStore {
 					break;
 				}
 				// Fallback in case narration never relays a start signal (muted,
-				// unsupported browser, no host connected) - see revealTurn.
-				setTimeout(() => this.revealTurn(), TURN_REVEAL_FALLBACK_MS);
+				// unsupported browser, no host connected) - see revealTurn. Tied
+				// to this turn: a player with two turns in a row (狼美人, 黑狼王
+				// after the pack) must not have the first turn's timer reveal
+				// the second before its call-out.
+				const token = ++this.turnToken;
+				setTimeout(() => {
+					if (token === this.turnToken) this.revealTurn();
+				}, TURN_REVEAL_FALLBACK_MS);
 				break;
 			}
 			case 'HunterAuthorized':

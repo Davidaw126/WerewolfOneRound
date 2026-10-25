@@ -49,8 +49,12 @@ export async function checkRateLimit(sessionId: string): Promise<boolean> {
 // Registration has no sessionId yet - that's what's being created - so it's
 // limited by client IP instead, with its own (tighter, longer-window) budget.
 // Shares the same underlying Lua command as the socket-action limiter above.
+// 60, not 10: a whole table registers within the same minute from one wifi
+// (one public IP), and behind Render's proxy - without ADDRESS_HEADER set -
+// every visitor even shares the proxy's address. 10 turned away the 11th
+// and 12th player of a full game.
 const REGISTER_RATE_LIMIT_WINDOW_SECONDS = 60;
-const REGISTER_RATE_LIMIT_MAX_ATTEMPTS = 10;
+const REGISTER_RATE_LIMIT_MAX_ATTEMPTS = 60;
 
 /** True if this client IP is still within its registration-attempt budget
  * for the current window. */

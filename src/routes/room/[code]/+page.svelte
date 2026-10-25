@@ -137,15 +137,10 @@
 	// S4: only ever meaningful for the host (gated by isHost at the one call
 	// site below), so it reads the host-only hostStage (real role) rather than
 	// the shared, role-redacted `stage` above.
-	const needsHostAdvance = $derived.by(() => {
-		const hostStage = gameStore.hostStage;
-		return (
-			hostStage !== null &&
-			(hostStage.kind === 'COUPLE_REVEAL' ||
-				(hostStage.kind === 'ROLE_TURN' &&
-					(hostStage.role === '猎人' || hostStage.role === '黑狼王')))
-		);
-	});
+	// Every night stage, not just the confirm-yourself ones: a player whose
+	// phone dies or locks mid-turn would otherwise freeze the whole night with
+	// no way out. Always there, so its presence says nothing about the stage.
+	const needsHostAdvance = $derived(gameStore.hostStage !== null);
 
 	// Tints the page toward the game's own day/night rhythm - neutral before a
 	// game is underway, since LOBBY/SEATING have no "time of day" of their own.
@@ -176,13 +171,17 @@
 	}
 	async function startGame() {
 		await sendAction<AckResponse>({ kind: 'RoomLockSeats', locked: true });
-		await sendAction<AckResponse>({ kind: 'RoomStartGame' });
+		const res = await sendAction<AckResponse>({ kind: 'RoomStartGame' });
+		// A refused start (an empty seat, a bad setup) must not leave the seats
+		// locked - there's no unlock button, so nobody could sit down again.
+		if (!res.ok)
+			await sendAction<AckResponse>({ kind: 'RoomLockSeats', locked: false }, { quiet: true });
 	}
 	async function rerollRoles() {
 		await sendAction<AckResponse>({ kind: 'RoomRerollRoles' });
 	}
-	/** Fallback only - the players on these stages confirm for themselves
-	 * (NightConfirmStage); the host's eyes are shut too. The closing cue is
+	/** Fallback only - players act or confirm for themselves; this is for a
+	 * turn stuck on a phone that died or locked. The host's eyes are shut too. The closing cue is
 	 * JudgeAudioPlayer's, on the stage change, however it happens. */
 	async function advanceStage() {
 		if (!(await askConfirm(t.room.confirmForceContinue))) return;

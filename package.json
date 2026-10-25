@@ -15,7 +15,8 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"start": "node build-server/index.js",
-		"build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:../build/handler.js --outfile=build-server/index.js"
+		"build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:../build/handler.js --outfile=build-server/index.js",
+		"e2e": "node scripts/e2e.mjs"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

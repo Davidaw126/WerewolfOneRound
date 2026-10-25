@@ -4,7 +4,7 @@
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
-	import type { AckResponse, ClientAction } from '$lib/shared/events';
+	import type { AckResponse, ClientAction, NightActionSubmission } from '$lib/shared/events';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import PixelSprite from './PixelSprite.svelte';
 
@@ -28,6 +28,9 @@
 	const isSelfKill = $derived(
 		killedSeat !== null && killedSeat === ctx?.seat && !witch?.selfRescueAllowed
 	);
+	/** Checking or idolising yourself makes no sense (the server refuses it
+	 * too) - not offered. The pack's kill turn keeps every seat. */
+	const noSelfPick = $derived(!packTurn && (role === '预言家' || role === '野孩子'));
 	/** One potion per night unless the room's rules allow both. */
 	const onePotionOnly = $derived(!witch?.bothPotionsSameNight);
 
@@ -185,7 +188,7 @@
 				{/if}
 			</p>
 			<div class="grid grid-cols-4 gap-2">
-				{#each livingSeats as seat (seat.seatNumber)}
+				{#each livingSeats.filter((s) => !(noSelfPick && s.seatNumber === ctx?.seat)) as seat (seat.seatNumber)}
 					{@const blocked = role === '守卫' && seat.seatNumber === guardLastSeat}
 					<button
 						disabled={blocked}
@@ -219,6 +222,22 @@
 			>
 				{t.confirm}
 			</button>
+			{#if packTurn && ctx?.wolf?.allowEmptyKill}
+				<!-- 空刀: only offered when the room's rules allow it. -->
+				<button
+					onclick={() =>
+						submit(
+							{
+								kind: 'NightSubmitAction',
+								action: { role, targetSeat: null } as NightActionSubmission
+							},
+							t.descEmptyKill
+						)}
+					class="btn-ghost w-full py-2 text-sm"
+				>
+					{t.emptyKill}
+				</button>
+			{/if}
 		{:else if role === '女巫'}
 			<p class="text-sm">
 				<span class="text-zinc-400">{t.witchAntidoteLabel}</span>

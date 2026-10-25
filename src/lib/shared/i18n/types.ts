@@ -101,6 +101,8 @@ export interface Strings {
 		soloWolf: string;
 		guardLastProtected: (seat: number) => string;
 		selectWolfTarget: string;
+		emptyKill: string;
+		descEmptyKill: string;
 		selectSeerTarget: string;
 		selectGuardTarget: string;
 		selectWolfBeautyTarget: string;

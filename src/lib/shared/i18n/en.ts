@@ -53,7 +53,7 @@ export const en: Strings = {
 		coupleConfirm: 'Got it, closing eyes',
 		stageConfirmedWait: 'Confirmed — close your eyes…',
 		forceContinue: 'Force continue (player not responding)',
-		confirmForceContinue: 'Players normally confirm this step themselves. Skip it anyway?',
+		confirmForceContinue: 'Skip this step and move on? Only needed when a player isn’t responding.',
 		reroll: 'Reshuffle Roles',
 		startGame: 'Start Game',
 		voteWaitAnnounceHost: 'Announce last night’s results to start the vote',
@@ -132,6 +132,8 @@ export const en: Strings = {
 		guardLastProtected: (seat) =>
 			`You protected seat ${seat} last night — you can't protect the same seat twice in a row`,
 		selectWolfTarget: 'Choose tonight’s target:',
+		emptyKill: 'No kill tonight',
+		descEmptyKill: 'You chose no kill tonight',
 		selectSeerTarget: 'Choose a player to check:',
 		selectGuardTarget: 'Choose a player to protect:',
 		selectWolfBeautyTarget: 'Choose a player to charm:',

@@ -1,5 +1,5 @@
 import { applyGameAction, loadGameState } from '../../game/gameStateRepo';
-import { syncAndBroadcast, postActionPauseMs } from '../../game/gameSync';
+import { syncAndBroadcast, postActionPauseMs, scheduleAdvance } from '../../game/gameSync';
 import { stageConfirmComplete } from '../../../game/engine';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import { stageOf } from '../../game/projection';
@@ -22,13 +22,7 @@ import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './he
  * after a different player's own timer already won the race - from
  * double-advancing past whatever stage came next. */
 function scheduleAutoAdvance(code: string, expectedStepKey: string | null): void {
-	setTimeout(() => {
-		applyGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey }, Date.now())
-			.then(({ result, previousLegacyPhase }) =>
-				syncAndBroadcast(code, result, previousLegacyPhase)
-			)
-			.catch((err) => console.error('scheduleAutoAdvance failed', err));
-	}, postActionPauseMs());
+	scheduleAdvance(code, expectedStepKey, postActionPauseMs());
 }
 
 /**
@@ -59,7 +53,7 @@ function buildNightAction(action: NightActionSubmission, player: Player): Partia
 		case '守卫':
 			return { guardTarget: action.targetSeat };
 		case '狼美人':
-			return { wolfBeautyCharmTarget: action.targetSeat };
+			return { wolfBeautyCharmTarget: action.targetSeat ?? undefined };
 		case '丘比特':
 			return { cupidLinks: [action.seatA, action.seatB] };
 		case '盗贼': {
@@ -73,7 +67,7 @@ function buildNightAction(action: NightActionSubmission, player: Player): Partia
 		case '摄梦人':
 			return { dreamWeaverTarget: action.targetSeat };
 		case '恶灵骑士':
-			return { nightmareFearTarget: action.targetSeat };
+			return { nightmareFearTarget: action.targetSeat ?? undefined };
 	}
 }
 
