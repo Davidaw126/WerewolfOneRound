@@ -1323,6 +1323,7 @@ export function startGame(params: StartGameParams): EngineResult {
 
 	const initial: GameState = {
 		roomCode: params.roomCode,
+		startedAt: params.now,
 		phase: 'FIRST_NIGHT',
 		round: 1,
 		isFirstNight: true,

@@ -31,6 +31,30 @@ export interface ActivityLogEntry {
 	public: boolean;
 }
 
+// The diary survives a page reload (iPhone Safari reloads a backgrounded tab
+// whenever it's short on memory) - otherwise a seer lost every check result.
+// One saved diary per device, tagged with the game it belongs to.
+const LS_DIARY = 'wolf.diary';
+
+function saveDiary(roomCode: string, gameId: string, log: ActivityLogEntry[]): void {
+	try {
+		localStorage.setItem(LS_DIARY, JSON.stringify({ roomCode, gameId, log }));
+	} catch {
+		/* private mode / quota - the diary just won't survive a reload */
+	}
+}
+
+function loadDiary(roomCode: string, gameId: string): ActivityLogEntry[] {
+	try {
+		const saved = JSON.parse(localStorage.getItem(LS_DIARY) ?? 'null');
+		if (saved?.roomCode === roomCode && saved?.gameId === gameId && Array.isArray(saved.log))
+			return saved.log;
+	} catch {
+		/* unreadable - start empty */
+	}
+	return [];
+}
+
 export interface RoomLogEntry {
 	round: string;
 	text: string;
@@ -234,6 +258,8 @@ class GameStore {
 			...this.activityLog,
 			{ round: this.roundLabel(), text, public: opts?.public ?? false }
 		];
+		const s = this.state;
+		if (s?.gameId) saveDiary(s.roomCode, s.gameId, this.activityLog);
 	}
 
 	/** Called synchronously at the very top of the room page's onMount, before
@@ -320,6 +346,8 @@ class GameStore {
 			// room has no relationship to the old one's log at all.
 			this.resetPrivateState();
 			this.roomLog = [];
+			// A reload mid-game: bring back this phone's diary for this game.
+			if (state.gameId) this.activityLog = loadDiary(state.roomCode, state.gameId);
 		}
 	}
 

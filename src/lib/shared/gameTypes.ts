@@ -91,6 +91,9 @@ export interface RoomPublicState {
 	dayDecided: boolean;
 	/** The 骑士 has dueled (once per game) - public, the duel was announced. */
 	knightUsed: boolean;
+	/** Identifies the game in progress (its start time), so a phone can tell
+	 * whether a diary it saved before a reload belongs to this game. */
+	gameId?: string;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
 	identities?: Record<number, Role>;
 }

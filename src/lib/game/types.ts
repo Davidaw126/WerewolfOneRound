@@ -309,6 +309,9 @@ export interface TimelineEvent {
 
 export interface GameState {
 	roomCode: string;
+	/** When this game started (startGame's `now`) - tells one game in a room
+	 * apart from the next. Absent on games saved before it existed. */
+	startedAt?: number;
 	phase: Phase;
 	round: number;
 	isFirstNight: boolean;

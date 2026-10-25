@@ -271,7 +271,8 @@ export async function getPublicState(
 		winner: gameState ? winnerOf(gameState) : null,
 		pendingNightAnnounce: gameState ? gameState.pendingNightDeaths !== null : false,
 		dayDecided: gameState?.dayDecided ?? false,
-		knightUsed: gameState?.knightUsed ?? false
+		knightUsed: gameState?.knightUsed ?? false,
+		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {})
 	};
 
 	if (room.phase === 'GAME_OVER' && gameState) {

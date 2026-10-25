@@ -76,9 +76,14 @@ export function toPublicStage(stage: LegacyNightStage | null): PublicNightStage 
 	return stage.kind === 'ROLE_TURN' ? { kind: 'ROLE_TURN' } : stage;
 }
 
+/** Tonight's deaths are applied to `players[].isDead` the moment the night
+ * resolves, but stay secret until the host taps 公布夜晚结果 - leaving them in
+ * here let any phone that refreshed or reconnected at DAWN (an iPhone waking
+ * from sleep does) read who died before the announcement. */
 export function deadSeatsOf(state: GameState): number[] {
+	const unannounced = new Set((state.pendingNightDeaths ?? []).map((d) => d.seat));
 	return Object.values(state.players)
-		.filter((p) => p.isDead)
+		.filter((p) => p.isDead && !unannounced.has(p.seat))
 		.map((p) => p.seat)
 		.sort((a, b) => a - b);
 }
