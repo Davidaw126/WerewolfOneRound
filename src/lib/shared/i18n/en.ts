@@ -272,6 +272,7 @@ export const en: Strings = {
 		selectPlayer: 'Select player:',
 		selected: (seat) => `Selected: seat ${seat}`,
 		voiceTest: "🔊 Test the judge's voice (tap if it's silent)",
+		gameToolsLater: 'Kill / revive / change role: available once the game starts',
 		voiceTestLine: "The judge's voice is working",
 		voiceUnsupported: "This browser can't speak — try Safari or Chrome",
 		boardRolesOnly: "Only roles on this game's board",

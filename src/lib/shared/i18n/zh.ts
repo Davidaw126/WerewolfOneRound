@@ -268,6 +268,7 @@ export const zh: Strings = {
 		selectPlayer: '选择玩家：',
 		selected: (seat) => `已选择：${seat} 号`,
 		voiceTest: '🔊 试听法官语音（没声音时点这里）',
+		gameToolsLater: '击杀 / 复活 / 改变身份：游戏开始后可用',
 		voiceTestLine: '法官语音正常',
 		voiceUnsupported: '此浏览器不支持语音播报，请换用 Safari 或 Chrome',
 		boardRolesOnly: '只能改成本局板子里有的身份',

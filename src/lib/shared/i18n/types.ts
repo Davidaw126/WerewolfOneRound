@@ -236,6 +236,7 @@ export interface Strings {
 		selectPlayer: string;
 		selected: (seat: number) => string;
 		voiceTest: string;
+		gameToolsLater: string;
 		voiceTestLine: string;
 		voiceUnsupported: string;
 		boardRolesOnly: string;

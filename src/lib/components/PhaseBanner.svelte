@@ -129,10 +129,15 @@
 			</div>
 		</div>
 
-		<!-- Not during SEATING: no game (and so no card to change) exists yet -
-		     the board itself is changed with 角色配置 / 重新发牌 there. -->
-		{#if canStop && state?.phase !== 'SEATING'}
-			<HostOverridePanel />
+		<!-- Always there for the host: the voice test is useful before the game
+		     too. The panel itself only offers kill/revive/改变身份 once a game
+		     is actually running (no cards exist before that). -->
+		{#if isHost}
+			<HostOverridePanel
+				gameRunning={state.phase !== 'LOBBY' &&
+					state.phase !== 'SEATING' &&
+					state.phase !== 'GAME_OVER'}
+			/>
 		{/if}
 	</div>
 {/if}
