@@ -51,8 +51,9 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 	const effects: EngineEffect[] = [];
 
 	// The witch needs to know who the wolves killed tonight to decide whether
-	// to use the antidote.
-	const killedSeat = state.nightActions.wolfKillTarget ?? null;
+	// to use the antidote - but only while she still has it. Once it's spent
+	// she no longer learns the kill (standard rule).
+	const killedSeat = state.witchAntidoteUsed ? null : (state.nightActions.wolfKillTarget ?? null);
 
 	// Living wolf-team seats, for the wolves' own eyes only.
 	let wolfSeats: Seat[] = [];

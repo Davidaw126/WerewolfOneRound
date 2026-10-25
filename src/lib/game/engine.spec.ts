@@ -1179,3 +1179,25 @@ describe('EXILE (host records the table vote)', () => {
 		expect(reduce(state, { type: 'EXILE', seat: 3 }).effects).toEqual([]);
 	});
 });
+
+describe('witch after the antidote is spent', () => {
+	it('no longer learns who the wolves attacked', () => {
+		let { state } = start({ 1: 'WEREWOLF', 2: 'SEER', 3: 'WITCH', 4: 'VILLAGER', 5: 'VILLAGER' });
+		state = { ...state, witchAntidoteUsed: true };
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 4 }
+		}));
+		const advanced = reduce(state, { type: 'ADVANCE_STAGE' });
+		state = advanced.state;
+		const effects = advanced.effects;
+		expect(state.currentStepKey).toBe('role:WITCH');
+		const witchPrompt = payload(effectsOfKind(effects, 'YourTurnPrompt')[0]) as {
+			context: { witch: { killedSeat: number | null; antidoteAvailable: boolean } };
+		};
+		expect(witchPrompt.context.witch.killedSeat).toBeNull();
+		expect(witchPrompt.context.witch.antidoteAvailable).toBe(false);
+	});
+});

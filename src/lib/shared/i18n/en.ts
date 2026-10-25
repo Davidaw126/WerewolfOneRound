@@ -144,6 +144,7 @@ export const en: Strings = {
 		witchSpent: '❌ Used up',
 		witchKilledTonight: (seat) => `Seat ${seat} was attacked tonight`,
 		witchNoOneKilled: 'No one was attacked tonight',
+		witchKillHidden: 'Antidote used - you no longer see who was attacked',
 		witchUseAntidote: (seat) => `Use antidote to save seat ${seat}`,
 		witchSelfSaveBlocked: "The witch can't save herself",
 		witchOnePotionPerNight: 'Only one potion can be used per night',

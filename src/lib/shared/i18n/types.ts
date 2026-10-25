@@ -113,6 +113,7 @@ export interface Strings {
 		witchSpent: string;
 		witchKilledTonight: (seat: number) => string;
 		witchNoOneKilled: string;
+		witchKillHidden: string;
 		witchUseAntidote: (seat: number) => string;
 		witchSelfSaveBlocked: string;
 		witchOnePotionPerNight: string;

@@ -143,6 +143,7 @@ export const zh: Strings = {
 		witchSpent: '❌已用完',
 		witchKilledTonight: (seat) => `今晚 ${seat} 号被袭击`,
 		witchNoOneKilled: '今晚无人被袭击',
+		witchKillHidden: '解药已用，今晚无法得知谁被袭击',
 		witchUseAntidote: (seat) => `使用解药救 ${seat} 号`,
 		witchSelfSaveBlocked: '女巫不能自救',
 		witchOnePotionPerNight: '每晚只能使用一瓶药',

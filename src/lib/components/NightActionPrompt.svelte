@@ -232,7 +232,11 @@
 				</span>
 			</p>
 			<p class="text-sm text-zinc-400">
-				{killedSeat ? t.witchKilledTonight(killedSeat) : t.witchNoOneKilled}
+				{!witch?.antidoteAvailable
+					? t.witchKillHidden
+					: killedSeat
+						? t.witchKilledTonight(killedSeat)
+						: t.witchNoOneKilled}
 			</p>
 			{#if killedSeat !== null && witch?.antidoteAvailable}
 				{@const antidoteBlocked = isSelfKill || (onePotionOnly && poisonTarget !== null)}
