@@ -98,17 +98,17 @@
 
 		<!-- Utility strip: room/audio (static, room-wide) on the left,
 		     identity + destructive controls on the right. -->
-		<div class="flex items-center justify-between gap-2">
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
-				<div class="chip">{t.phaseBanner.roomCode} {state.roomCode}</div>
+				<div class="chip whitespace-nowrap">{t.phaseBanner.roomCode} {state.roomCode}</div>
 				<!-- Only the host's phone makes any sound (judge voice + night forest). -->
 				{#if isHost}
 					<AudioToggleButtons />
 				{/if}
 				<LanguageToggle />
 			</div>
-			<div class="flex items-center gap-2">
-				<div class="chip">{username}</div>
+			<div class="ml-auto flex min-w-0 items-center gap-2">
+				<div class="chip max-w-[10rem] truncate">{username}</div>
 				{#if canStop}
 					<!-- A small, tucked-away header control - deliberately not a full-width
 					     button in the main content flow, so it never sits next to (or

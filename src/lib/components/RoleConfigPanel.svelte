@@ -154,24 +154,24 @@
 				>
 					<PixelSprite {role} px={30} idle={(counts[role] ?? 0) > 0} />
 					<div class="min-w-0 flex-1">
-						<div class="truncate text-[11px] text-bone">{roleName(role, i18n.lang)}</div>
-					</div>
-					<div class="flex items-center gap-1">
-						<button
-							onclick={() => inc(role, -1)}
-							aria-label={t.roleConfig.decrease}
-							class="h-6 w-6 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-							>−</button
-						>
-						<span class="w-4 text-center text-sm text-village tabular-nums"
-							>{counts[role] ?? 0}</span
-						>
-						<button
-							onclick={() => inc(role, 1)}
-							aria-label={t.roleConfig.increase}
-							class="h-6 w-6 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-							>+</button
-						>
+						<div class="truncate text-xs text-bone">{roleName(role, i18n.lang)}</div>
+						<div class="mt-1 flex items-center gap-1">
+							<button
+								onclick={() => inc(role, -1)}
+								aria-label={t.roleConfig.decrease}
+								class="h-8 w-8 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+								>−</button
+							>
+							<span class="w-5 text-center text-sm text-village tabular-nums"
+								>{counts[role] ?? 0}</span
+							>
+							<button
+								onclick={() => inc(role, 1)}
+								aria-label={t.roleConfig.increase}
+								class="h-8 w-8 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+								>+</button
+							>
+						</div>
 					</div>
 				</div>
 			{/each}
