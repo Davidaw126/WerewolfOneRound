@@ -42,10 +42,11 @@ export function postActionPauseMs(): number {
  * as a real one, or a short turn tells the table that role is dead. A real
  * turn is the call-out + the player thinking + the post-action pause, so a
  * fake one waits a made-up think time on top of that same pause: short for
- * a 确认开枪状态 glance, longer for a real decision. Never more than 10 s in
- * total (5-8 s for a status glance, 6-10 s for a decision). */
+ * a 确认开枪状态 glance, longer for a real decision - a real 预言家 or 女巫
+ * usually takes a while, so the old 10 s ceiling ran noticeably short.
+ * In total 6-10 s for a status glance, 9-15 s for a decision. */
 function fakeStageDurationMs(role: RoleId): number {
-	const think = STATUS_STAGE_ROLES.has(role) ? randomMs(2000, 3000) : randomMs(3000, 5000);
+	const think = STATUS_STAGE_ROLES.has(role) ? randomMs(3000, 5000) : randomMs(6000, 10000);
 	return think + postActionPauseMs();
 }
 
