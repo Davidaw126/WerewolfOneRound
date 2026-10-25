@@ -18,6 +18,7 @@ import type { Phase, RoomPublicState, SeatState } from '../../shared/gameTypes';
 import type { DealResult } from '../../shared/deal';
 import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
 import { loadGameState } from '../game/gameStateRepo';
+import { roleIdToLegacy } from '../../game/roleBridge';
 import {
 	mapToLegacyPhase,
 	stageOf,
@@ -174,6 +175,21 @@ export async function getRevealedRoleIfAny(code: string, sessionId: string): Pro
 	if (!(await hasRevealed(code, sessionId))) return null;
 	const seat = await seatOf(code, sessionId);
 	if (seat === null) return null;
+	return currentRoleOfSeat(code, seat);
+}
+
+/** The card a seat holds RIGHT NOW. Once a game is running that's the
+ * engine's GameState, not the identities hash dealt at seating - the hash
+ * never learns about in-game changes (上帝之手's 改变身份, the 盗贼 taking a
+ * buried card), so replaying it on a refresh/reconnect showed the player
+ * their old card. */
+export async function currentRoleOfSeat(code: string, seat: number): Promise<Role | null> {
+	const room = await readRoomHash(code);
+	if (room && IN_GAME_PHASES.includes(room.phase)) {
+		const gameState = await loadGameState(code);
+		const player = gameState?.players[seat];
+		if (player) return roleIdToLegacy(player.role);
+	}
 	const identities = await getIdentities(code);
 	return identities[String(seat)] ?? null;
 }

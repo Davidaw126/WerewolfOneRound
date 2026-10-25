@@ -6,9 +6,7 @@
 		stopNarration,
 		primeSpeech,
 		onSpeechBlocked,
-		dropQueuedNarration,
-		startAmbient,
-		stopAmbient
+		dropQueuedNarration
 	} from '$lib/client/sfx';
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
@@ -87,17 +85,6 @@
 
 	onDestroy(() => {
 		stopNarration();
-		stopAmbient();
-	});
-
-	// The night ambience plays on the judge's phone only (this component is
-	// host-only), and only while it's night - from nightfall until dawn breaks.
-	// Nine phones playing it out of sync would just be noise.
-	$effect(() => {
-		const s = gameStore.state;
-		const night = s?.phase === 'NIGHT_ACTIONS' && !s.pendingNightAnnounce;
-		if (night) startAmbient();
-		else stopAmbient();
 	});
 
 	function say(text: string, onStart?: () => void, tag?: string) {

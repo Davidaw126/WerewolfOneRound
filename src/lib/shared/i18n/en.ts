@@ -334,8 +334,6 @@ export const en: Strings = {
 		logoutConfirm: "Log out? You'll need to enter a username again to come back."
 	},
 	audioToggle: {
-		musicOn: 'Mute night ambience',
-		musicOff: 'Unmute night ambience',
 		sfxOn: "Mute the judge's voice",
 		sfxOff: "Unmute the judge's voice"
 	},

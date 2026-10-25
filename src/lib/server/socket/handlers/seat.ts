@@ -1,4 +1,9 @@
-import { takeSeatAtomic, getPublicState, getIdentities, markRevealed } from '../../rooms/roomRepo';
+import {
+	takeSeatAtomic,
+	getPublicState,
+	currentRoleOfSeat,
+	markRevealed
+} from '../../rooms/roomRepo';
 import { emitToRoom, emitToSession } from '../emit';
 import type { AckResponse } from '../../../shared/events';
 import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
@@ -29,8 +34,7 @@ export async function handleRevealRole(socket: GameSocket): Promise<AckResponse>
 	const code = requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 
-	const identities = await getIdentities(code);
-	const role = identities[String(seat)];
+	const role = await currentRoleOfSeat(code, seat);
 	if (!role) return { ok: false, error: 'no_role_assigned' };
 
 	await markRevealed(code, socket.data.sessionId);

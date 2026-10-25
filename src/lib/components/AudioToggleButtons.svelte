@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Two independent mutes, sharing the round icon-button style of the other
+	// The judge-voice mute, sharing the round icon-button style of the other
 	// controls in the PhaseBanner cluster (see LeaveRoomButton). Lit in ember
 	// when on, so state reads at a glance without decoding the icon.
 	import { audioSettings } from '$lib/client/audioSettings.svelte';
@@ -11,22 +11,6 @@
 	const btnClass =
 		'rounded-full border border-line p-1.5 transition hover:border-wolf/60 hover:text-wolf disabled:cursor-not-allowed disabled:opacity-50';
 </script>
-
-<button
-	onclick={() => audioSettings.toggleAmbient()}
-	aria-label={audioSettings.ambient ? t.audioToggle.musicOn : t.audioToggle.musicOff}
-	title={audioSettings.ambient ? t.audioToggle.musicOn : t.audioToggle.musicOff}
-	class="{btnClass} {audioSettings.ambient ? 'text-ember' : 'text-zinc-400'}"
->
-	<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" class="h-3.5 w-3.5">
-		<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.5V4.5l8-1.5v10" />
-		<circle cx="5.75" cy="14.5" r="1.75" />
-		<circle cx="13.75" cy="13" r="1.75" />
-		{#if !audioSettings.ambient}
-			<path stroke-linecap="round" d="M3.5 3.5 16.5 16.5" />
-		{/if}
-	</svg>
-</button>
 
 <button
 	onclick={() => audioSettings.toggleEffects()}

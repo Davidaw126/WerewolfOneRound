@@ -328,8 +328,6 @@ export const zh: Strings = {
 		logoutConfirm: '确定要退出登录吗？需要重新输入用户名才能再次进入。'
 	},
 	audioToggle: {
-		musicOn: '关闭夜晚环境音',
-		musicOff: '开启夜晚环境音',
 		sfxOn: '关闭法官语音',
 		sfxOff: '开启法官语音'
 	},

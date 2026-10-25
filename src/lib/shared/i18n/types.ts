@@ -295,8 +295,6 @@ export interface Strings {
 		logoutConfirm: string;
 	};
 	audioToggle: {
-		musicOn: string;
-		musicOff: string;
 		sfxOn: string;
 		sfxOff: string;
 	};
