@@ -106,7 +106,7 @@ Response security headers (CSP via SvelteKit's own `csp` Vite-plugin option, plu
 
 ## Working rules (from the maintainer)
 
-- **Push and deploy only when explicitly asked.** Commit locally as you go; Render auto-deploys on every push to `master`. Live URL: https://werewolf-judge-helper.onrender.com (`/health` returns 200). To confirm a deploy, trace `/` → `_app/immutable/entry/app.*.js` → `nodes/*` → `chunks/*` and grep for a string from the change — `/room/XXXX` has no app entry to trace from.
+- **Push and deploy only when explicitly asked.** Commit locally as you go; Render auto-deploys on every push to `master`. Live URL: https://werewolf-judge-helper.onrender.com (`/health` returns 200). To confirm a deploy, fetch `/` with `curl -L` (it redirects to `/register`), trace → `_app/immutable/entry/app.*.js` → `nodes/*` → `chunks/*` and grep for a string from the change — `/room/XXXX` has no app entry to trace from.
 - **Don't change the Render config** (`render.yaml`, env vars, headers like `ADDRESS_HEADER`) without asking first.
 - **Keep the legacy vote / `HUNTER_SHOOT` code** (unreachable while `shotsAtTable=false`). Report it as dead code; don't delete it.
 - **In-game reads come from `GameState`, never the seating-time Redis keys** (`identities`, `deadSeats`, …) — those drift once roles change in play (上帝之手 SET_ROLE, 盗贼, 野孩子). Use `roomRepo.currentRoleOfSeat()`.
