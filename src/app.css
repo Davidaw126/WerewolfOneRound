@@ -84,91 +84,96 @@ canvas {
 }
 
 /* --- 8-bit component chrome -------------------------------------------- */
+/* In @layer components so a utility in the markup (py-2, border-ember,
+   bg-ember/20, hover:...) overrides these defaults. Unlayered, they beat
+   every Tailwind utility regardless of specificity, which silently disabled
+   e.g. the selected-seat highlight in the night/vote seat pickers. */
+@layer components {
+	.panel {
+		@apply border-[3px] border-line bg-surface;
+		box-shadow: 5px 5px 0 var(--color-line);
+	}
 
-.panel {
-	@apply border-[3px] border-line bg-surface;
-	box-shadow: 5px 5px 0 var(--color-line);
-}
+	.btn-primary {
+		@apply border-[3px] border-line bg-village px-4 py-3 font-semibold tracking-wider text-black uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+		box-shadow: 4px 4px 0 var(--color-line);
+	}
+	.btn-primary:active:not(:disabled) {
+		transform: translate(4px, 4px);
+		box-shadow: 0 0 0 var(--color-line);
+	}
 
-.btn-primary {
-	@apply border-[3px] border-line bg-village px-4 py-3 font-semibold tracking-wider text-black uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
-	box-shadow: 4px 4px 0 var(--color-line);
-}
-.btn-primary:active:not(:disabled) {
-	transform: translate(4px, 4px);
-	box-shadow: 0 0 0 var(--color-line);
-}
+	.btn-ghost {
+		@apply border-[3px] border-line bg-surface-2 px-4 py-3 font-medium tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+		box-shadow: 4px 4px 0 var(--color-line);
+	}
+	.btn-ghost:active:not(:disabled) {
+		transform: translate(4px, 4px);
+		box-shadow: 0 0 0 var(--color-line);
+	}
 
-.btn-ghost {
-	@apply border-[3px] border-line bg-surface-2 px-4 py-3 font-medium tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
-	box-shadow: 4px 4px 0 var(--color-line);
-}
-.btn-ghost:active:not(:disabled) {
-	transform: translate(4px, 4px);
-	box-shadow: 0 0 0 var(--color-line);
-}
+	/* The room page's bottom bar (我的记录 / 房间动态 / 按住查看身份): three
+	   btn-ghost buttons sharing one row on a 320px phone. Declared after
+	   .btn-ghost so its padding/tracking win without !important; keep-all lets
+	   a label wrap only at its space (after the icon), never mid-word - the
+	   label's unbreakable min-content width is what keeps 按住查看身份 on one
+	   line at 320px (overflow-wrap: anywhere would split it as 身/份). */
+	.btn-bar {
+		@apply flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2 text-xs tracking-normal;
+		word-break: keep-all;
+	}
 
-/* The room page's bottom bar (我的记录 / 房间动态 / 按住查看身份): three
-   btn-ghost buttons sharing one row on a 320px phone. Declared after
-   .btn-ghost so its padding/tracking win without !important; keep-all lets
-   a label wrap only at its space (after the icon), never mid-word - the
-   label's unbreakable min-content width is what keeps 按住查看身份 on one
-   line at 320px (overflow-wrap: anywhere would split it as 身/份). */
-.btn-bar {
-	@apply flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2 text-xs tracking-normal;
-	word-break: keep-all;
-}
+	.btn-danger {
+		@apply border-[3px] border-line bg-wolf px-4 py-3 font-semibold tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
+		box-shadow: 4px 4px 0 var(--color-line);
+	}
+	.btn-danger:active:not(:disabled) {
+		transform: translate(4px, 4px);
+		box-shadow: 0 0 0 var(--color-line);
+	}
 
-.btn-danger {
-	@apply border-[3px] border-line bg-wolf px-4 py-3 font-semibold tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
-	box-shadow: 4px 4px 0 var(--color-line);
-}
-.btn-danger:active:not(:disabled) {
-	transform: translate(4px, 4px);
-	box-shadow: 0 0 0 var(--color-line);
-}
+	.chip {
+		@apply border-2 border-line bg-surface px-3 py-1 text-xs text-bone;
+		box-shadow: 2px 2px 0 var(--color-line);
+	}
 
-.chip {
-	@apply border-2 border-line bg-surface px-3 py-1 text-xs text-bone;
-	box-shadow: 2px 2px 0 var(--color-line);
-}
+	.seat-btn {
+		@apply border-[3px] border-line bg-surface-2 px-2 py-3 text-sm text-bone transition-transform disabled:cursor-not-allowed disabled:opacity-40;
+		/* Grid items don't shrink below their content's intrinsic width by
+		   default - a long username with no natural break points (e.g. Latin
+		   text, unlike CJK which already wraps per-character) would otherwise
+		   overflow straight out of the box instead of wrapping inside it. */
+		overflow-wrap: break-word;
+	}
+	.seat-btn:active:not(:disabled) {
+		transform: translate(2px, 2px);
+	}
 
-.seat-btn {
-	@apply border-[3px] border-line bg-surface-2 px-2 py-3 text-sm text-bone transition-transform disabled:cursor-not-allowed disabled:opacity-40;
-	/* Grid items don't shrink below their content's intrinsic width by
-	   default - a long username with no natural break points (e.g. Latin
-	   text, unlike CJK which already wraps per-character) would otherwise
-	   overflow straight out of the box instead of wrapping inside it. */
-	overflow-wrap: break-word;
-}
-.seat-btn:active:not(:disabled) {
-	transform: translate(2px, 2px);
-}
+	.title-glow {
+		/* extruded 8-bit block depth */
+		text-shadow:
+			2px 0 0 var(--color-line),
+			2px 2px 0 var(--color-wolf-deep),
+			4px 4px 0 var(--color-wolf-deep),
+			6px 6px 0 var(--color-line);
+	}
 
-.title-glow {
-	/* extruded 8-bit block depth */
-	text-shadow:
-		2px 0 0 var(--color-line),
-		2px 2px 0 var(--color-wolf-deep),
-		4px 4px 0 var(--color-wolf-deep),
-		6px 6px 0 var(--color-line);
-}
-
-/* Faction-framed role card (front of reveal card + game-over grid) */
-.role-frame {
-	@apply relative flex flex-col items-center justify-center border-[3px] text-center;
-}
-.role-frame--wolf {
-	@apply border-wolf bg-surface;
-	box-shadow: 5px 5px 0 var(--color-line);
-	border-bottom-width: 7px;
-	border-bottom-color: var(--color-wolf);
-}
-.role-frame--village {
-	@apply border-village bg-surface;
-	box-shadow: 5px 5px 0 var(--color-line);
-	border-bottom-width: 7px;
-	border-bottom-color: var(--color-village);
+	/* Faction-framed role card (front of reveal card + game-over grid) */
+	.role-frame {
+		@apply relative flex flex-col items-center justify-center border-[3px] text-center;
+	}
+	.role-frame--wolf {
+		@apply border-wolf bg-surface;
+		box-shadow: 5px 5px 0 var(--color-line);
+		border-bottom-width: 7px;
+		border-bottom-color: var(--color-wolf);
+	}
+	.role-frame--village {
+		@apply border-village bg-surface;
+		box-shadow: 5px 5px 0 var(--color-line);
+		border-bottom-width: 7px;
+		border-bottom-color: var(--color-village);
+	}
 }
 
 /* Crisp pixel rendering for sprite canvases */
