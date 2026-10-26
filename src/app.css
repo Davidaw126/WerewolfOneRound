@@ -111,7 +111,9 @@ canvas {
 /* The room page's bottom bar (我的记录 / 房间动态 / 按住查看身份): three
    btn-ghost buttons sharing one row on a 320px phone. Declared after
    .btn-ghost so its padding/tracking win without !important; keep-all lets
-   a label wrap only at its space (after the icon), never mid-word. */
+   a label wrap only at its space (after the icon), never mid-word - the
+   label's unbreakable min-content width is what keeps 按住查看身份 on one
+   line at 320px (overflow-wrap: anywhere would split it as 身/份). */
 .btn-bar {
 	@apply flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2 text-xs tracking-normal;
 	word-break: keep-all;

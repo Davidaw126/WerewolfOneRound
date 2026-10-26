@@ -146,32 +146,35 @@
 		</div>
 		<div class="grid grid-cols-2 gap-2">
 			{#each roles as role, i (role)}
+				<!-- Sprite + name on top, the −/+ row underneath at the card's full
+				     width: beside the sprite it only gets ~69px on a 320px phone and
+				     the 32px buttons get squeezed. -->
 				<div
 					in:fly={{ y: 10, duration: 200, delay: i * 25 }}
-					class="flex items-center gap-2 border-[3px] border-line p-1.5 {(counts[role] ?? 0) > 0
+					class="border-[3px] border-line p-1.5 {(counts[role] ?? 0) > 0
 						? 'bg-surface-2'
 						: 'bg-surface'}"
 				>
-					<PixelSprite {role} px={30} idle={(counts[role] ?? 0) > 0} />
-					<div class="min-w-0 flex-1">
-						<div class="truncate text-xs text-bone">{roleName(role, i18n.lang)}</div>
-						<div class="mt-1 flex items-center gap-1">
-							<button
-								onclick={() => inc(role, -1)}
-								aria-label={t.roleConfig.decrease}
-								class="h-8 w-8 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-								>−</button
-							>
-							<span class="w-5 text-center text-sm text-village tabular-nums"
-								>{counts[role] ?? 0}</span
-							>
-							<button
-								onclick={() => inc(role, 1)}
-								aria-label={t.roleConfig.increase}
-								class="h-8 w-8 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-								>+</button
-							>
-						</div>
+					<div class="flex items-center gap-2">
+						<PixelSprite {role} px={30} idle={(counts[role] ?? 0) > 0} />
+						<div class="min-w-0 flex-1 truncate text-xs text-bone">{roleName(role, i18n.lang)}</div>
+					</div>
+					<div class="mt-1 flex items-center justify-center gap-1">
+						<button
+							onclick={() => inc(role, -1)}
+							aria-label={t.roleConfig.decrease}
+							class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+							>−</button
+						>
+						<span class="w-5 text-center text-sm text-village tabular-nums"
+							>{counts[role] ?? 0}</span
+						>
+						<button
+							onclick={() => inc(role, 1)}
+							aria-label={t.roleConfig.increase}
+							class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+							>+</button
+						>
 					</div>
 				</div>
 			{/each}
