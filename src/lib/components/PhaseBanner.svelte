@@ -14,16 +14,16 @@
 	let { isHost, username }: { isHost: boolean; username: string } = $props();
 
 	const t = $derived(strings(i18n.lang));
-	const state = $derived(gameStore.state);
+	const room = $derived(gameStore.state);
 	let godToolsOpen = $state(false);
 	const canStop = $derived(
-		isHost && state !== null && state.phase !== 'LOBBY' && state.phase !== 'GAME_OVER'
+		isHost && room !== null && room.phase !== 'LOBBY' && room.phase !== 'GAME_OVER'
 	);
 
 	const label = $derived.by(() => {
-		if (!state) return '';
-		const n = state.nightNumber;
-		switch (state.phase) {
+		if (!room) return '';
+		const n = room.nightNumber;
+		switch (room.phase) {
 			case 'LOBBY':
 				return t.phaseBanner.lobby;
 			case 'SEATING':
@@ -48,7 +48,7 @@
 	// S4: `stage` is the room-wide (role-redacted) form - deliberately never
 	// names which role is acting here, only that some role's turn is underway.
 	const stageLabel = $derived.by(() => {
-		const stage = state?.stage;
+		const stage = room?.stage;
 		if (!stage) return null;
 		return stage.kind === 'COUPLE_REVEAL'
 			? t.phaseBanner.stageCoupleConfirm
@@ -56,7 +56,7 @@
 	});
 
 	const timeGlyph = $derived.by(() => {
-		switch (state?.phase) {
+		switch (room?.phase) {
 			case 'NIGHT_ACTIONS':
 			case 'NIGHT_HUNTER_SHOT':
 				return '🌙';
@@ -76,7 +76,7 @@
 	}
 </script>
 
-{#if state}
+{#if room}
 	<div class="panel space-y-1.5 px-3 py-2">
 		<!-- Hero row: the phase status is the one thing that actually changes
 		     what you need to do next, so it gets the full width to itself
@@ -86,7 +86,7 @@
 				<span class="text-lg">{timeGlyph}</span>
 			{/if}
 			<div class="min-w-0 flex-1">
-				{#key state.phase}
+				{#key room.phase}
 					<div in:fade={{ duration: 250 }} class="font-display text-sm font-semibold text-ember">
 						{label}
 					</div>
@@ -124,9 +124,9 @@
 				<div
 					class="chip whitespace-nowrap"
 					title={t.phaseBanner.roomCode}
-					aria-label="{t.phaseBanner.roomCode} {state.roomCode}"
+					aria-label="{t.phaseBanner.roomCode} {room.roomCode}"
 				>
-					#{state.roomCode}
+					#{room.roomCode}
 				</div>
 				<!-- Only the host's phone makes any sound (judge voice + night forest). -->
 				{#if isHost}
@@ -164,9 +164,9 @@
 		{#if isHost}
 			<HostOverridePanel
 				open={godToolsOpen}
-				gameRunning={state.phase !== 'LOBBY' &&
-					state.phase !== 'SEATING' &&
-					state.phase !== 'GAME_OVER'}
+				gameRunning={room.phase !== 'LOBBY' &&
+					room.phase !== 'SEATING' &&
+					room.phase !== 'GAME_OVER'}
 			/>
 		{/if}
 	</div>
