@@ -15,6 +15,7 @@
 
 	const t = $derived(strings(i18n.lang));
 	const state = $derived(gameStore.state);
+	let godToolsOpen = $state(false);
 	const canStop = $derived(
 		isHost && state !== null && state.phase !== 'LOBBY' && state.phase !== 'GAME_OVER'
 	);
@@ -76,7 +77,7 @@
 </script>
 
 {#if state}
-	<div class="panel space-y-1.5 px-4 py-2.5">
+	<div class="panel space-y-1.5 px-3 py-2">
 		<!-- Hero row: the phase status is the one thing that actually changes
 		     what you need to do next, so it gets the full width to itself
 		     instead of competing for space with the utility controls below. -->
@@ -84,7 +85,7 @@
 			{#if timeGlyph}
 				<span class="text-lg">{timeGlyph}</span>
 			{/if}
-			<div>
+			<div class="min-w-0 flex-1">
 				{#key state.phase}
 					<div in:fade={{ duration: 250 }} class="font-display text-sm font-semibold text-ember">
 						{label}
@@ -94,21 +95,49 @@
 					<div class="text-xs text-zinc-500">{stageLabel}</div>
 				{/if}
 			</div>
+			{#if isHost}
+				<!-- Top-right, out of the way of the phase actions; while open it
+				     turns ember and says 收起 so it reads as the way to close it. -->
+				<button
+					onclick={() => (godToolsOpen = !godToolsOpen)}
+					aria-expanded={godToolsOpen}
+					aria-controls="host-override-panel"
+					class="shrink-0 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition {godToolsOpen
+						? 'border-ember bg-ember/15 text-ember'
+						: 'border-line text-zinc-400 hover:border-ember/60 hover:text-ember'}"
+				>
+					{#if godToolsOpen}
+						🔧 {t.hostOverride.close} ▲
+					{:else}
+						{t.hostOverride.toggle} ▾
+					{/if}
+				</button>
+			{/if}
 		</div>
 
 		<!-- Utility strip: room/audio (static, room-wide) on the left,
-		     identity + destructive controls on the right. -->
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div class="flex items-center gap-2">
-				<div class="chip whitespace-nowrap">{t.phaseBanner.roomCode} {state.roomCode}</div>
+		     identity + destructive controls on the right. One row at any width:
+		     the username chip is the only part that gives way (truncates), so
+		     nothing gets pushed off the edge and the bar stays short. -->
+		<div class="flex items-center gap-2">
+			<div class="flex shrink-0 items-center gap-2">
+				<div
+					class="chip whitespace-nowrap"
+					title={t.phaseBanner.roomCode}
+					aria-label="{t.phaseBanner.roomCode} {state.roomCode}"
+				>
+					#{state.roomCode}
+				</div>
 				<!-- Only the host's phone makes any sound (judge voice + night forest). -->
 				{#if isHost}
 					<AudioToggleButtons />
 				{/if}
 				<LanguageToggle />
 			</div>
-			<div class="ml-auto flex min-w-0 items-center gap-2">
-				<div class="chip max-w-[10rem] truncate">{username}</div>
+			<div class="ml-auto flex min-w-0 items-center justify-end gap-2">
+				<!-- Mid-game the host's strip also carries the stop button; on the
+				     narrowest phones there's no room left for a readable name. -->
+				<div class="chip min-w-0 truncate {canStop ? 'max-[359px]:hidden' : ''}">{username}</div>
 				{#if canStop}
 					<!-- A small, tucked-away header control - deliberately not a full-width
 					     button in the main content flow, so it never sits next to (or
@@ -118,7 +147,7 @@
 						onclick={stopGame}
 						aria-label={t.phaseBanner.stopGameAria}
 						title={t.phaseBanner.stopGameAria}
-						class="rounded-full border border-wolf/40 p-1.5 text-wolf transition hover:border-wolf/70 hover:bg-wolf/10"
+						class="shrink-0 rounded-full border border-wolf/40 p-1.5 text-wolf transition hover:border-wolf/70 hover:bg-wolf/10"
 					>
 						<svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
 							<rect x="5" y="5" width="10" height="10" rx="1.5" />
@@ -134,6 +163,7 @@
 		     is actually running (no cards exist before that). -->
 		{#if isHost}
 			<HostOverridePanel
+				open={godToolsOpen}
 				gameRunning={state.phase !== 'LOBBY' &&
 					state.phase !== 'SEATING' &&
 					state.phase !== 'GAME_OVER'}

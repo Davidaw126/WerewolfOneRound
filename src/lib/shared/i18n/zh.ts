@@ -269,6 +269,7 @@ export const zh: Strings = {
 	},
 	hostOverride: {
 		toggle: '🔧 上帝之手',
+		close: '收起',
 		warning: '仅限特殊情况使用（设备故障等），谨慎操作。',
 		selectPlayer: '选择玩家：',
 		selected: (seat) => `已选择：${seat} 号`,

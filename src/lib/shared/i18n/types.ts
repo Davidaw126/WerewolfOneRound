@@ -237,6 +237,8 @@ export interface Strings {
 	};
 	hostOverride: {
 		toggle: string;
+		/** Shown on the 上帝之手 button while the panel is open. */
+		close: string;
 		warning: string;
 		selectPlayer: string;
 		selected: (seat: number) => string;

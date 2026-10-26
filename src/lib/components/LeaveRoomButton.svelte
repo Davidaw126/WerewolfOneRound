@@ -30,7 +30,7 @@
 	disabled={leaving}
 	aria-label={t.leaveRoom.button}
 	title={t.leaveRoom.button}
-	class="rounded-full border border-line p-1.5 text-zinc-400 transition hover:border-wolf/60 hover:text-wolf disabled:cursor-not-allowed disabled:opacity-50"
+	class="shrink-0 rounded-full border border-line p-1.5 text-zinc-400 transition hover:border-wolf/60 hover:text-wolf disabled:cursor-not-allowed disabled:opacity-50"
 >
 	{#if leaving}
 		<svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 animate-spin">

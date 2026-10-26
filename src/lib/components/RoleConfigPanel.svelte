@@ -199,8 +199,8 @@
 	</button>
 {/snippet}
 
-<div class="flex min-h-0 flex-1 flex-col space-y-3">
-	<h2 class="font-display text-lg font-semibold tracking-wider text-ember uppercase">
+<div class="flex min-h-0 flex-1 flex-col space-y-2">
+	<h2 class="font-display text-sm font-semibold tracking-wider text-ember uppercase">
 		{t.roleConfig.title}
 	</h2>
 
@@ -386,15 +386,18 @@
 	     no big empty gap either since the list absorbs the slack instead of
 	     leaving it blank. Border-t + bg-ink/95 matches the page's own pinned
 	     footer styling elsewhere in the room. -->
-	<div class="shrink-0 space-y-2 border-t-[3px] border-line bg-ink/95 px-1 py-2">
-		<p class="text-sm text-zinc-500">
-			{(counts['盗贼'] ?? 0) > 0
-				? t.roleConfig.cardCountWithThief(total, total - 2)
-				: t.roleConfig.cardCountSummary(total)}
-		</p>
-		{#if error}<p class="text-sm text-wolf">{error}</p>{/if}
-		<button onclick={submit} disabled={submitting} class="btn-primary w-full">
-			{submitting ? t.roleConfig.submitting : t.roleConfig.confirm}
-		</button>
+	<div class="shrink-0 space-y-1 border-t-[3px] border-line bg-ink/95 px-1 py-2">
+		{#if error}<p class="text-xs text-wolf">{error}</p>{/if}
+		<!-- One row (count beside the button) to leave the role list more height. -->
+		<div class="flex items-center gap-3">
+			<p class="min-w-0 flex-1 text-xs leading-snug text-zinc-500">
+				{(counts['盗贼'] ?? 0) > 0
+					? t.roleConfig.cardCountWithThief(total, total - 2)
+					: t.roleConfig.cardCountSummary(total)}
+			</p>
+			<button onclick={submit} disabled={submitting} class="btn-primary shrink-0 py-2">
+				{submitting ? t.roleConfig.submitting : t.roleConfig.confirm}
+			</button>
+		</div>
 	</div>
 </div>

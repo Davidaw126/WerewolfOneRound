@@ -273,6 +273,7 @@ export const en: Strings = {
 	},
 	hostOverride: {
 		toggle: '🔧 God Mode',
+		close: 'Close',
 		warning: 'For special situations only (device failure, etc.) - use with care.',
 		selectPlayer: 'Select player:',
 		selected: (seat) => `Selected: seat ${seat}`,

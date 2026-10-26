@@ -312,10 +312,10 @@
 				{/if}
 
 				{#if roomState.phase === 'LOBBY'}
-					<div class="text-center">
+					<div class="flex items-center justify-center gap-3">
 						<p class="text-xs text-zinc-500">{t.room.shareCode}</p>
 						<p
-							class="selectable title-glow font-display text-4xl font-black tracking-[0.3em] text-ember"
+							class="selectable title-glow font-display text-2xl font-black tracking-[0.2em] text-ember"
 						>
 							{data.roomCode}
 						</p>

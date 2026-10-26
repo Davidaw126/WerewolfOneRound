@@ -9,10 +9,10 @@
 	import type { AckResponse } from '$lib/shared/events';
 	import type { Role } from '$lib/shared/roles';
 
-	let { gameRunning }: { gameRunning: boolean } = $props();
+	/** `open` is owned by PhaseBanner, whose top-right button toggles it. */
+	let { gameRunning, open }: { gameRunning: boolean; open: boolean } = $props();
 
 	const t = $derived(strings(i18n.lang));
-	let open = $state(false);
 	let seat = $state<number | null>(null);
 	let role = $state<Role | null>(null);
 
@@ -51,15 +51,11 @@
 </script>
 
 <div>
-	<button
-		onclick={() => (open = !open)}
-		class="rounded-full border border-line px-3 py-1.5 text-xs text-zinc-400 transition hover:border-ember/60 hover:text-ember"
-	>
-		{t.hostOverride.toggle}
-	</button>
-
 	{#if open}
-		<div class="panel mt-2 max-h-[50dvh] space-y-3 overflow-y-auto border-ember/30 p-4">
+		<div
+			id="host-override-panel"
+			class="panel max-h-[50dvh] space-y-3 overflow-y-auto border-ember/30 p-4"
+		>
 			<p class="text-xs text-zinc-500">{t.hostOverride.warning}</p>
 
 			{#if voiceSupported}
