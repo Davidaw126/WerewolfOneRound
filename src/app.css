@@ -108,6 +108,15 @@ canvas {
 	box-shadow: 0 0 0 var(--color-line);
 }
 
+/* The room page's bottom bar (我的记录 / 房间动态 / 按住查看身份): three
+   btn-ghost buttons sharing one row on a 320px phone. Declared after
+   .btn-ghost so its padding/tracking win without !important; keep-all lets
+   a label wrap only at its space (after the icon), never mid-word. */
+.btn-bar {
+	@apply flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2 text-xs tracking-normal;
+	word-break: keep-all;
+}
+
 .btn-danger {
 	@apply border-[3px] border-line bg-wolf px-4 py-3 font-semibold tracking-wider text-bone uppercase transition-transform disabled:cursor-not-allowed disabled:opacity-50;
 	box-shadow: 4px 4px 0 var(--color-line);

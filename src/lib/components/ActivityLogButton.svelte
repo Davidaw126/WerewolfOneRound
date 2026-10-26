@@ -8,10 +8,7 @@
 	let open = $state(false);
 </script>
 
-<button
-	onclick={() => (open = true)}
-	class="btn-ghost flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2! py-2 text-xs tracking-normal! [word-break:keep-all]"
->
+<button onclick={() => (open = true)} class="btn-ghost btn-bar">
 	<span>{t.activityLog.button}</span>
 </button>
 

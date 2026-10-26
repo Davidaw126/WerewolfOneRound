@@ -63,7 +63,7 @@
 	onkeyup={(e) => {
 		if (e.key === 'Enter' || e.key === ' ') release();
 	}}
-	class="btn-ghost flex min-w-0 flex-1 touch-none flex-wrap items-center justify-center gap-x-2 px-2! py-2 text-xs tracking-normal! [word-break:keep-all] select-none"
+	class="btn-ghost btn-bar touch-none select-none"
 >
 	<span>🎴</span>
 	<span>{revealing ? t.roleReveal.revealing : t.roleReveal.holdToView}</span>

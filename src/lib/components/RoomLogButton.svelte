@@ -16,10 +16,7 @@
 	}
 </script>
 
-<button
-	onclick={show}
-	class="btn-ghost relative flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 px-2! py-2 text-xs tracking-normal! [word-break:keep-all]"
->
+<button onclick={show} class="btn-ghost btn-bar relative">
 	<span>{t.roomLog.button}</span>
 	{#if unseen}
 		<span class="absolute top-1 right-2 h-2 w-2 rounded-full bg-wolf"></span>
