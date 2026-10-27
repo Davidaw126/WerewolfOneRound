@@ -5,7 +5,7 @@ import {
 	getPublicState,
 	readRoomHash,
 	getRevealedRoleIfAny,
-	leaveSeatAtomic,
+	freeSeat,
 	seatOf,
 	belongsToRoom,
 	seatingForGameStart,
@@ -271,7 +271,7 @@ export async function handleRoomLeave(socket: GameSocket): Promise<AckResponse> 
 			emitToRoom(code, { kind: 'RoomClosed', reason: 'host_left' });
 		} else if (IN_PROGRESS_PHASES.includes(room.phase)) {
 			const leavingSeat = await seatOf(code, socket.data.sessionId);
-			await leaveSeatAtomic(code, socket.data.sessionId);
+			await freeSeat(code, socket.data.sessionId);
 			await softResetToSeating(code);
 			emitToRoom(code, {
 				kind: 'ErrorToast',
@@ -279,11 +279,12 @@ export async function handleRoomLeave(socket: GameSocket): Promise<AckResponse> 
 				seat: leavingSeat
 			});
 		} else {
-			const { vacated } = await leaveSeatAtomic(code, socket.data.sessionId);
+			const { vacated, redealt } = await freeSeat(code, socket.data.sessionId);
 			if (vacated) {
 				const state = await getPublicState(code);
 				if (state) emitToRoom(code, { kind: 'SeatUpdated', seats: state.seats });
 			}
+			if (redealt) emitToRoom(code, { kind: 'RolesRerolled', reason: 'seen_role_left' });
 		}
 	}
 

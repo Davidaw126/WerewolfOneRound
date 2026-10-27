@@ -125,7 +125,7 @@ describe('seats', () => {
 	it('rejects a taken seat, a taken name, and any seat change once locked', async () => {
 		const code = await seatedRoom();
 		expect(await room.takeSeatAtomic(code, 'new', 1, 'New')).toMatchObject({ error: 'seat_taken' });
-		await room.leaveSeatAtomic(code, 's3');
+		await room.freeSeat(code, 's3');
 		expect(await room.takeSeatAtomic(code, 'new', 3, 'P1')).toMatchObject({ error: 'name_taken' });
 		await room.setSeatsLocked(code, true);
 		expect(await room.takeSeatAtomic(code, 'new', 3, 'New')).toMatchObject({
@@ -135,9 +135,9 @@ describe('seats', () => {
 
 	it('frees a seat when its player leaves', async () => {
 		const code = await seatedRoom();
-		expect(await room.leaveSeatAtomic(code, 's2')).toEqual({ ok: true, vacated: true });
+		expect(await room.freeSeat(code, 's2')).toEqual({ vacated: true, redealt: false });
 		expect(await room.sessionInSeat(code, 2)).toBeNull();
-		expect(await room.leaveSeatAtomic(code, 's2')).toEqual({ ok: true, vacated: false });
+		expect(await room.freeSeat(code, 's2')).toEqual({ vacated: false, redealt: false });
 	});
 });
 
@@ -156,6 +156,25 @@ describe('seen roles and Re-deal', () => {
 		expect(await room.getRevealedRoleIfAny(code, 's1')).toBeNull();
 		const roles = await Promise.all([1, 2, 3].map((s) => room.currentRoleOfSeat(code, s)));
 		expect(roles.sort()).toEqual(['平民', '普通狼人', '预言家'].sort());
+	});
+});
+
+describe('a seat freed after its role was seen', () => {
+	it('re-deals when the leaving player had looked at their role', async () => {
+		const code = await seatedRoom();
+		await room.markRevealed(code, 's1');
+		await room.markRevealed(code, 's2');
+		expect(await room.freeSeat(code, 's1')).toEqual({ vacated: true, redealt: true });
+		// The whole table was re-dealt, so the other player must look again.
+		expect(await room.getRevealedRoleIfAny(code, 's2')).toBeNull();
+	});
+
+	it('keeps the deal when the leaving player never looked', async () => {
+		const code = await seatedRoom();
+		await room.markRevealed(code, 's2');
+		const before = await room.currentRoleOfSeat(code, 2);
+		expect(await room.freeSeat(code, 's1')).toEqual({ vacated: true, redealt: false });
+		expect(await room.getRevealedRoleIfAny(code, 's2')).toBe(before);
 	});
 });
 

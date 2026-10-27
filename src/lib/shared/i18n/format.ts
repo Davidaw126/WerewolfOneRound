@@ -175,7 +175,11 @@ export function formatCoupleRevealed(partnerSeat: number, lang: Lang): string {
 	return lang === 'zh' ? `你的情侣是 ${partnerSeat} 号` : `Your lover is seat ${partnerSeat}`;
 }
 
-export function formatRolesReshuffled(lang: Lang): string {
+export function formatRolesReshuffled(lang: Lang, reason?: 'seen_role_left'): string {
+	if (reason === 'seen_role_left')
+		return lang === 'zh'
+			? '有玩家看过身份后离开，角色已重新分配'
+			: 'A player left after seeing their role, so roles were reshuffled';
 	return lang === 'zh' ? '房主重新分配了角色' : 'The host reshuffled everyone’s roles';
 }
 

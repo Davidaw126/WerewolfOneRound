@@ -247,14 +247,24 @@ export async function takeSeatAtomic(
 	return JSON.parse(raw);
 }
 
-/** Frees whatever seat this session holds in the seating keys; `vacated` is
- * false if it held none. */
-export async function leaveSeatAtomic(
+/** Frees whatever seat this session holds in the seating keys (`vacated` is
+ * false if it held none). During seating, if that player had already looked
+ * at their role, the whole table is re-dealt (`redealt`): the role stays with
+ * the seat, so whoever sat there next would otherwise get a card the leaver
+ * has seen. */
+export async function freeSeat(
 	code: string,
 	sessionId: string
-): Promise<{ ok: true; vacated: boolean }> {
+): Promise<{ vacated: boolean; redealt: boolean }> {
+	const [room, hadLooked] = await Promise.all([
+		readRoomHash(code),
+		redis.sismember(revealedKey(code), sessionId)
+	]);
 	const raw = await redis.leaveSeat(seatsKey(code), playersKey(code), sessionId);
-	return JSON.parse(raw);
+	const { vacated } = JSON.parse(raw) as { vacated: boolean };
+	const redealt = vacated && hadLooked === 1 && room?.phase === 'SEATING';
+	if (redealt) await redeal(code);
+	return { vacated, redealt };
 }
 
 export async function setSeatsLocked(code: string, locked: boolean): Promise<void> {

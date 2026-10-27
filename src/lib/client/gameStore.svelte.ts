@@ -404,8 +404,13 @@ class GameStore {
 				// Broadcast to every client (not just the host who clicked it) -
 				// everyone's identity just changed, so everyone gets the
 				// confirmation and the permanent room-log record of it.
-				this.logRoom(formatRolesReshuffled(i18n.lang));
-				this.showConfirm(formatRolesReshuffledConfirm(i18n.lang), 3000);
+				this.logRoom(formatRolesReshuffled(i18n.lang, event.reason));
+				this.showConfirm(
+					event.reason
+						? formatRolesReshuffled(i18n.lang, event.reason)
+						: formatRolesReshuffledConfirm(i18n.lang),
+					3000
+				);
 				break;
 			case 'NightAnnouncePending':
 				this.state = { ...this.state, pendingNightAnnounce: true };

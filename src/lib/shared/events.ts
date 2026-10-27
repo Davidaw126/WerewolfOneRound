@@ -162,7 +162,9 @@ export type ServerEvent =
 	| { kind: 'StateSnapshot'; state: RoomPublicState }
 	| { kind: 'SeatUpdated'; seats: RoomPublicState['seats'] }
 	| { kind: 'LockUpdated'; locked: boolean }
-	| { kind: 'RolesRerolled' }
+	// reason: absent when the Host tapped 重新分配角色; 'seen_role_left' when a
+	// player who had looked at their role left during seating.
+	| { kind: 'RolesRerolled'; reason?: 'seen_role_left' }
 	| { kind: 'GameReset' }
 	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number }
 	// S4: room-wide - never carries which role is acting, see PublicNightStage.
