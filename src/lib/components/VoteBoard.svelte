@@ -8,37 +8,9 @@
 
 	const t = $derived(strings(i18n.lang));
 
-	let {
-		mySeat,
-		isHost
-	}: {
-		mySeat: number | null;
-		isHost: boolean;
-	} = $props();
-
-	const roomState = $derived(gameStore.state);
-	const seats = $derived(roomState?.seats ?? []);
-	// S11: the server only ever tells us WHO has voted, never for whom or a
-	// running tally - watching others' picks land live is exactly what this
-	// screen must not show.
-	const votedSeats = $derived(roomState?.votedSeats ?? []);
-	const totalVoters = $derived(roomState?.totalVoters ?? 0);
-	const pkCandidates = $derived(roomState?.pkCandidates ?? []);
-	const inPk = $derived(pkCandidates.length > 0);
-	// §9.4 平票处理: during a PK re-vote, only the tied candidates are valid
-	// targets, and the candidates themselves can't vote.
-	const targetSeats = $derived(
-		seats.filter(
-			(s) => s.sessionId !== null && !s.isDead && (!inPk || pkCandidates.includes(s.seatNumber))
-		)
-	);
-	const alreadyVoted = $derived(mySeat !== null && votedSeats.includes(mySeat));
-	const iAmDead = $derived(mySeat !== null && seats.find((s) => s.seatNumber === mySeat)?.isDead);
-	/** A flipped 白痴 stays in the game but has lost their vote. */
-	const iAmRevealedIdiot = $derived(
-		mySeat !== null && !!seats.find((s) => s.seatNumber === mySeat)?.revealedIdiot
-	);
-	const iAmPkCandidate = $derived(mySeat !== null && pkCandidates.includes(mySeat));
+	const isHost = $derived(gameStore.isHost);
+	const view = $derived(gameStore.voteView);
+	const alreadyVoted = $derived(view.alreadyVoted);
 
 	// Client-local only (not server state) - purely so the button I picked
 	// stays highlighted for me after I vote. Resets whenever a fresh vote
@@ -73,24 +45,24 @@
 <div class="space-y-4">
 	<div class="flex items-baseline justify-between">
 		<h2 class="font-display text-lg font-semibold text-ember">
-			{inPk ? t.vote.pk : t.vote.day}
+			{view.inPk ? t.vote.pk : t.vote.day}
 		</h2>
 		<span class="text-xs text-zinc-500 tabular-nums"
-			>{t.vote.votedCount(votedSeats.length, totalVoters)}</span
+			>{t.vote.votedCount(view.votedCount, view.totalVoters)}</span
 		>
 	</div>
 
-	{#if iAmRevealedIdiot}
+	{#if view.revealedIdiot}
 		<p class="text-center text-sm text-zinc-500">{t.vote.revealedIdiotNote}</p>
 	{/if}
-	{#if iAmPkCandidate}
+	{#if view.pkCandidate}
 		<p class="text-center text-sm text-zinc-500">{t.vote.pkCandidateNote}</p>
 	{:else}
 		<div class="grid grid-cols-4 gap-2">
-			{#each targetSeats as seat (seat.seatNumber)}
+			{#each view.targets as seat (seat.seatNumber)}
 				<button
 					onclick={() => vote(seat.seatNumber)}
-					disabled={mySeat === null || iAmDead || iAmRevealedIdiot || alreadyVoted}
+					disabled={!view.canVote}
 					class="seat-btn w-full {myVoteTarget === seat.seatNumber
 						? 'border-ember bg-ember/20 text-ember'
 						: ''}"
@@ -103,7 +75,7 @@
 
 		<button
 			onclick={() => vote('abstain')}
-			disabled={mySeat === null || iAmDead || iAmRevealedIdiot || alreadyVoted}
+			disabled={!view.canVote}
 			class="btn-ghost w-full py-2 text-sm {myVoteTarget === 'abstain'
 				? 'border-ember text-ember'
 				: ''}"

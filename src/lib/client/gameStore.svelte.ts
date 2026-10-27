@@ -1,4 +1,4 @@
-import type { NightStage, RoomPublicState, Winner } from '$lib/shared/gameTypes';
+import type { NightStage, RoomPublicState, SeatState, Winner } from '$lib/shared/gameTypes';
 import type { RoleId } from '$lib/game/types';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent, onActionError } from './socket';
@@ -24,6 +24,33 @@ import {
 	formatRoomClosedByHost,
 	formatPlayerLeftMidGame
 } from '$lib/shared/i18n';
+
+export type TimeOfDay = 'neutral' | 'night' | 'day' | Winner;
+
+export interface VoteView {
+	inPk: boolean;
+	/** Seats this phone may vote for. */
+	targets: SeatState[];
+	votedCount: number;
+	totalVoters: number;
+	alreadyVoted: boolean;
+	/** A flipped 白痴 stays in the game but has lost their vote. */
+	revealedIdiot: boolean;
+	/** A PK candidate is voted on, not voting. */
+	pkCandidate: boolean;
+	canVote: boolean;
+}
+
+export interface TurnRules {
+	/** The pack's kill turn - 狼美人/恶灵骑士 pick the kill here, not their skill. */
+	packTurn: boolean;
+	killedSeat: number | null;
+	guardLastSeat: number | null;
+	wolfTeammates: number[];
+	isSelfKill: boolean;
+	noSelfPick: boolean;
+	onePotionOnly: boolean;
+}
 
 export interface ActivityLogEntry {
 	round: string;
@@ -72,7 +99,7 @@ const TURN_REVEAL_FALLBACK_MS = 8000;
 /** Central client-side game state, updated reactively as `server:event`s
  * arrive. One instance shared across the whole room/game screen - avoids
  * every component re-deriving state from raw socket events independently. */
-class GameStore {
+export class GameStore {
 	state = $state<RoomPublicState | null>(null);
 	/** Host-only, and only ever non-null on the host's own client - the real
 	 * current stage (role included), fed by StateSnapshot's hostStage and kept
@@ -99,6 +126,13 @@ class GameStore {
 		identities: Record<number, RoleId>;
 		coupleSeats: [number, number] | null;
 	} | null>(null);
+
+	/** Whose phone this is - the room page sets it from its own session. */
+	viewerSessionId = $state<string | null>(null);
+	/** This phone tapped 我知道了 on 情侣相认. Every phone has the button and
+	 * only the lovers' taps count, so it's set from the tap's ack, not a
+	 * server event; cleared on every stage change. */
+	coupleConfirmed = $state(false);
 
 	myRole = $state<RoleId | null>(null);
 	/** This phone's 确认 on the current 开枪状态/情侣相认 stage landed. */
@@ -256,6 +290,96 @@ class GameStore {
 		}
 	}
 
+	// --- This phone's view: what it may see and do right now -------------
+	// Plain getters over $state fields: reactive wherever a component reads
+	// them, and plain values in a test.
+
+	/** This phone's seat, or null if it isn't seated. */
+	get mySeat(): number | null {
+		const me = this.viewerSessionId;
+		if (!me) return null;
+		return this.state?.seats.find((s) => s.sessionId === me)?.seatNumber ?? null;
+	}
+
+	get isHost(): boolean {
+		return !!this.viewerSessionId && this.state?.hostSessionId === this.viewerSessionId;
+	}
+
+	/** The Host's 强制继续 button: on every night stage, so a phone that died
+	 * mid-turn can never freeze the night - and its presence says nothing
+	 * about which stage it is. */
+	get needsHostAdvance(): boolean {
+		return this.isHost && this.hostStage !== null;
+	}
+
+	/** The game's day/night rhythm, for tinting the page. */
+	get timeOfDay(): TimeOfDay {
+		const s = this.state;
+		switch (s?.phase) {
+			case 'NIGHT_ACTIONS':
+			case 'NIGHT_HUNTER_SHOT':
+				return 'night';
+			case 'LAST_WORDS':
+			case 'DISCUSSION':
+			case 'DAY_VOTE':
+			case 'DAY_HUNTER_SHOT':
+				return 'day';
+			case 'GAME_OVER':
+				return s.winner ?? 'villagers';
+			default:
+				return 'neutral';
+		}
+	}
+
+	/** The vote board for this phone. S11: only WHO has voted is known, never
+	 * for whom. §9.4: in a PK re-vote only the tied seats can be voted for,
+	 * and they don't vote themselves. */
+	get voteView(): VoteView {
+		const s = this.state;
+		const seats = s?.seats ?? [];
+		const pk = s?.pkCandidates ?? [];
+		const mySeat = this.mySeat;
+		const me = seats.find((x) => x.seatNumber === mySeat);
+		const alreadyVoted = mySeat !== null && (s?.votedSeats ?? []).includes(mySeat);
+		const revealedIdiot = !!me?.revealedIdiot;
+		const pkCandidate = mySeat !== null && pk.includes(mySeat);
+		return {
+			inPk: pk.length > 0,
+			targets: seats.filter(
+				(x) => x.sessionId !== null && !x.isDead && (pk.length === 0 || pk.includes(x.seatNumber))
+			),
+			votedCount: s?.votedSeats.length ?? 0,
+			totalVoters: s?.totalVoters ?? 0,
+			alreadyVoted,
+			revealedIdiot,
+			pkCandidate,
+			canVote: !!me && !me.isDead && !revealedIdiot && !alreadyVoted && !pkCandidate
+		};
+	}
+
+	/** The rules of this phone's current night turn, from its private
+	 * TurnContext. UX only - the server enforces every one of them too. */
+	get turnRules(): TurnRules {
+		const ctx = this.turnContext;
+		const witch = ctx?.witch;
+		const killedSeat = witch?.killedSeat ?? null;
+		const packTurn = ctx?.packKill === true;
+		const role = this.myTurnRole;
+		return {
+			packTurn,
+			killedSeat,
+			guardLastSeat: ctx?.guard?.lastProtectedSeat ?? null,
+			wolfTeammates: ctx?.wolf?.teammateSeats ?? [],
+			// The witch was the one attacked tonight and tonight's rules don't
+			// let her save herself (selfRescue is often FIRST_NIGHT_ONLY).
+			isSelfKill: killedSeat !== null && killedSeat === ctx?.seat && !witch?.selfRescueAllowed,
+			// Checking or idolising yourself makes no sense; the pack's kill
+			// turn keeps every seat.
+			noSelfPick: !packTurn && (role === 'SEER' || role === 'WILD_CHILD'),
+			onePotionOnly: !witch?.bothPotionsSameNight
+		};
+	}
+
 	logActivity(text: string, opts?: { public?: boolean }): void {
 		this.activityLog = [
 			...this.activityLog,
@@ -337,10 +461,6 @@ class GameStore {
 	applyState(state: RoomPublicState): void {
 		const isNewRoom = this.state?.roomCode !== state.roomCode;
 		this.state = state;
-		// Present only when this snapshot was addressed to the host's own
-		// session (see getPublicState's forSessionId) - undefined for everyone
-		// else, which correctly resolves to "no host-only stage info here".
-		this.hostStage = state.hostStage ?? null;
 		if (isNewRoom) {
 			// Everything resetPrivateState clears (lastNightDeaths/lastDayResult/
 			// myRole/etc.) is exactly as stale as it would be on a same-room
@@ -352,6 +472,12 @@ class GameStore {
 			// A reload mid-game: bring back this phone's diary for this game.
 			if (state.gameId) this.activityLog = loadDiary(state.roomCode, state.gameId);
 		}
+		// Present only when this snapshot was addressed to the host's own
+		// session (see getPublicState's forSessionId) - undefined for everyone
+		// else, which correctly resolves to "no host-only stage info here".
+		// Set after the reset above, which would otherwise wipe it on the
+		// first snapshot of a room (every page load).
+		this.hostStage = state.hostStage ?? null;
 	}
 
 	/** Wipes every transient per-round field. Used both when a host
@@ -446,6 +572,7 @@ class GameStore {
 				this.turnToken++;
 				this.state = { ...this.state, stage: event.stage };
 				this.stageConfirmed = false;
+				this.coupleConfirmed = false;
 				this.packKill = null;
 				this.roleDoneByOther = false;
 				this.myTurnRole = null;

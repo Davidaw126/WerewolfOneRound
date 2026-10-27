@@ -9,7 +9,7 @@
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
 
-	let { isHost = false }: { isHost?: boolean } = $props();
+	const isHost = $derived(gameStore.isHost);
 
 	const t = $derived(strings(i18n.lang));
 	let leaving = $state(false);

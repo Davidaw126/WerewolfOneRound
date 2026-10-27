@@ -54,6 +54,7 @@
 
 	onMount(() => {
 		gameStore.resetForRoomVisit();
+		gameStore.viewerSessionId = data.sessionId;
 		gameStore.connect();
 		releaseWakeLock = keepScreenAwake();
 		const socket = getSocket();
@@ -127,43 +128,19 @@
 	});
 
 	const roomState = $derived(gameStore.state);
-	const mySeat = $derived(
-		roomState?.seats.find((s) => s.sessionId === data.sessionId)?.seatNumber ?? null
-	);
-	const isHost = $derived(
-		roomState !== null && roomState !== undefined && roomState.hostSessionId === data.sessionId
-	);
+	const mySeat = $derived(gameStore.mySeat);
+	const isHost = $derived(gameStore.isHost);
 	const stage = $derived(roomState?.stage ?? null);
-	// S4: only ever meaningful for the host (gated by isHost at the one call
-	// site below), so it reads the host-only hostStage (real role) rather than
-	// the shared, role-redacted `stage` above.
-	// Every night stage, not just the confirm-yourself ones: a player whose
-	// phone dies or locks mid-turn would otherwise freeze the whole night with
-	// no way out. Always there, so its presence says nothing about the stage.
-	const needsHostAdvance = $derived(gameStore.hostStage !== null);
-
-	// Tints the page toward the game's own day/night rhythm - neutral before a
-	// game is underway, since LOBBY/SEATING have no "time of day" of their own.
-	const phaseBg = $derived.by(() => {
-		switch (roomState?.phase) {
-			case 'NIGHT_ACTIONS':
-			case 'NIGHT_HUNTER_SHOT':
-				return 'from-indigo-950 via-zinc-950 to-black';
-			case 'LAST_WORDS':
-			case 'DISCUSSION':
-			case 'DAY_VOTE':
-			case 'DAY_HUNTER_SHOT':
-				return 'from-amber-950 via-zinc-950 to-zinc-950';
-			case 'GAME_OVER':
-				return roomState.winner === 'wolves'
-					? 'from-red-950 via-zinc-950 to-black'
-					: roomState.winner === 'lovers'
-						? 'from-violet-950 via-zinc-950 to-black'
-						: 'from-emerald-950 via-zinc-950 to-black';
-			default:
-				return 'from-zinc-950 via-zinc-900 to-zinc-950';
-		}
-	});
+	// Tints the page toward the game's own day/night rhythm.
+	const PHASE_BG = {
+		neutral: 'from-zinc-950 via-zinc-900 to-zinc-950',
+		night: 'from-indigo-950 via-zinc-950 to-black',
+		day: 'from-amber-950 via-zinc-950 to-zinc-950',
+		wolves: 'from-red-950 via-zinc-950 to-black',
+		lovers: 'from-violet-950 via-zinc-950 to-black',
+		villagers: 'from-emerald-950 via-zinc-950 to-black'
+	} as const;
+	const phaseBg = $derived(PHASE_BG[gameStore.timeOfDay]);
 
 	async function takeSeat(seatNumber: number) {
 		// A failure (seat taken, name clash) pops up via the global handler.
@@ -188,15 +165,9 @@
 		await sendAction<AckResponse>({ kind: 'NightAdvanceStage' });
 	}
 
-	// Per-stage: reset whenever the stage changes.
-	let coupleConfirmed = $state(false);
-	$effect(() => {
-		void stage;
-		coupleConfirmed = false;
-	});
 	async function confirmCouple() {
 		const res = await sendAction<AckResponse>({ kind: 'NightConfirmStage' });
-		if (res.ok) coupleConfirmed = true;
+		if (res.ok) gameStore.coupleConfirmed = true;
 	}
 	async function announceNightResults() {
 		await sendAction<AckResponse>({ kind: 'NightAnnounceResults' });
@@ -257,7 +228,7 @@
 		     night-results call-to-action stay visible no matter how tall the
 		     scrolling content below gets. -->
 		<div class="mx-auto w-full max-w-lg shrink-0 space-y-2 px-4 pt-4">
-			<PhaseBanner {isHost} username={data.username} />
+			<PhaseBanner username={data.username} />
 
 			{#if isHost && roomState.pendingNightAnnounce}
 				<!-- Purely a reveal broadcast, additive to whatever the phase's own
@@ -387,7 +358,7 @@
 							hostSessionId={roomState.hostSessionId}
 						/>
 						<div class="w-full">
-							<DiscussionPanel {isHost} />
+							<DiscussionPanel />
 						</div>
 					</div>
 				{:else if roomState.phase === 'DAY_VOTE'}
@@ -405,7 +376,7 @@
 									{isHost ? t.room.voteWaitAnnounceHost : t.room.voteWaitAnnouncePlayer}
 								</p>
 							{:else}
-								<VoteBoard {mySeat} {isHost} />
+								<VoteBoard />
 							{/if}
 						</div>
 					</div>
@@ -466,7 +437,7 @@
 								     pair - if only the linked two had a button at all, a neighbor
 								     glancing at screens could tell who's linked just from which
 								     screens have a button, without even seeing its content. -->
-								{#if coupleConfirmed}
+								{#if gameStore.coupleConfirmed}
 									<p class="text-center text-sm text-zinc-500">{t.room.stageConfirmedWait}</p>
 								{:else}
 									<button
@@ -491,7 +462,7 @@
 								<p class="text-center text-sm text-zinc-500">{t.room.waitingOthers}</p>
 							{/if}
 						{/if}
-						{#if isHost && needsHostAdvance}
+						{#if gameStore.needsHostAdvance}
 							<button
 								onclick={advanceStage}
 								class="btn-ghost w-full py-1.5 text-xs text-zinc-500 hover:bg-ember/10"

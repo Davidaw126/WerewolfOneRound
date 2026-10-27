@@ -14,25 +14,18 @@
 	const seats = $derived(gameStore.state?.seats ?? []);
 	const livingSeats = $derived(seats.filter((s: SeatState) => s.sessionId !== null && !s.isDead));
 
-	// Private per-turn info from the server (see TurnContext). Everything the
-	// UI disables below is ALSO enforced server-side - this is only UX.
+	// Private per-turn info from the server (see TurnContext), and the turn's
+	// rules derived from it in the store. UX only - the server enforces all.
 	const ctx = $derived(gameStore.turnContext);
 	const witch = $derived(ctx?.witch);
-	const killedSeat = $derived(witch?.killedSeat ?? null);
-	const guardLastSeat = $derived(ctx?.guard?.lastProtectedSeat ?? null);
-	const wolfTeammates = $derived(ctx?.wolf?.teammateSeats ?? []);
-	/** The pack's kill turn - 狼美人/恶灵骑士 pick the kill here, not their skill. */
-	const packTurn = $derived(ctx?.packKill === true);
-	/** The witch was the one attacked tonight, and tonight's rules don't let
-	 * her save herself (selfRescue is often FIRST_NIGHT_ONLY). */
-	const isSelfKill = $derived(
-		killedSeat !== null && killedSeat === ctx?.seat && !witch?.selfRescueAllowed
-	);
-	/** Checking or idolising yourself makes no sense (the server refuses it
-	 * too) - not offered. The pack's kill turn keeps every seat. */
-	const noSelfPick = $derived(!packTurn && (role === 'SEER' || role === 'WILD_CHILD'));
-	/** One potion per night unless the room's rules allow both. */
-	const onePotionOnly = $derived(!witch?.bothPotionsSameNight);
+	const rules = $derived(gameStore.turnRules);
+	const killedSeat = $derived(rules.killedSeat);
+	const guardLastSeat = $derived(rules.guardLastSeat);
+	const wolfTeammates = $derived(rules.wolfTeammates);
+	const packTurn = $derived(rules.packTurn);
+	const isSelfKill = $derived(rules.isSelfKill);
+	const noSelfPick = $derived(rules.noSelfPick);
+	const onePotionOnly = $derived(rules.onePotionOnly);
 
 	let submitted = $state(false);
 	// Single-target roles (wolf/seer/guard/wolf-beauty).

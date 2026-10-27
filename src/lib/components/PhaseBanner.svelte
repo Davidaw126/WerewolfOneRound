@@ -11,7 +11,8 @@
 	import HostOverridePanel from './HostOverridePanel.svelte';
 	import LanguageToggle from './LanguageToggle.svelte';
 
-	let { isHost, username }: { isHost: boolean; username: string } = $props();
+	let { username }: { username: string } = $props();
+	const isHost = $derived(gameStore.isHost);
 
 	const t = $derived(strings(i18n.lang));
 	const room = $derived(gameStore.state);
@@ -154,7 +155,7 @@
 						</svg>
 					</button>
 				{/if}
-				<LeaveRoomButton {isHost} />
+				<LeaveRoomButton />
 			</div>
 		</div>
 
