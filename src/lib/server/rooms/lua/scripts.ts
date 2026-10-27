@@ -117,12 +117,12 @@ return cjson.encode({ ok = true, vacated = true })
 `;
 
 // KEYS[1] = roomKey, KEYS[2] = identitiesKey, KEYS[3] = seatsKey,
-// KEYS[4] = deadSeatsKey, KEYS[5] = votesKey, KEYS[6] = coupleSeatsKey,
-// KEYS[7] = revealedKey
+// KEYS[4] = revealedKey
 // ARGV[1] = sessionId, ARGV[2] = roleConfigJson, ARGV[3] = numberOfSeats,
 // ARGV[4] = identitiesJson (precomputed by dealCards() in TS - shuffling
 // itself is pure TS logic, this script only needs to write it atomically),
-// ARGV[5] = ttlSeconds, ARGV[6] = cupidPoisonBlocksHunter ('0'/'1')
+// ARGV[5] = ttlSeconds, ARGV[6] = cupidPoisonBlocksHunter ('0'/'1'),
+// ARGV[7] = ruleOverridesJson
 //
 // Guards phase === LOBBY so a client can't reassign themselves host mid-game
 // by resubmitting the config form - the concrete fix for the old app's real
@@ -131,10 +131,7 @@ export const SUBMIT_ROOM_CONFIG_LUA = `
 local roomKey = KEYS[1]
 local identitiesKey = KEYS[2]
 local seatsKey = KEYS[3]
-local deadSeatsKey = KEYS[4]
-local votesKey = KEYS[5]
-local coupleSeatsKey = KEYS[6]
-local revealedKey = KEYS[7]
+local revealedKey = KEYS[4]
 
 local sessionId = ARGV[1]
 local roleConfigJson = ARGV[2]
@@ -142,6 +139,7 @@ local numberOfSeats = ARGV[3]
 local identitiesJson = ARGV[4]
 local ttl = tonumber(ARGV[5])
 local cupidPoisonBlocksHunter = ARGV[6]
+local ruleOverridesJson = ARGV[7]
 
 local phase = redis.call('HGET', roomKey, 'phase')
 if phase and phase ~= '' and phase ~= 'LOBBY' then
@@ -164,7 +162,9 @@ redis.call(
 	'nightNumber',
 	'0',
 	'cupidPoisonBlocksHunter',
-	cupidPoisonBlocksHunter
+	cupidPoisonBlocksHunter,
+	'ruleOverrides',
+	ruleOverridesJson
 )
 
 redis.call('DEL', identitiesKey)
@@ -174,9 +174,6 @@ for seat, role in pairs(identities) do
 end
 
 redis.call('DEL', seatsKey)
-redis.call('DEL', deadSeatsKey)
-redis.call('DEL', votesKey)
-redis.call('DEL', coupleSeatsKey)
 redis.call('DEL', revealedKey)
 
 redis.call('EXPIRE', roomKey, ttl)

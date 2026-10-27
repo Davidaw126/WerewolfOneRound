@@ -4,12 +4,7 @@ export const roomKey = (code: string) => `wolf:room:${code}`;
 export const seatsKey = (code: string) => `wolf:room:${code}:seats`;
 export const playersKey = (code: string) => `wolf:room:${code}:players`;
 export const identitiesKey = (code: string) => `wolf:room:${code}:identities`;
-export const deadSeatsKey = (code: string) => `wolf:room:${code}:deadSeats`;
-export const votesKey = (code: string) => `wolf:room:${code}:votes`;
-export const coupleSeatsKey = (code: string) => `wolf:room:${code}:coupleSeats`;
 export const revealedKey = (code: string) => `wolf:room:${code}:revealed`;
-export const nightActionsKey = (code: string, night: number) =>
-	`wolf:room:${code}:nightActions:${night}`;
 
 // -- M1: the new engine's own persistence, separate from the RoomManager-
 // scope keys above (seats/players/identities/config stay exactly as they
@@ -18,17 +13,13 @@ export const gameStateKey = (code: string) => `wolf:room:${code}:gameState`;
 export const gameLockKey = (code: string) => `wolf:room:${code}:lock`;
 export const gameActionsKey = (code: string) => `wolf:room:${code}:actions`;
 
-/** Every fixed per-room key (excludes the per-night nightActions key, which is
- * cleared/expired independently each night). Used to re-arm TTL in one pipeline. */
+/** Every per-room key. Used to re-arm TTL in one pipeline and to close a room. */
 export function fixedRoomKeys(code: string): string[] {
 	return [
 		roomKey(code),
 		seatsKey(code),
 		playersKey(code),
 		identitiesKey(code),
-		deadSeatsKey(code),
-		votesKey(code),
-		coupleSeatsKey(code),
 		revealedKey(code),
 		gameStateKey(code),
 		gameActionsKey(code)

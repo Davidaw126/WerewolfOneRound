@@ -116,8 +116,7 @@ class Sim {
 		const players = Array.from({ length: seatCount }, (_, i) => ({
 			seat: i + 1,
 			sessionId: `s${i + 1}`,
-			nickname: `P${i + 1}`,
-			isHost: i === 0
+			nickname: `P${i + 1}`
 		}));
 		const result = startGame({
 			roomCode: 'SIM',
@@ -1028,8 +1027,7 @@ describe('恶灵骑士 fear never freezes the night', () => {
 			players: Object.keys(roles).map((s) => ({
 				seat: Number(s),
 				sessionId: `s${s}`,
-				nickname: s,
-				isHost: s === '1'
+				nickname: s
 			})),
 			now: 0
 		}).state;
@@ -1158,8 +1156,7 @@ describe('黑狼王', () => {
 			players: Object.keys(r).map((s) => ({
 				seat: Number(s),
 				sessionId: `s${s}`,
-				nickname: s,
-				isHost: s === '1'
+				nickname: s
 			})),
 			now: 0
 		});

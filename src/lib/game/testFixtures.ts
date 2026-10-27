@@ -14,7 +14,6 @@ export function makePlayer(seat: Seat, role: RoleId, overrides: Partial<Player> 
 		seat,
 		sessionId: `session-${seat}`,
 		nickname: `P${seat}`,
-		isHost: false,
 		connected: true,
 		lastSeenAt: 0,
 		role,

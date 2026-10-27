@@ -1332,7 +1332,7 @@ export interface StartGameParams {
 	ruleConfig: RuleConfig;
 	setup: Setup;
 	deal: DealResult;
-	players: Array<{ seat: Seat; sessionId: string; nickname: string; isHost: boolean }>;
+	players: Array<{ seat: Seat; sessionId: string; nickname: string }>;
 	now: number;
 }
 
@@ -1348,7 +1348,6 @@ export function startGame(params: StartGameParams): EngineResult {
 			seat: p.seat,
 			sessionId: p.sessionId,
 			nickname: p.nickname,
-			isHost: p.isHost,
 			connected: true,
 			lastSeenAt: params.now,
 			role,

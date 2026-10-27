@@ -1,16 +1,3 @@
-import { redis } from '../../redis';
-import {
-	randomRoomCode,
-	roomKey,
-	identitiesKey,
-	deadSeatsKey,
-	votesKey,
-	coupleSeatsKey,
-	revealedKey,
-	fixedRoomKeys,
-	nightActionsKey,
-	ROOM_TTL_SECONDS
-} from '../../rooms/keys';
 import {
 	createRoom,
 	roomExists,
@@ -20,14 +7,17 @@ import {
 	getRevealedRoleIfAny,
 	leaveSeatAtomic,
 	seatOf,
-	getIdentities,
-	getPlayers,
-	getSeats
+	belongsToRoom,
+	seatingForGameStart,
+	setSeatsLocked,
+	redeal,
+	resetToSeating,
+	destroyRoom
 } from '../../rooms/roomRepo';
-import { IN_PROGRESS_PHASES } from '../../../shared/gameTypes';
+import { IN_PROGRESS_PHASES, PRE_GAME_PHASES } from '../../../shared/gameTypes';
 import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
-import { startAndSaveGame, deleteGameState, clearGameActions } from '../../game/gameStateRepo';
+import { startAndSaveGame } from '../../game/gameStateRepo';
 import { syncAndBroadcastGameStart } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
 import { legacyToRoleId } from '../../../game/roleBridge';
@@ -40,7 +30,7 @@ import {
 import type { RoleId } from '../../../game/types';
 import type { DealResult as EngineDealResult } from '../../../game/rules/deal';
 import type { StartGameParams } from '../../../game/engine';
-import { deriveSeatCount, dealCards } from '../../../shared/deal';
+import { deriveSeatCount } from '../../../shared/deal';
 import type { Role } from '../../../shared/roles';
 import type { AckResponse } from '../../../shared/events';
 import type { RoomPublicState } from '../../../shared/gameTypes';
@@ -49,12 +39,7 @@ import { requireRoomCode, requireHost, type GameSocket } from './helpers';
 export async function handleRoomCreate(
 	socket: GameSocket
 ): Promise<AckResponse & { roomCode?: string; state?: RoomPublicState }> {
-	let code = randomRoomCode();
-	// Astronomically unlikely to collide, but check anyway - codes are only 6 digits.
-	while (await roomExists(code)) {
-		code = randomRoomCode();
-	}
-	await createRoom(code, socket.data.sessionId);
+	const code = await createRoom(socket.data.sessionId);
 	await setSessionRoom(socket.data.sessionId, code);
 	socket.data.roomCode = code;
 	socket.join(roomChannel(code));
@@ -71,9 +56,7 @@ export async function handleRoomJoin(
 
 	const room = await readRoomHash(roomCode);
 	const sessionId = socket.data.sessionId;
-	const alreadyInRoom =
-		room !== null &&
-		(room.hostSessionId === sessionId || (await seatOf(roomCode, sessionId)) !== null);
+	const alreadyInRoom = room !== null && (await belongsToRoom(roomCode, sessionId));
 
 	// S10 房间锁定: once the host locks seats (or the game has actually
 	// started), a session with no existing relationship to this room can't
@@ -84,11 +67,7 @@ export async function handleRoomJoin(
 	// recovery path, not just first-time joining (a socket-level reconnect
 	// after a network drop is separate again, via ResyncRequest, and never
 	// reaches this check at all).
-	if (
-		!alreadyInRoom &&
-		room &&
-		(room.lockStatus || (room.phase !== 'LOBBY' && room.phase !== 'SEATING'))
-	) {
+	if (!alreadyInRoom && room && (room.lockStatus || !PRE_GAME_PHASES.includes(room.phase))) {
 		return { ok: false, error: 'room_locked' };
 	}
 
@@ -141,22 +120,16 @@ export async function handleRoomSubmitConfig(
 		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
 	}
 
-	const deal = dealCards(roleConfig);
-	const result = await submitRoomConfigAtomic(
-		code,
-		socket.data.sessionId,
+	const result = await submitRoomConfigAtomic(code, socket.data.sessionId, {
 		roleConfig,
 		numberOfSeats,
-		deal,
-		cupidPoisonBlocksHunter
-	);
+		cupidPoisonBlocksHunter,
+		ruleOverrides: ruleOverrides ?? {}
+	});
 	if (!result.ok) return result;
 
-	await redis.hset(roomKey(code), { ruleOverrides: JSON.stringify(ruleOverrides ?? {}) });
-
-	// submitRoomConfigAtomic changes more than roleConfig - it also flips
-	// phase LOBBY -> SEATING and resets seats/deadSeats/votes/coupleSeats in
-	// the same atomic write. A full snapshot (rather than a narrower
+	// submitRoomConfigAtomic changes more than roleConfig - it also deals,
+	// flips phase LOBBY -> SEATING and resets seats in the same atomic write. A full snapshot (rather than a narrower
 	// RoomConfigUpdated-only event) means clients can't drift out of sync by
 	// missing any one of those fields.
 	const state = await getPublicState(code);
@@ -164,19 +137,14 @@ export async function handleRoomSubmitConfig(
 	return { ok: true, issues: validation.warnings.length > 0 ? validation.warnings : undefined };
 }
 
-/** Builds the engine's StartGameParams from everything RoomManager-scope
- * already dealt/seated during LOBBY/SEATING (unaffected by M1 - see the
- * module header) - the bridge point where the wire's old Role-keyed world
- * hands off to the new RoleId-keyed engine. */
-async function buildStartGameParams(
+/** Builds the engine's StartGameParams from everything the room already
+ * dealt/seated during LOBBY/SEATING - the bridge point where the wire's old
+ * Role-keyed world hands off to the new RoleId-keyed engine. */
+function buildStartGameParams(
 	code: string,
-	room: { hostSessionId: string }
-): Promise<StartGameParams> {
-	const [identities, playersMap, seatsMap] = await Promise.all([
-		getIdentities(code),
-		getPlayers(code),
-		getSeats(code)
-	]);
+	seating: NonNullable<Awaited<ReturnType<typeof seatingForGameStart>>>
+): StartGameParams {
+	const { room, identities, seated } = seating;
 
 	const roleIdIdentities: Record<string, RoleId> = {};
 	let buried: [RoleId, RoleId] | null = null;
@@ -198,27 +166,21 @@ async function buildStartGameParams(
 	}
 	if (buried) for (const role of buried) roleIdConfig[role] = (roleIdConfig[role] ?? 0) + 1;
 
-	const players: StartGameParams['players'] = [];
-	for (const [seatStr, sessionId] of Object.entries(seatsMap)) {
-		if (!sessionId) continue;
-		players.push({
-			seat: Number(seatStr),
-			sessionId,
-			nickname: playersMap[sessionId]?.username ?? `Seat ${seatStr}`,
-			isHost: sessionId === room.hostSessionId
-		});
-	}
+	const players: StartGameParams['players'] = seated.map((p) => ({
+		seat: p.seat,
+		sessionId: p.sessionId,
+		nickname: p.username || `Seat ${p.seat}`
+	}));
 
 	const deal: EngineDealResult = { identities: roleIdIdentities, buried };
-	const roomHash = await readRoomHash(code);
 	return {
 		roomCode: code,
 		ruleConfig: mergeRuleConfig(
 			{
 				...defaultRuleConfig(),
-				cupidPoisonBlocksHunter: roomHash?.cupidPoisonBlocksHunter ?? false
+				cupidPoisonBlocksHunter: room.cupidPoisonBlocksHunter
 			},
-			roomHash?.ruleOverrides
+			room.ruleOverrides
 		),
 		setup: buildSetup(roleIdConfig),
 		deal,
@@ -232,10 +194,10 @@ export async function handleRoomStartGame(
 ): Promise<AckResponse & { issues?: ValidationIssue[] }> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
-	const room = await readRoomHash(code);
-	if (!room || !room.lockStatus) return { ok: false, error: 'seats_not_locked' };
+	const seating = await seatingForGameStart(code);
+	if (!seating || !seating.room.lockStatus) return { ok: false, error: 'seats_not_locked' };
 
-	const params = await buildStartGameParams(code, room);
+	const params = buildStartGameParams(code, seating);
 
 	// Re-validates the full setup against who's ACTUALLY seated now (E01's
 	// real job - catches a room locked with empty seats, which nothing else
@@ -259,8 +221,7 @@ export async function handleRoomLockSeats(
 	// Host-only in both directions - locking gates the start-game handoff above,
 	// and an unlock from anyone else would reopen SeatTake mid-handoff too.
 	await requireHost(code, socket.data.sessionId);
-	await redis.hset(roomKey(code), { lockStatus: locked ? '1' : '0' });
-	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
+	await setSeatsLocked(code, locked);
 	emitToRoom(code, { kind: 'LockUpdated', locked });
 	return { ok: true };
 }
@@ -272,84 +233,19 @@ export async function handleRoomRerollRoles(socket: GameSocket): Promise<AckResp
 	const room = await readRoomHash(code);
 	if (!room || room.phase !== 'SEATING') return { ok: false, error: 'invalid_phase' };
 
-	await redealIdentities(code, room.roleConfig);
+	await redeal(code);
 	emitToRoom(code, { kind: 'RolesRerolled' });
 	return { ok: true };
 }
 
-/** Deals a fresh set of identities for the room's existing roleConfig,
- * steering away from the deal it replaces (see dealCards' `previous`) so the
- * same seat rarely gets the same special role twice running. Used by the
- * host's explicit reshuffle and by every return to SEATING (再来一局), which
- * used to keep the old deal - silently giving everyone the exact role they
- * just played unless the host remembered to tap reshuffle. */
-async function redealIdentities(
-	code: string,
-	roleConfig: Partial<Record<Role, number>>
-): Promise<void> {
-	const previous = await getIdentities(code);
-	const deal = dealCards(roleConfig, undefined, previous);
-	const identitiesFlat: Record<string, Role> = { ...deal.identities };
-	if (deal.buried) {
-		identitiesFlat['buried1'] = deal.buried[0];
-		identitiesFlat['buried2'] = deal.buried[1];
-	}
-
-	await redis.del(identitiesKey(code));
-	await redis.hset(identitiesKey(code), identitiesFlat);
-	await redis.expire(identitiesKey(code), ROOM_TTL_SECONDS);
-	// Every previous reveal is now stale - clear it so players must re-tap to
-	// see the role they were actually just reshuffled into.
-	await redis.del(revealedKey(code));
-}
-
-/** Resets an in-progress (or just-finished) round back to SEATING without
- * touching roleConfig/numberOfSeats/seats - so whoever's already seated stays
- * seated and the host can just re-lock and start again with the exact same
- * setup instead of reconfiguring roles from scratch. Identities ARE re-dealt
- * (redealIdentities): a new round should never silently replay the old one's
- * roles. Only
- * state specific to the aborted round (the engine's own GameState/action log,
- * plus the legacy deaths/votes/couple-link keys nothing writes anymore but
- * are still cleared for tidiness) is cleared. Shared by the host's explicit
- * RoomStopGame/GameOverScreen's "再来一局" and a non-host's mid-game
- * RoomLeave. */
+/** Back to SEATING with the same setup (see roomRepo.resetToSeating), then
+ * tells the room. Shared by the Host's explicit RoomStopGame/GameOverScreen's
+ * "再来一局" and a non-host's mid-game RoomLeave. */
 async function softResetToSeating(code: string): Promise<void> {
-	const room = await readRoomHash(code);
-	await redis.hset(roomKey(code), {
-		phase: 'SEATING',
-		lockStatus: '0',
-		nightNumber: '0'
-	});
-	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
-
-	await redis.del(deadSeatsKey(code));
-	await redis.del(votesKey(code));
-	await redis.del(coupleSeatsKey(code));
-	await deleteGameState(code);
-	await clearGameActions(code);
-	// A new round gets a new deal (same roleConfig) - see redealIdentities.
-	if (room && Object.keys(room.roleConfig).length > 0)
-		await redealIdentities(code, room.roleConfig);
-
+	await resetToSeating(code);
 	const state = await getPublicState(code);
 	if (state) emitToRoom(code, { kind: 'StateSnapshot', state });
 	emitToRoom(code, { kind: 'GameReset' });
-}
-
-/** The host leaving makes the room permanently unmanageable - every
- * host-gated action (submit config, lock seats, start/stop game, reroll)
- * checks requireHost against the ONE sessionId recorded at config-submit
- * time, with no way for anyone else to take over. Rather than leave an
- * orphaned room nobody can ever advance again, delete it outright. */
-async function destroyRoom(code: string): Promise<void> {
-	const room = await readRoomHash(code);
-	const pipeline = redis.pipeline();
-	for (const key of fixedRoomKeys(code)) pipeline.del(key);
-	// Every night played, not just the current one - the earlier hashes would
-	// otherwise linger until their own TTL expired.
-	if (room) for (let n = 1; n <= room.nightNumber; n++) pipeline.del(nightActionsKey(code, n));
-	await pipeline.exec();
 }
 
 export async function handleRoomStopGame(socket: GameSocket): Promise<AckResponse> {

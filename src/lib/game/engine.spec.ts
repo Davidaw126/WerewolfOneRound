@@ -35,7 +35,7 @@ function start(roles: Record<Seat, RoleId>) {
 	const players = Object.entries(roles).map(([seatStr, role]) => {
 		const seat = Number(seatStr);
 		roleConfig[role] = (roleConfig[role] ?? 0) + 1;
-		return { seat, sessionId: `s${seat}`, nickname: `P${seat}`, isHost: seat === 1 };
+		return { seat, sessionId: `s${seat}`, nickname: `P${seat}` };
 	});
 	return startGame({
 		roomCode: 'ABC123',
@@ -1016,9 +1016,9 @@ describe('M7: THIEF forced wolf pick (UT-24)', () => {
 				buried: ['WEREWOLF', 'WOLF_KING']
 			},
 			players: [
-				{ seat: 1, sessionId: 's1', nickname: 'P1', isHost: true },
-				{ seat: 2, sessionId: 's2', nickname: 'P2', isHost: false },
-				{ seat: 3, sessionId: 's3', nickname: 'P3', isHost: false }
+				{ seat: 1, sessionId: 's1', nickname: 'P1' },
+				{ seat: 2, sessionId: 's2', nickname: 'P2' },
+				{ seat: 3, sessionId: 's3', nickname: 'P3' }
 			],
 			now: 1000
 		});

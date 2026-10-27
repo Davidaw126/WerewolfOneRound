@@ -1,3 +1,23 @@
+// The Room module: everything about the people at a table and the setup
+// before a game - creating and closing the room, the Host, seats, the role
+// setup and its deal (Re-deal included), who has seen their role - plus the
+// one answer to "who sits in seat N / what role is seat N" at any time.
+//
+// Two stores sit behind this module and only this module knows which one is
+// authoritative when:
+//   - before a game (PRE_GAME_PHASES): the seating keys (room hash, seats,
+//     players, identities, revealed), written atomically by the Lua scripts;
+//   - once a game starts: the engine's GameState (gameStateRepo.ts) for who
+//     sits where and what role they hold - the seating keys never learn
+//     about in-game changes (上帝之手 改变身份, 盗贼, 野孩子). While a round is in
+//     progress seats can't change, so the two agree on who sits where; at
+//     GAME_OVER a player can still Leave, so seats come from the seating
+//     keys again while roles keep coming from GameState.
+// The Host is only ever recorded in the room hash.
+//
+// Handlers and the game IO shell call into here; none of them touch the
+// room's Redis keys directly.
+
 import { redis } from '../redis';
 import { getSession } from '../session';
 import { TAKE_SEAT_LUA, LEAVE_SEAT_LUA, SUBMIT_ROOM_CONFIG_LUA } from './lua/scripts';
@@ -7,17 +27,22 @@ import {
 	seatsKey,
 	playersKey,
 	identitiesKey,
-	deadSeatsKey,
-	votesKey,
-	coupleSeatsKey,
 	revealedKey,
-	fixedRoomKeys
+	fixedRoomKeys,
+	randomRoomCode
 } from './keys';
 import type { Role } from '../../shared/roles';
-import type { Phase, RoomPublicState, SeatState } from '../../shared/gameTypes';
-import type { DealResult } from '../../shared/deal';
+import {
+	IN_PROGRESS_PHASES,
+	PRE_GAME_PHASES,
+	type Phase,
+	type RoomPublicState,
+	type SeatState
+} from '../../shared/gameTypes';
+import { dealCards, type DealResult } from '../../shared/deal';
 import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
-import { loadGameState } from '../game/gameStateRepo';
+import type { GameState } from '../../game/types';
+import { loadGameState, deleteGameState, clearGameActions } from '../game/gameStateRepo';
 import { roleIdToLegacy } from '../../game/roleBridge';
 import {
 	mapToLegacyPhase,
@@ -52,31 +77,26 @@ declare module 'ioredis' {
 			roomKey: string,
 			identitiesKey: string,
 			seatsKey: string,
-			deadSeatsKey: string,
-			votesKey: string,
-			coupleSeatsKey: string,
 			revealedKey: string,
 			sessionId: string,
 			roleConfigJson: string,
 			numberOfSeats: string,
 			identitiesJson: string,
 			ttl: number,
-			cupidPoisonBlocksHunter: string
+			cupidPoisonBlocksHunter: string,
+			ruleOverridesJson: string
 		): Promise<string>;
 	}
 }
 
 redis.defineCommand('takeSeat', { numberOfKeys: 4, lua: TAKE_SEAT_LUA });
 redis.defineCommand('leaveSeat', { numberOfKeys: 2, lua: LEAVE_SEAT_LUA });
-redis.defineCommand('submitRoomConfig', { numberOfKeys: 7, lua: SUBMIT_ROOM_CONFIG_LUA });
+redis.defineCommand('submitRoomConfig', { numberOfKeys: 4, lua: SUBMIT_ROOM_CONFIG_LUA });
 
-// M1: everything about "what stage/round/death-list/hunter-shot is in
-// progress" moved into the new engine's own GameState blob (gameStateRepo.ts) -
-// the room hash keeps only the RoomManager-scope fields (seat/config/lobby
-// lifecycle) plus `phase`/`nightNumber`, kept in sync with GameState by
-// gameSync.ts purely so phase-gated logic elsewhere (handleRoomLeave's
-// IN_PROGRESS_PHASES check, requireHost, etc.) doesn't need to know the new
-// engine exists at all.
+// The room hash keeps the room-scope fields (seat/config/lobby lifecycle)
+// plus `phase`/`nightNumber`, which recordGamePhase keeps in step with the
+// GameState so phase-gated room logic (Leave, the join lock, the route
+// guard) never has to load the game itself.
 export interface RoomHashData {
 	phase: Phase;
 	hostSessionId: string;
@@ -94,6 +114,8 @@ export interface RoomHashData {
 	 * RoomStartGame time - see game/defaultRuleConfig.ts's mergeRuleConfig. */
 	ruleOverrides: RuleConfigOverrides;
 }
+
+const isPreGame = (phase: Phase) => PRE_GAME_PHASES.includes(phase);
 
 export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 	const data = await redis.hgetall(roomKey(code));
@@ -114,12 +136,16 @@ export async function roomExists(code: string): Promise<boolean> {
 	return (await redis.exists(roomKey(code))) === 1;
 }
 
-/** hostSessionId is assigned immediately to whoever creates the room, not
- * whoever happens to submit the config first - a friend who joins via the
- * room code before the creator finishes setting up roles should see a
- * waiting message, not the config form itself (and definitely shouldn't be
- * able to submit config out from under the actual host). */
-export async function createRoom(code: string, hostSessionId: string): Promise<void> {
+/** Opens a new room under a fresh code and returns the code. The Host is
+ * whoever creates the room, not whoever happens to submit the config first -
+ * a friend who joins via the room code before the creator finishes setting
+ * up roles should see a waiting message, not the config form itself (and
+ * definitely shouldn't be able to submit config out from under the actual
+ * Host). */
+export async function createRoom(hostSessionId: string): Promise<string> {
+	let code = randomRoomCode();
+	// Astronomically unlikely to collide, but check anyway - codes are only 6 digits.
+	while (await roomExists(code)) code = randomRoomCode();
 	await redis.hset(roomKey(code), {
 		phase: 'LOBBY',
 		roleConfig: '{}',
@@ -127,40 +153,190 @@ export async function createRoom(code: string, hostSessionId: string): Promise<v
 		hostSessionId
 	});
 	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
+	return code;
 }
 
-export async function getPlayers(
-	code: string
-): Promise<Record<string, { username: string; seat: number | null }>> {
-	const raw = await redis.hgetall(playersKey(code));
-	const out: Record<string, { username: string; seat: number | null }> = {};
-	for (const [sessionId, json] of Object.entries(raw)) {
-		out[sessionId] = JSON.parse(json);
+/** Deletes every key of the room. The Host leaving makes the room
+ * permanently unmanageable (every host-gated action checks the one recorded
+ * Host), so rather than leave an orphaned room nobody can ever advance
+ * again, it goes outright. */
+export async function destroyRoom(code: string): Promise<void> {
+	const pipeline = redis.pipeline();
+	for (const key of fixedRoomKeys(code)) pipeline.del(key);
+	await pipeline.exec();
+}
+
+// -- The Host ----------------------------------------------------------------
+
+export async function hostSessionOf(code: string): Promise<string | null> {
+	return (await redis.hget(roomKey(code), 'hostSessionId')) || null;
+}
+
+export async function isHost(code: string, sessionId: string): Promise<boolean> {
+	return (await hostSessionOf(code)) === sessionId;
+}
+
+// -- Seats -------------------------------------------------------------------
+
+type SeatedPlayer = { seat: number; sessionId: string; username: string };
+
+async function seatingKeysSeated(code: string): Promise<SeatedPlayer[]> {
+	const [seats, players] = await Promise.all([
+		redis.hgetall(seatsKey(code)),
+		redis.hgetall(playersKey(code))
+	]);
+	const out: SeatedPlayer[] = [];
+	for (const [seatStr, sessionId] of Object.entries(seats)) {
+		if (!sessionId) continue;
+		const player = players[sessionId] ? JSON.parse(players[sessionId]) : null;
+		out.push({ seat: Number(seatStr), sessionId, username: player?.username ?? '' });
 	}
 	return out;
 }
 
-export async function getSeats(code: string): Promise<Record<string, string>> {
-	return redis.hgetall(seatsKey(code));
+function gameStateSeated(state: GameState): SeatedPlayer[] {
+	return Object.values(state.players).map((p) => ({
+		seat: p.seat,
+		sessionId: p.sessionId,
+		username: p.nickname
+	}));
 }
 
-export async function getIdentities(code: string): Promise<Record<string, Role>> {
-	return (await redis.hgetall(identitiesKey(code))) as Record<string, Role>;
+/** Who sits where right now - see the module header for which store answers. */
+async function seated(code: string, phase?: Phase): Promise<SeatedPlayer[]> {
+	const roomPhase = phase ?? (await readRoomHash(code))?.phase;
+	if (roomPhase && IN_PROGRESS_PHASES.includes(roomPhase)) {
+		const state = await loadGameState(code);
+		if (state) return gameStateSeated(state);
+	}
+	return seatingKeysSeated(code);
 }
 
 /** Which seat (if any) the given session currently occupies. */
 export async function seatOf(code: string, sessionId: string): Promise<number | null> {
-	const players = await getPlayers(code);
-	return players[sessionId]?.seat ?? null;
+	return (await seated(code)).find((p) => p.sessionId === sessionId)?.seat ?? null;
 }
 
-export async function findSessionInSeat(code: string, seat: number): Promise<string | null> {
-	const seats = await getSeats(code);
-	return seats[String(seat)] ?? null;
+/** Which session (if any) currently occupies the given seat. */
+export async function sessionInSeat(code: string, seat: number): Promise<string | null> {
+	return (await seated(code)).find((p) => p.seat === seat)?.sessionId ?? null;
 }
 
-export async function hasRevealed(code: string, sessionId: string): Promise<boolean> {
-	return (await redis.sismember(revealedKey(code), sessionId)) === 1;
+/** The Host, or a player with a seat - someone who may come back into the
+ * room even once it's locked against newcomers. */
+export async function belongsToRoom(code: string, sessionId: string): Promise<boolean> {
+	return (await isHost(code, sessionId)) || (await seatOf(code, sessionId)) !== null;
+}
+
+export async function takeSeatAtomic(
+	code: string,
+	sessionId: string,
+	seat: number,
+	username: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	const raw = await redis.takeSeat(
+		seatsKey(code),
+		playersKey(code),
+		identitiesKey(code),
+		roomKey(code),
+		sessionId,
+		String(seat),
+		username,
+		ROOM_TTL_SECONDS
+	);
+	return JSON.parse(raw);
+}
+
+/** Frees whatever seat this session holds in the seating keys; `vacated` is
+ * false if it held none. */
+export async function leaveSeatAtomic(
+	code: string,
+	sessionId: string
+): Promise<{ ok: true; vacated: boolean }> {
+	const raw = await redis.leaveSeat(seatsKey(code), playersKey(code), sessionId);
+	return JSON.parse(raw);
+}
+
+export async function setSeatsLocked(code: string, locked: boolean): Promise<void> {
+	await redis.hset(roomKey(code), { lockStatus: locked ? '1' : '0' });
+	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
+}
+
+// -- Roles -------------------------------------------------------------------
+
+async function dealtIdentities(code: string): Promise<Record<string, Role>> {
+	return (await redis.hgetall(identitiesKey(code))) as Record<string, Role>;
+}
+
+function flattenDeal(deal: DealResult): Record<string, Role> {
+	const flat: Record<string, Role> = { ...deal.identities };
+	if (deal.buried) {
+		flat['buried1'] = deal.buried[0];
+		flat['buried2'] = deal.buried[1];
+	}
+	return flat;
+}
+
+/** Saves the Host's role setup and deals it, moving the room LOBBY ->
+ * SEATING in one atomic write. Only the Host's own session may do this, and
+ * only from LOBBY. */
+export async function submitRoomConfigAtomic(
+	code: string,
+	sessionId: string,
+	config: {
+		roleConfig: Partial<Record<Role, number>>;
+		numberOfSeats: number;
+		cupidPoisonBlocksHunter: boolean;
+		ruleOverrides: RuleConfigOverrides;
+	}
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	const raw = await redis.submitRoomConfig(
+		roomKey(code),
+		identitiesKey(code),
+		seatsKey(code),
+		revealedKey(code),
+		sessionId,
+		JSON.stringify(config.roleConfig),
+		String(config.numberOfSeats),
+		JSON.stringify(flattenDeal(dealCards(config.roleConfig))),
+		ROOM_TTL_SECONDS,
+		config.cupidPoisonBlocksHunter ? '1' : '0',
+		JSON.stringify(config.ruleOverrides)
+	);
+	return JSON.parse(raw);
+}
+
+/** Re-deal: a fresh deal of the room's existing role setup, steering away
+ * from the deal it replaces (see dealCards' `previous`) so the same seat
+ * rarely gets the same special role twice running. Every earlier look at a
+ * role is now stale, so all players must look again. */
+export async function redeal(code: string): Promise<void> {
+	const room = await readRoomHash(code);
+	if (!room || Object.keys(room.roleConfig).length === 0) return;
+	const previous = await dealtIdentities(code);
+	const identities = flattenDeal(dealCards(room.roleConfig, undefined, previous));
+
+	await redis
+		.multi()
+		.del(identitiesKey(code))
+		.hset(identitiesKey(code), identities)
+		.expire(identitiesKey(code), ROOM_TTL_SECONDS)
+		.del(revealedKey(code))
+		.exec();
+}
+
+/** The card a seat holds RIGHT NOW. Once a game has started that's the
+ * engine's GameState, not the deal from seating - the deal never learns
+ * about in-game changes (上帝之手's 改变身份, the 盗贼 taking a buried card),
+ * so replaying it on a refresh/reconnect showed the player their old card. */
+export async function currentRoleOfSeat(code: string, seat: number): Promise<Role | null> {
+	const room = await readRoomHash(code);
+	if (room && !isPreGame(room.phase)) {
+		const gameState = await loadGameState(code);
+		const player = gameState?.players[seat];
+		if (player) return roleIdToLegacy(player.role);
+	}
+	return (await dealtIdentities(code))[String(seat)] ?? null;
 }
 
 export async function markRevealed(code: string, sessionId: string): Promise<void> {
@@ -168,53 +344,68 @@ export async function markRevealed(code: string, sessionId: string): Promise<voi
 	await redis.expire(revealedKey(code), ROOM_TTL_SECONDS);
 }
 
-/** If this session has already tapped "reveal" for their current role, look
- * it up again (e.g. to replay it on reconnect) - otherwise null, so a client
- * that has never revealed isn't shown one unprompted. */
+/** If this session has already looked at their current role, look it up
+ * again (e.g. to replay it on reconnect) - otherwise null, so a client that
+ * has never looked isn't shown one unprompted. */
 export async function getRevealedRoleIfAny(code: string, sessionId: string): Promise<Role | null> {
-	if (!(await hasRevealed(code, sessionId))) return null;
+	if ((await redis.sismember(revealedKey(code), sessionId)) !== 1) return null;
 	const seat = await seatOf(code, sessionId);
 	if (seat === null) return null;
 	return currentRoleOfSeat(code, seat);
 }
 
-/** The card a seat holds RIGHT NOW. Once a game is running that's the
- * engine's GameState, not the identities hash dealt at seating - the hash
- * never learns about in-game changes (上帝之手's 改变身份, the 盗贼 taking a
- * buried card), so replaying it on a refresh/reconnect showed the player
- * their old card. */
-export async function currentRoleOfSeat(code: string, seat: number): Promise<Role | null> {
+// -- Game handoff ------------------------------------------------------------
+
+/** Everything seating produced, for building the engine's StartGameParams. */
+export async function seatingForGameStart(code: string): Promise<{
+	room: RoomHashData;
+	identities: Record<string, Role>;
+	seated: SeatedPlayer[];
+} | null> {
 	const room = await readRoomHash(code);
-	if (room && IN_GAME_PHASES.includes(room.phase)) {
-		const gameState = await loadGameState(code);
-		const player = gameState?.players[seat];
-		if (player) return roleIdToLegacy(player.role);
-	}
-	const identities = await getIdentities(code);
-	return identities[String(seat)] ?? null;
+	if (!room) return null;
+	const [identities, players] = await Promise.all([dealtIdentities(code), seatingKeysSeated(code)]);
+	return { room, identities, seated: players };
 }
 
-const IN_GAME_PHASES: Phase[] = [
-	'NIGHT_ACTIONS',
-	'NIGHT_HUNTER_SHOT',
-	'LAST_WORDS',
-	'DISCUSSION',
-	'DAY_VOTE',
-	'DAY_HUNTER_SHOT',
-	'GAME_OVER'
-];
+/** Mirrors the game's phase and round into the room hash, so room-scope
+ * checks stay in step with GameState without loading it. */
+export async function recordGamePhase(code: string, phase: Phase, round: number): Promise<void> {
+	await redis.hset(roomKey(code), { phase, nightNumber: String(round) });
+	await touchRoomTtl(code);
+}
+
+/** Ends the current round (or a finished one) and returns the room to
+ * SEATING with the same setup: whoever is seated stays seated, the game
+ * state and its action log go, and the roles are re-dealt - a new round
+ * should never silently replay the old one's roles. */
+export async function resetToSeating(code: string): Promise<void> {
+	await redis.hset(roomKey(code), { phase: 'SEATING', lockStatus: '0', nightNumber: '0' });
+	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
+	await deleteGameState(code);
+	await clearGameActions(code);
+	await redeal(code);
+}
+
+export async function touchRoomTtl(code: string): Promise<void> {
+	const pipeline = redis.pipeline();
+	for (const key of fixedRoomKeys(code)) pipeline.expire(key, ROOM_TTL_SECONDS);
+	await pipeline.exec();
+}
+
+// -- Public view ---------------------------------------------------------------
 
 /** Assembles the full public state, e.g. for StateSnapshot/ResyncRequest.
- * Pre-game (LOBBY/SEATING) fields come from the RoomManager-scope keys, same
- * as always; once a game is in progress, the game-specific fields (stage,
- * deaths, votes, hunter, winner, identities) are projected fresh from the
- * engine's own GameState blob instead - see projection.ts.
+ * Pre-game fields come from the seating keys; once a game has started, the
+ * game-specific fields (stage, deaths, votes, hunter, winner, identities)
+ * are projected fresh from the engine's own GameState instead - see
+ * projection.ts.
  *
  * `forSessionId`, when given, only ever adds the host-only `hostStage` field
- * (and only when that session actually is the host) - it never changes the
+ * (and only when that session actually is the Host) - it never changes the
  * shared `stage` field itself, which stays role-redacted (S4) for everyone
  * regardless of who's asking. Pass it whenever the resulting state is going
- * to exactly one recipient (an ack, a resync) so a reconnecting host's
+ * to exactly one recipient (an ack, a resync) so a reconnecting Host's
  * narration can resume immediately instead of waiting for the next natural
  * stage change; omit it for room-wide broadcasts. */
 export async function getPublicState(
@@ -224,28 +415,25 @@ export async function getPublicState(
 	const room = await readRoomHash(code);
 	if (!room) return null;
 
-	const [players, seatsMap] = await Promise.all([getPlayers(code), getSeats(code)]);
-	const gameState = IN_GAME_PHASES.includes(room.phase) ? await loadGameState(code) : null;
+	const gameState = isPreGame(room.phase) ? null : await loadGameState(code);
+	const occupants = await seated(code, room.phase);
 
 	const deadSeats = gameState ? deadSeatsOf(gameState) : [];
 	const deadSet = new Set(deadSeats);
 	const seats: SeatState[] = [];
 	for (let i = 1; i <= room.numberOfSeats; i++) {
-		const sessionId = seatsMap[String(i)] ?? null;
+		const occupant = occupants.find((p) => p.seat === i);
 		seats.push({
 			seatNumber: i,
-			sessionId,
-			username: sessionId ? (players[sessionId]?.username ?? null) : null,
+			sessionId: occupant?.sessionId ?? null,
+			username: occupant ? occupant.username || null : null,
 			isDead: deadSet.has(i),
 			...(gameState?.players[i]?.isRevealedIdiot ? { revealedIdiot: true } : {})
 		});
 	}
 
-	// Deliberately not looked up from `players` (the seated-players hash): the
-	// host is assigned the moment they submit the room config, before they've
-	// necessarily taken a seat, so `players[hostSessionId]` may not exist yet.
-	// The session record is the source of truth for a username regardless of
-	// seating.
+	// Looked up from the session record, not the seated players: the Host
+	// may not have taken a seat at all.
 	const hostUsername = room.hostSessionId
 		? ((await getSession(room.hostSessionId))?.username ?? null)
 		: null;
@@ -284,72 +472,4 @@ export async function getPublicState(
 	}
 
 	return state;
-}
-
-// -- Atomic operations (Lua-backed) ----------------------------------------
-
-export async function takeSeatAtomic(
-	code: string,
-	sessionId: string,
-	seat: number,
-	username: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
-	const raw = await redis.takeSeat(
-		seatsKey(code),
-		playersKey(code),
-		identitiesKey(code),
-		roomKey(code),
-		sessionId,
-		String(seat),
-		username,
-		ROOM_TTL_SECONDS
-	);
-	return JSON.parse(raw);
-}
-
-export async function leaveSeatAtomic(
-	code: string,
-	sessionId: string
-): Promise<{ ok: true; vacated: boolean }> {
-	const raw = await redis.leaveSeat(seatsKey(code), playersKey(code), sessionId);
-	return JSON.parse(raw);
-}
-
-export async function submitRoomConfigAtomic(
-	code: string,
-	sessionId: string,
-	roleConfig: Partial<Record<Role, number>>,
-	numberOfSeats: number,
-	deal: DealResult,
-	cupidPoisonBlocksHunter: boolean
-): Promise<{ ok: true } | { ok: false; error: string }> {
-	const identitiesFlat: Record<string, Role> = { ...deal.identities };
-	if (deal.buried) {
-		identitiesFlat['buried1'] = deal.buried[0];
-		identitiesFlat['buried2'] = deal.buried[1];
-	}
-	const raw = await redis.submitRoomConfig(
-		roomKey(code),
-		identitiesKey(code),
-		seatsKey(code),
-		deadSeatsKey(code),
-		votesKey(code),
-		coupleSeatsKey(code),
-		revealedKey(code),
-		sessionId,
-		JSON.stringify(roleConfig),
-		String(numberOfSeats),
-		JSON.stringify(identitiesFlat),
-		ROOM_TTL_SECONDS,
-		cupidPoisonBlocksHunter ? '1' : '0'
-	);
-	return JSON.parse(raw);
-}
-
-export async function touchRoomTtl(code: string, night?: number): Promise<void> {
-	const pipeline = redis.pipeline();
-	for (const key of fixedRoomKeys(code)) pipeline.expire(key, ROOM_TTL_SECONDS);
-	if (night !== undefined)
-		pipeline.expire(`wolf:room:${code}:nightActions:${night}`, ROOM_TTL_SECONDS);
-	await pipeline.exec();
 }

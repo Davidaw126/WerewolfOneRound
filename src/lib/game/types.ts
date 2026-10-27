@@ -263,7 +263,6 @@ export interface Player {
 	seat: Seat;
 	sessionId: string;
 	nickname: string;
-	isHost: boolean;
 	connected: boolean;
 	lastSeenAt: number;
 

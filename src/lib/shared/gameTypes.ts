@@ -16,6 +16,11 @@ export type Phase =
 	| 'DAY_HUNTER_SHOT'
 	| 'GAME_OVER';
 
+/** The room is still being set up and seated - no game state exists yet.
+ * Every other phase has one: the IN_PROGRESS_PHASES below, plus GAME_OVER
+ * (kept for the final reveal until the next round or the room closes). */
+export const PRE_GAME_PHASES: readonly Phase[] = ['LOBBY', 'SEATING'];
+
 /** A round is under way: a non-host leaving now resets the room to SEATING
  * (their seat would otherwise stall the next turn that needs them - a
  * departure during the day used to slip through and freeze the next night).

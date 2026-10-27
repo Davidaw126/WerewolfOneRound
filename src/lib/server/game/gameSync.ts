@@ -1,7 +1,7 @@
 // The one place every engine write funnels through on its way back out to
-// sockets: keep the legacy room-hash `phase`/`nightNumber` fields (still the
-// source of truth for RoomManager-scope logic like handleRoomLeave's
-// IN_PROGRESS_PHASES check) in sync with the new GameState, broadcast
+// sockets: mirror the game's phase into the room (roomRepo.recordGamePhase,
+// which room-scope logic like handleRoomLeave's IN_PROGRESS_PHASES check
+// reads), broadcast
 // PhaseChanged only when the legacy-mapped phase actually changed (an
 // unconditional re-broadcast on every single player action - e.g. every
 // vote cast - would retrigger anything the client keys off phase, like
@@ -9,8 +9,7 @@
 // transitions), then hand every other effect to the translator.
 
 import { redis } from '../redis';
-import { roomKey } from '../rooms/keys';
-import { touchRoomTtl } from '../rooms/roomRepo';
+import { recordGamePhase } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { Phase as LegacyPhase } from '../../shared/gameTypes';
@@ -19,15 +18,6 @@ import { stageConfirmComplete } from '../../game/engine';
 import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
 import { applyGameAction, loadGameState } from './gameStateRepo';
-
-async function writeLegacyPhase(
-	code: string,
-	legacyPhase: LegacyPhase,
-	round: number
-): Promise<void> {
-	await redis.hset(roomKey(code), { phase: legacyPhase, nightNumber: String(round) });
-	await touchRoomTtl(code);
-}
 
 const randomMs = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
@@ -136,7 +126,7 @@ export async function syncAndBroadcast(
 	previousLegacyPhase: LegacyPhase
 ): Promise<void> {
 	const legacyPhase = mapToLegacyPhase(result.state);
-	await writeLegacyPhase(code, legacyPhase, result.state.round);
+	await recordGamePhase(code, legacyPhase, result.state.round);
 	if (legacyPhase !== previousLegacyPhase) {
 		emitToRoom(code, { kind: 'PhaseChanged', phase: legacyPhase, nightNumber: result.state.round });
 	}
@@ -149,7 +139,7 @@ export async function syncAndBroadcast(
  * to), so this always broadcasts. */
 export async function syncAndBroadcastGameStart(code: string, result: EngineResult): Promise<void> {
 	const legacyPhase = mapToLegacyPhase(result.state);
-	await writeLegacyPhase(code, legacyPhase, result.state.round);
+	await recordGamePhase(code, legacyPhase, result.state.round);
 	emitToRoom(code, { kind: 'PhaseChanged', phase: legacyPhase, nightNumber: result.state.round });
 	await translateEffects(code, result.effects);
 	maybeScheduleFakeStageAdvance(code, result.state);

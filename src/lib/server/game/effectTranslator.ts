@@ -20,7 +20,7 @@ import type { NightStage as LegacyNightStage } from '../../shared/gameTypes';
 import type { PrivateInfo } from '../../shared/events';
 import type { Role } from '../../shared/roles';
 import { emitToRoom, emitToSession } from '../socket/emit';
-import { findSessionInSeat, readRoomHash } from '../rooms/roomRepo';
+import { sessionInSeat, hostSessionOf } from '../rooms/roomRepo';
 import { toPublicStage } from './projection';
 import { roleIdToLegacy } from '../../game/roleBridge';
 
@@ -32,7 +32,7 @@ function legacyStage(stage: unknown): LegacyNightStage | null {
 }
 
 async function emitPrivate(code: string, seat: number, event: PrivateInfo): Promise<void> {
-	const sessionId = await findSessionInSeat(code, seat);
+	const sessionId = await sessionInSeat(code, seat);
 	// A seat with nobody connected (disconnected mid-game) legitimately has no
 	// live session to deliver a private effect to - not an error, just nobody
 	// there to tell.
@@ -43,8 +43,8 @@ async function emitPrivate(code: string, seat: number, event: PrivateInfo): Prom
  * is acting, that a role just submitted) that would out a role's holder if
  * every player received it. */
 async function emitToHost(code: string, event: PrivateInfo): Promise<void> {
-	const room = await readRoomHash(code);
-	if (room?.hostSessionId) emitToSession(room.hostSessionId, event);
+	const host = await hostSessionOf(code);
+	if (host) emitToSession(host, event);
 }
 
 export async function translateEffects(code: string, effects: EngineEffect[]): Promise<void> {
@@ -59,14 +59,14 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'HostOverrideApplied':
 				if (payload.overrideKind === 'SET_ROLE') {
 					const seat = payload.seat as number;
-					const [playerSession, room] = await Promise.all([
-						findSessionInSeat(code, seat),
-						readRoomHash(code)
+					const [playerSession, host] = await Promise.all([
+						sessionInSeat(code, seat),
+						hostSessionOf(code)
 					]);
 					if (playerSession)
 						emitToSession(playerSession, { kind: 'RoleChangedByHost', seat, forYou: true });
-					if (room?.hostSessionId && room.hostSessionId !== playerSession)
-						emitToSession(room.hostSessionId, { kind: 'RoleChangedByHost', seat, forYou: false });
+					if (host && host !== playerSession)
+						emitToSession(host, { kind: 'RoleChangedByHost', seat, forYou: false });
 					continue;
 				}
 				emitToRoom(code, {
