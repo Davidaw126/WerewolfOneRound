@@ -48,8 +48,9 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 		const payload = effect.payload as { kind: string } & Record<string, unknown>;
 
 		switch (payload.kind) {
+			// Broadcast by gameSync from the final state - the room learns DAWN
+			// from PhaseChanged itself (see the header).
 			case 'PhaseChanged':
-			// The room learns DAWN from PhaseChanged itself (gameSync).
 			case 'NightAnnouncePending':
 			case 'NightActionRejected':
 				continue;
