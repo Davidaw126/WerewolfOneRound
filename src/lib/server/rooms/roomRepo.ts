@@ -46,7 +46,6 @@ import { loadGameState, deleteGameState, clearGameActions } from '../game/gameSt
 import { legacyToRoleId } from '../../game/roleBridge';
 import type { Role } from '../../shared/roles';
 import {
-	mapToLegacyPhase,
 	stageOf,
 	toPublicStage,
 	deadSeatsOf,
@@ -118,6 +117,16 @@ export interface RoomHashData {
 
 const isPreGame = (phase: Phase) => PRE_GAME_PHASES.includes(phase);
 
+/** The room's phase is mirrored as the engine's own. A game running across
+ * the deploy that changed that still has the older names stored until its
+ * next action - read them as the nearest engine phase. */
+const LEGACY_PHASE: Record<string, Phase> = {
+	NIGHT_ACTIONS: 'NIGHT',
+	NIGHT_HUNTER_SHOT: 'HUNTER_SHOOT',
+	DAY_HUNTER_SHOT: 'HUNTER_SHOOT',
+	DAY_VOTE: 'VOTE'
+};
+
 /** Roles are stored as RoleId. A room set up before that change (still in
  * Redis across a deploy) has Chinese role names instead - read those too. */
 function asRoleId(value: string): RoleId | null {
@@ -139,7 +148,7 @@ export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 	const data = await redis.hgetall(roomKey(code));
 	if (!data.phase) return null;
 	return {
-		phase: (data.phase || 'LOBBY') as Phase,
+		phase: LEGACY_PHASE[data.phase] ?? ((data.phase || 'LOBBY') as Phase),
 		hostSessionId: data.hostSessionId || '',
 		roleConfig: data.roleConfig ? toRoleIdKeys(JSON.parse(data.roleConfig)) : {},
 		numberOfSeats: Number(data.numberOfSeats || 0),
@@ -476,7 +485,7 @@ export async function getPublicState(
 
 	const state: RoomPublicState = {
 		roomCode: code,
-		phase: gameState ? mapToLegacyPhase(gameState) : room.phase,
+		phase: gameState ? gameState.phase : room.phase,
 		hostUsername,
 		hostSessionId: room.hostSessionId || null,
 		roleConfig: room.roleConfig,
@@ -493,7 +502,6 @@ export async function getPublicState(
 		speechOrder: gameState ? speechOrderOf(gameState) : [],
 		pkCandidates: gameState ? pkCandidatesOf(gameState) : [],
 		winner: gameState ? winnerOf(gameState) : null,
-		pendingNightAnnounce: gameState ? gameState.pendingNightDeaths !== null : false,
 		dayDecided: gameState?.dayDecided ?? false,
 		knightUsed: gameState?.knightUsed ?? false,
 		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {})

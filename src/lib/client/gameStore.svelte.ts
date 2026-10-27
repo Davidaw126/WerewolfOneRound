@@ -1,4 +1,10 @@
-import type { NightStage, RoomPublicState, SeatState, Winner } from '$lib/shared/gameTypes';
+import {
+	phaseGroup,
+	type NightStage,
+	type RoomPublicState,
+	type SeatState,
+	type Winner
+} from '$lib/shared/gameTypes';
 import type { RoleId } from '$lib/game/types';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent, onActionError } from './socket';
@@ -276,14 +282,13 @@ export class GameStore {
 		const phase = this.state?.phase;
 		const night = this.state?.nightNumber ?? 0;
 		const t = strings(i18n.lang).phaseBanner;
-		switch (phase) {
-			case 'NIGHT_ACTIONS':
-			case 'NIGHT_HUNTER_SHOT':
+		switch (phase && phaseGroup(phase)) {
+			case 'night':
 				return t.night(night);
-			case 'DAY_VOTE':
-			case 'DAY_HUNTER_SHOT':
+			case 'vote':
+			case 'hunter':
 				return i18n.lang === 'zh' ? `第 ${night} 天` : `Day ${night}`;
-			case 'GAME_OVER':
+			case 'over':
 				return t.gameOver;
 			default:
 				return '';
@@ -312,20 +317,24 @@ export class GameStore {
 		return this.isHost && this.hostStage !== null;
 	}
 
+	/** The night is resolved but the Host hasn't announced it yet (DAWN):
+	 * the deaths stay out of every view until 公布. */
+	get awaitingNightAnnounce(): boolean {
+		return this.state?.phase === 'DAWN';
+	}
+
 	/** The game's day/night rhythm, for tinting the page. */
 	get timeOfDay(): TimeOfDay {
 		const s = this.state;
-		switch (s?.phase) {
-			case 'NIGHT_ACTIONS':
-			case 'NIGHT_HUNTER_SHOT':
+		switch (s && phaseGroup(s.phase)) {
+			case 'night':
 				return 'night';
-			case 'LAST_WORDS':
-			case 'DISCUSSION':
-			case 'DAY_VOTE':
-			case 'DAY_HUNTER_SHOT':
+			case 'speech':
+			case 'vote':
+			case 'hunter':
 				return 'day';
-			case 'GAME_OVER':
-				return s.winner ?? 'villagers';
+			case 'over':
+				return s?.winner ?? 'villagers';
 			default:
 				return 'neutral';
 		}
@@ -538,9 +547,6 @@ export class GameStore {
 					3000
 				);
 				break;
-			case 'NightAnnouncePending':
-				this.state = { ...this.state, pendingNightAnnounce: true };
-				break;
 			case 'GameReset':
 				this.resetPrivateState();
 				break;
@@ -558,7 +564,7 @@ export class GameStore {
 					speechOrder: [],
 					// A new night clears it; a day-time hunter shot returning to the
 					// day must not.
-					dayDecided: event.phase === 'NIGHT_ACTIONS' ? false : this.state.dayDecided
+					dayDecided: phaseGroup(event.phase) === 'night' ? false : this.state.dayDecided
 				};
 				this.myTurnRole = null;
 				this.turnContext = null;
@@ -582,7 +588,6 @@ export class GameStore {
 				break;
 			case 'NightResolved':
 				this.lastNightDeaths = event.deaths;
-				this.state = { ...this.state, pendingNightAnnounce: false };
 				for (const seat of event.deaths) this.markDead(seat);
 				{
 					const text = formatNightDeaths(event.deaths, i18n.lang);

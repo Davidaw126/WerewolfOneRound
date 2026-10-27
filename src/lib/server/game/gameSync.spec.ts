@@ -95,7 +95,7 @@ describe('starting a game', () => {
 	it('tells the room the phase and mirrors it into the room', async () => {
 		const code = await startedGame();
 		expect(sent.some((s) => s.event.kind === 'PhaseChanged')).toBe(true);
-		expect((await room.readRoomHash(code))?.phase).toBe('NIGHT_ACTIONS');
+		expect((await room.readRoomHash(code))?.phase).toBe('FIRST_NIGHT');
 	});
 });
 

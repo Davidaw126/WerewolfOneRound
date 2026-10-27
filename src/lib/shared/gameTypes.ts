@@ -1,20 +1,37 @@
-import type { RoleId } from '../game/types';
+import type { Phase as EnginePhase, RoleId } from '../game/types';
 
-export type Phase =
-	| 'LOBBY'
-	| 'SEATING'
-	| 'NIGHT_ACTIONS'
-	| 'NIGHT_HUNTER_SHOT'
-	/** §9.1 - queued deaths' last words, before whatever comes next
-	 * (a hunter-shoot check, then DISCUSSION or NIGHT). M5. */
-	| 'LAST_WORDS'
-	/** §9.3 - free speech before the host opens the vote. M5. VOTE_PK/EXILE
-	 * as their own distinct phases are M5 task #36, not yet split out of
-	 * DAY_VOTE below. */
-	| 'DISCUSSION'
-	| 'DAY_VOTE'
-	| 'DAY_HUNTER_SHOT'
-	| 'GAME_OVER';
+/** The phase on the wire is the engine's own - DAWN (night resolved, the
+ * Host hasn't announced yet), VOTE_PK and the rest included. Screens that
+ * only care about the broad part of the game use phaseGroup() below. */
+export type Phase = EnginePhase;
+
+export type PhaseGroup = 'lobby' | 'seating' | 'night' | 'hunter' | 'speech' | 'vote' | 'over';
+
+export function phaseGroup(phase: Phase): PhaseGroup {
+	switch (phase) {
+		case 'LOBBY':
+			return 'lobby';
+		case 'SEATING':
+		case 'DEALING':
+			return 'seating';
+		case 'FIRST_NIGHT':
+		case 'NIGHT':
+		case 'DAWN':
+			return 'night';
+		case 'HUNTER_SHOOT':
+			return 'hunter';
+		case 'LAST_WORDS':
+		case 'DISCUSSION':
+			return 'speech';
+		case 'VOTE':
+		case 'VOTE_PK':
+		case 'EXILE':
+		case 'SHERIFF_ELECTION': // not built yet
+			return 'vote';
+		case 'GAME_OVER':
+			return 'over';
+	}
+}
 
 /** The room is still being set up and seated - no game state exists yet.
  * Every other phase has one: the IN_PROGRESS_PHASES below, plus GAME_OVER
@@ -26,12 +43,16 @@ export const PRE_GAME_PHASES: readonly Phase[] = ['LOBBY', 'SEATING'];
  * departure during the day used to slip through and freeze the next night).
  * Shared by the server's handleRoomLeave and the client's leave warning. */
 export const IN_PROGRESS_PHASES: readonly Phase[] = [
-	'NIGHT_ACTIONS',
-	'NIGHT_HUNTER_SHOT',
+	'FIRST_NIGHT',
+	'NIGHT',
+	'DAWN',
 	'LAST_WORDS',
+	'HUNTER_SHOOT',
 	'DISCUSSION',
-	'DAY_VOTE',
-	'DAY_HUNTER_SHOT'
+	'VOTE',
+	'VOTE_PK',
+	'EXILE',
+	'SHERIFF_ELECTION'
 ];
 
 export type NightStage = { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' };
@@ -98,12 +119,6 @@ export interface RoomPublicState {
 	 * of these seats. */
 	pkCandidates: number[];
 	winner: Winner | null;
-	/** True once the night's deaths have been computed (dead seats are
-	 * already marked - voting etc. is never blocked on this) but the host
-	 * hasn't yet broadcast the "who died" narration/banner to the table. The
-	 * actual death list itself is deliberately NOT part of the public state -
-	 * only this boolean - so it can't leak before the host announces it. */
-	pendingNightAnnounce: boolean;
 	/** Day only: today's outcome is settled (someone exiled, or a
 	 * self-explosion / duel ended the day) - only 进入下一夜 is left. */
 	dayDecided: boolean;

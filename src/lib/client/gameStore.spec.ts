@@ -15,7 +15,7 @@ const seat = (n: number, extra: Partial<SeatState> = {}): SeatState => ({
 function room(overrides: Partial<RoomPublicState> = {}): RoomPublicState {
 	return {
 		roomCode: '123456',
-		phase: 'DAY_VOTE',
+		phase: 'VOTE',
 		hostUsername: 'Host',
 		hostSessionId: 'host',
 		roleConfig: {},
@@ -32,7 +32,6 @@ function room(overrides: Partial<RoomPublicState> = {}): RoomPublicState {
 		speechOrder: [],
 		pkCandidates: [],
 		winner: null,
-		pendingNightAnnounce: false,
 		dayDecided: false,
 		knightUsed: false,
 		...overrides
@@ -96,16 +95,16 @@ describe('the vote board', () => {
 describe('the night', () => {
 	it("shows the Host's 强制继续 on every night stage, and only to the Host", () => {
 		const night = room({
-			phase: 'NIGHT_ACTIONS',
+			phase: 'NIGHT',
 			hostStage: { kind: 'ROLE_TURN', role: 'SEER' }
 		});
 		expect(phoneOf('host', night).needsHostAdvance).toBe(true);
 		expect(phoneOf('s1', night).needsHostAdvance).toBe(false);
-		expect(phoneOf('host', room({ phase: 'NIGHT_ACTIONS' })).needsHostAdvance).toBe(false);
+		expect(phoneOf('host', room({ phase: 'NIGHT' })).needsHostAdvance).toBe(false);
 	});
 
 	it("a seer can't check themselves, except in the pack's kill turn", () => {
-		const store = phoneOf('s1', room({ phase: 'NIGHT_ACTIONS' }));
+		const store = phoneOf('s1', room({ phase: 'NIGHT' }));
 		store.myTurnRole = 'SEER';
 		store.turnContext = { seat: 1 };
 		expect(store.turnRules.noSelfPick).toBe(true);
@@ -115,7 +114,7 @@ describe('the night', () => {
 	});
 
 	it('a witch attacked tonight can only save herself if the rules allow it', () => {
-		const store = phoneOf('s4', room({ phase: 'NIGHT_ACTIONS' }));
+		const store = phoneOf('s4', room({ phase: 'NIGHT' }));
 		store.myTurnRole = 'WITCH';
 		const witch = { killedSeat: 4, antidoteAvailable: true, poisonAvailable: true };
 		store.turnContext = { seat: 4, witch };
@@ -126,10 +125,20 @@ describe('the night', () => {
 	});
 });
 
+describe('dawn', () => {
+	it('is waiting for the Host to announce exactly while the phase is DAWN', () => {
+		expect(phoneOf('s1', room({ phase: 'DAWN' })).awaitingNightAnnounce).toBe(true);
+		expect(phoneOf('s1', room({ phase: 'NIGHT' })).awaitingNightAnnounce).toBe(false);
+		expect(phoneOf('s1', room({ phase: 'DISCUSSION' })).awaitingNightAnnounce).toBe(false);
+	});
+});
+
 describe('time of day', () => {
 	it('follows the phase, and the winner once the game is over', () => {
 		expect(phoneOf('s1', room({ phase: 'SEATING' })).timeOfDay).toBe('neutral');
-		expect(phoneOf('s1', room({ phase: 'NIGHT_ACTIONS' })).timeOfDay).toBe('night');
+		expect(phoneOf('s1', room({ phase: 'NIGHT' })).timeOfDay).toBe('night');
+		expect(phoneOf('s1', room({ phase: 'DAWN' })).timeOfDay).toBe('night');
+		expect(phoneOf('s1', room({ phase: 'VOTE_PK' })).timeOfDay).toBe('day');
 		expect(phoneOf('s1', room({ phase: 'DISCUSSION' })).timeOfDay).toBe('day');
 		expect(phoneOf('s1', room({ phase: 'GAME_OVER', winner: 'lovers' })).timeOfDay).toBe('lovers');
 	});

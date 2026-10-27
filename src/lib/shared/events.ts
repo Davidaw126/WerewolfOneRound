@@ -175,7 +175,6 @@ export type ServerEvent =
 	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number }
 	// S4: room-wide - never carries which role is acting, see PublicNightStage.
 	| { kind: 'StageChanged'; stage: PublicNightStage | null }
-	| { kind: 'NightAnnouncePending' }
 	| { kind: 'NightResolved'; nightNumber: number; deaths: number[] }
 	// S11: WHO has voted, never who they voted for or a running tally.
 	| { kind: 'VoteUpdated'; votedSeats: number[]; totalVoters: number }

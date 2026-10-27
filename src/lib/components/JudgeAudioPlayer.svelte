@@ -142,7 +142,7 @@
 		const phase = gameStore.state?.phase;
 		if (!phase || phase === lastPhase) return;
 		lastPhase = phase;
-		if (phase === 'NIGHT_ACTIONS') say(t.nightBegins);
+		if (phase === 'FIRST_NIGHT' || phase === 'NIGHT') say(t.nightBegins);
 		// A host stop-and-restart (RoomStopGame/"再来一局") resets phase to
 		// SEATING (a fresh room starts at LOBBY) - cut off whatever might
 		// still be queued rather than letting it run over the now-reset round.
@@ -151,14 +151,13 @@
 		if (phase === 'LOBBY' || phase === 'SEATING') stopNarration();
 	});
 
-	// "天亮了" fires the instant DAWN actually begins (pendingNightAnnounce
-	// flips true the moment the night's last stage resolves - before the host
-	// has tapped anything) - NOT gated on the host's own "公布夜晚结果" tap,
-	// which only reveals WHO died (the separate lastNightDeaths effect below).
-	// Self-resetting: pendingNightAnnounce naturally goes back to false once
-	// announced, so this is armed again for the next night with no extra flag.
+	// "天亮了" fires the instant DAWN actually begins (the moment the night's
+	// last stage resolves - before the host has tapped anything) - NOT gated
+	// on the host's own "公布夜晚结果" tap, which only reveals WHO died (the
+	// separate lastNightDeaths effect below). Self-resetting: DAWN ends once
+	// announced, so this is armed again for the next night.
 	$effect(() => {
-		const pending = gameStore.state?.pendingNightAnnounce ?? false;
+		const pending = gameStore.awaitingNightAnnounce;
 		if (pending === lastPendingNightAnnounce) return;
 		lastPendingNightAnnounce = pending;
 		if (pending) say(t.dawnBreaks);

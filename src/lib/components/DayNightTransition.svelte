@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { gameStore } from '$lib/client/gameStore.svelte';
+	import { phaseGroup } from '$lib/shared/gameTypes';
 
 	type TimeOfDay = 'night' | 'day' | null;
 
 	const timeOfDay = $derived.by<TimeOfDay>(() => {
-		switch (gameStore.state?.phase) {
-			case 'NIGHT_ACTIONS':
-			case 'NIGHT_HUNTER_SHOT':
+		const phase = gameStore.state?.phase;
+		switch (phase && phaseGroup(phase)) {
+			case 'night':
 				return 'night';
-			case 'DAY_VOTE':
-			case 'DAY_HUNTER_SHOT':
+			case 'vote':
+			case 'hunter':
 				return 'day';
 			default:
 				return null;

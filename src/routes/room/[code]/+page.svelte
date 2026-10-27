@@ -14,7 +14,7 @@
 		formatRoomClosedByHost
 	} from '$lib/shared/i18n';
 	import type { AckResponse } from '$lib/shared/events';
-	import type { RoomPublicState } from '$lib/shared/gameTypes';
+	import { phaseGroup, type RoomPublicState } from '$lib/shared/gameTypes';
 	import type { PageData } from './$types';
 	import SeatCircle from '$lib/components/SeatCircle.svelte';
 	import RoleConfigPanel from '$lib/components/RoleConfigPanel.svelte';
@@ -128,6 +128,7 @@
 	});
 
 	const roomState = $derived(gameStore.state);
+	const group = $derived(roomState ? phaseGroup(roomState.phase) : null);
 	const mySeat = $derived(gameStore.mySeat);
 	const isHost = $derived(gameStore.isHost);
 	const stage = $derived(roomState?.stage ?? null);
@@ -230,7 +231,7 @@
 		<div class="mx-auto w-full max-w-lg shrink-0 space-y-2 px-4 pt-4">
 			<PhaseBanner username={data.username} />
 
-			{#if isHost && roomState.pendingNightAnnounce}
+			{#if isHost && gameStore.awaitingNightAnnounce}
 				<!-- Purely a reveal broadcast, additive to whatever the phase's own
 				     content below is showing - dead seats/voting/etc. are never
 				     blocked on this, so the host can tap it whenever during the day,
@@ -320,7 +321,7 @@
 							hostSessionId={roomState.hostSessionId}
 						/>
 					</div>
-				{:else if roomState.phase === 'NIGHT_ACTIONS'}
+				{:else if group === 'night'}
 					<!-- Same top-anchored treatment as SEATING - the action prompt
 					     itself now lives in the pinned footer below (see there),
 					     so the circle stays fully visible instead of sharing this
@@ -335,7 +336,7 @@
 							myTurnRole={gameStore.myTurnRole}
 						/>
 					</div>
-				{:else if roomState.phase === 'NIGHT_HUNTER_SHOT' || roomState.phase === 'DAY_HUNTER_SHOT'}
+				{:else if group === 'hunter'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
@@ -348,7 +349,7 @@
 							<HunterShotPrompt />
 						</div>
 					</div>
-				{:else if roomState.phase === 'LAST_WORDS' || roomState.phase === 'DISCUSSION'}
+				{:else if group === 'speech'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
@@ -361,7 +362,7 @@
 							<DiscussionPanel />
 						</div>
 					</div>
-				{:else if roomState.phase === 'DAY_VOTE'}
+				{:else if group === 'vote'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
@@ -371,7 +372,7 @@
 							hostSessionId={roomState.hostSessionId}
 						/>
 						<div class="w-full">
-							{#if roomState.pendingNightAnnounce}
+							{#if gameStore.awaitingNightAnnounce}
 								<p class="text-center text-sm text-zinc-500">
 									{isHost ? t.room.voteWaitAnnounceHost : t.room.voteWaitAnnouncePlayer}
 								</p>
@@ -422,7 +423,7 @@
 							{leavingAfterGameOver ? t.room.leavingBack : t.room.backToLobby}
 						</button>
 					</div>
-				{:else if roomState.phase === 'NIGHT_ACTIONS'}
+				{:else if group === 'night'}
 					<!-- max-h + its own scroll cap: NightActionPrompt's content
 					     height varies a lot by role (a single confirm button vs. a
 					     full seat-target grid), and this footer doesn't grow the

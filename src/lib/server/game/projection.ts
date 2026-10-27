@@ -14,50 +14,8 @@ import type { GameState, RoleId } from '../../game/types';
 import type {
 	NightStage as LegacyNightStage,
 	PublicNightStage,
-	Phase as LegacyPhase,
 	Winner
 } from '../../shared/gameTypes';
-
-/**
- * The old app had a distinct Phase value for every branch (NIGHT_ACTIONS /
- * NIGHT_HUNTER_SHOT / DAY_VOTE / DAY_HUNTER_SHOT); the new engine's DAWN
- * phase has no old counterpart at all (decision, confirmed with the user:
- * hunter-shoot authorization is now gated behind the host's announce tap,
- * where today it fires immediately on night resolution) - a room sitting in
- * DAWN is publicly indistinguishable from still being in NIGHT_ACTIONS, and
- * `pendingNightAnnounce` (already part of RoomPublicState) is what tells the
- * client there's a reveal pending, exactly as it does today.
- */
-export function mapToLegacyPhase(state: GameState): LegacyPhase {
-	switch (state.phase) {
-		case 'LOBBY':
-			return 'LOBBY';
-		case 'SEATING':
-			return 'SEATING';
-		case 'FIRST_NIGHT':
-		case 'NIGHT':
-		case 'DAWN':
-			return 'NIGHT_ACTIONS';
-		case 'HUNTER_SHOOT':
-			// Always daytime: even a night death's shot only happens after the
-			// host announces the night's results in the morning.
-			return 'DAY_HUNTER_SHOT';
-		case 'LAST_WORDS':
-			return 'LAST_WORDS';
-		case 'DISCUSSION':
-			return 'DISCUSSION';
-		case 'VOTE':
-		case 'VOTE_PK':
-		case 'EXILE':
-			return 'DAY_VOTE';
-		case 'GAME_OVER':
-			return 'GAME_OVER';
-		default:
-			// SHERIFF_ELECTION - M5 task #37, not yet built; no old-app phase to
-			// map to yet.
-			return 'DAY_VOTE';
-	}
-}
 
 export function stageOf(state: GameState): LegacyNightStage | null {
 	const key = state.currentStepKey;

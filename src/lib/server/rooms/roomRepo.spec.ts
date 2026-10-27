@@ -63,7 +63,7 @@ async function startGameWithRoles(code: string) {
 		players: [1, 2, 3].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
 		now: 1000
 	});
-	await recordGamePhase(code, 'NIGHT_ACTIONS', result.state.round);
+	await recordGamePhase(code, result.state.phase, result.state.round);
 }
 
 describe('creating and setting up a room', () => {
@@ -105,6 +105,12 @@ describe('creating and setting up a room', () => {
 		await room.redeal(code);
 		const roles = await Promise.all([1, 2].map((s) => room.currentRoleOfSeat(code, s)));
 		expect(roles.sort()).toEqual(['SEER', 'WEREWOLF']);
+	});
+
+	it('reads a game phase stored under its pre-engine name as in progress', async () => {
+		const code = await room.createRoom(HOST);
+		await redis.hset(`wolf:room:${code}`, { phase: 'DAY_VOTE' });
+		expect((await room.readRoomHash(code))?.phase).toBe('VOTE');
 	});
 
 	it('refuses a second setup once seating has started', async () => {

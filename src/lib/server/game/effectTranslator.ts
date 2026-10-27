@@ -4,11 +4,10 @@
 // so the client - untouched by M1 - keeps seeing exactly the same contract
 // it always has.
 //
-// Two effect kinds are deliberately NOT handled here, by design:
-//   - 'PhaseChanged' - the new engine's Phase enum has no 1:1 old-Phase
-//     mapping without GameState context (DAWN, HUNTER_SHOOT's two branches -
-//     see projection.ts's mapToLegacyPhase). The IO shell emits this itself,
-//     from the final state, after every action - see gameSync.ts.
+// These effect kinds are deliberately NOT handled here, by design:
+//   - 'PhaseChanged' / 'NightAnnouncePending' - the IO shell broadcasts the
+//     phase itself, from the final state, only when it really changed (see
+//     gameSync.ts); DAWN is how the room learns results are pending.
 //   - 'NightActionRejected' - the old app surfaced a rejected night action
 //     through the socket ACK (`{ok:false,error}`), never a pushed event.
 //     handleNightSubmitAction pulls this out of the effect list itself
@@ -50,6 +49,8 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 
 		switch (payload.kind) {
 			case 'PhaseChanged':
+			// The room learns DAWN from PhaseChanged itself (gameSync).
+			case 'NightAnnouncePending':
 			case 'NightActionRejected':
 				continue;
 
@@ -83,10 +84,6 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				await emitToHost(code, { kind: 'HostStageChanged', stage });
 				continue;
 			}
-
-			case 'NightAnnouncePending':
-				emitToRoom(code, { kind: 'NightAnnouncePending' });
-				continue;
 
 			case 'LastWordsSpeakerChanged':
 				emitToRoom(code, {

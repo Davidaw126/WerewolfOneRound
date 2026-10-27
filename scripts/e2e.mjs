@@ -77,7 +77,10 @@ if (MODE === 'resume') {
 	await host.act({ kind: 'RoomJoin', roomCode: saved.code });
 	const start = Date.now();
 	await waitFor(
-		() => host.events.some((e) => e.kind === 'NightAnnouncePending' || e.kind === 'StageChanged'),
+		() =>
+			host.events.some(
+				(e) => (e.kind === 'PhaseChanged' && e.phase === 'DAWN') || e.kind === 'StageChanged'
+			),
 		60000,
 		'the night to move on after the restart'
 	);
@@ -148,7 +151,7 @@ async function basicGame() {
 		const deadline = Date.now() + 90000;
 		const done = new Set();
 		while (Date.now() < deadline) {
-			if (host.events.some((e) => e.kind === 'NightAnnouncePending')) return true;
+			if (host.events.some((e) => e.kind === 'PhaseChanged' && e.phase === 'DAWN')) return true;
 			for (const p of players) {
 				const pr = p.prompt;
 				if (!pr || done.has(pr)) continue;
@@ -288,7 +291,8 @@ async function specialGame() {
 	let guardSave = null; // night 1: the seat the guard protects and the wolves attack
 	let thief = null;
 	let thiefNewRole = null;
-	const nightsDone = () => host.events.filter((e) => e.kind === 'NightAnnouncePending').length;
+	const nightsDone = () =>
+		host.events.filter((e) => e.kind === 'PhaseChanged' && e.phase === 'DAWN').length;
 	// Across nights: each phone keeps its last prompt object, which a later
 	// night must not replay.
 	const done = new Set();

@@ -5,9 +5,9 @@
 //     -> interpret the result: a night-rule rejection or an ignored action
 //        becomes an error ack, anything else ok
 //     -> mirror the game's phase into the room (roomRepo.recordGamePhase),
-//        broadcast PhaseChanged only when the legacy-mapped phase actually
-//        changed (an unconditional re-broadcast on every vote cast would
-//        retrigger anything the client keys off phase, like narration)
+//        broadcast PhaseChanged only when the phase actually changed (an
+//        unconditional re-broadcast on every vote cast would retrigger
+//        anything the client keys off phase, like narration)
 //     -> hand every other effect to the translator
 //     -> arm the night's pacing timers.
 //
@@ -23,7 +23,6 @@ import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { AckResponse } from '../../shared/events';
 import { actsInStage, PACK_KILL_ROLES, STATUS_STAGE_ROLES } from '../../game/roleMeta';
 import { stageConfirmComplete, type StartGameParams } from '../../game/engine';
-import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
 import {
 	applyGameAction,
@@ -142,10 +141,10 @@ async function syncAndBroadcast(
 	before: GameState | null,
 	result: EngineResult
 ): Promise<void> {
-	const legacyPhase = mapToLegacyPhase(result.state);
-	await recordGamePhase(code, legacyPhase, result.state.round);
-	if (before === null || legacyPhase !== mapToLegacyPhase(before)) {
-		emitToRoom(code, { kind: 'PhaseChanged', phase: legacyPhase, nightNumber: result.state.round });
+	const phase = result.state.phase;
+	await recordGamePhase(code, phase, result.state.round);
+	if (before === null || phase !== before.phase) {
+		emitToRoom(code, { kind: 'PhaseChanged', phase, nightNumber: result.state.round });
 	}
 	await translateEffects(code, result.effects);
 	scheduleNightTimers(code, before, result.state);

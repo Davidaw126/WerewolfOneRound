@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
+	import { phaseGroup } from '$lib/shared/gameTypes';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
@@ -24,24 +25,22 @@
 	const label = $derived.by(() => {
 		if (!room) return '';
 		const n = room.nightNumber;
-		switch (room.phase) {
-			case 'LOBBY':
+		switch (phaseGroup(room.phase)) {
+			case 'lobby':
 				return t.phaseBanner.lobby;
-			case 'SEATING':
+			case 'seating':
 				return t.phaseBanner.seating;
-			case 'NIGHT_ACTIONS':
+			case 'night':
 				return t.phaseBanner.night(n);
-			case 'NIGHT_HUNTER_SHOT':
-				return t.phaseBanner.nightHunter(n);
-			case 'LAST_WORDS':
-				return t.phaseBanner.lastWords(n);
-			case 'DISCUSSION':
-				return t.phaseBanner.discussion(n);
-			case 'DAY_VOTE':
+			case 'speech':
+				return room.phase === 'LAST_WORDS'
+					? t.phaseBanner.lastWords(n)
+					: t.phaseBanner.discussion(n);
+			case 'vote':
 				return t.phaseBanner.dayVote(n);
-			case 'DAY_HUNTER_SHOT':
+			case 'hunter':
 				return t.phaseBanner.dayHunter(n);
-			case 'GAME_OVER':
+			case 'over':
 				return t.phaseBanner.gameOver;
 		}
 	});
@@ -57,14 +56,12 @@
 	});
 
 	const timeGlyph = $derived.by(() => {
-		switch (room?.phase) {
-			case 'NIGHT_ACTIONS':
-			case 'NIGHT_HUNTER_SHOT':
+		switch (room && phaseGroup(room.phase)) {
+			case 'night':
 				return '🌙';
-			case 'LAST_WORDS':
-			case 'DISCUSSION':
-			case 'DAY_VOTE':
-			case 'DAY_HUNTER_SHOT':
+			case 'speech':
+			case 'vote':
+			case 'hunter':
 				return '☀️';
 			default:
 				return '';
