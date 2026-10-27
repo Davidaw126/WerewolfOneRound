@@ -7,7 +7,7 @@
 // separate English versions of the same sentence.
 
 import type { Lang } from './types';
-import type { Role } from '../roles';
+import type { RoleId } from '../../game/types';
 import type { Winner } from '../gameTypes';
 import { roleName } from './roles';
 import { zh } from './zh';
@@ -49,7 +49,7 @@ function appendFollowDeath(base: string, followDeathSeat: number | null, lang: L
 export function formatDayResult(params: {
 	tie: boolean;
 	eliminatedSeat: number | null;
-	identity: Role | null;
+	identity: RoleId | null;
 	followDeathSeat: number | null;
 	idiotRevealed?: boolean;
 	lang: Lang;

@@ -35,16 +35,14 @@ src/
       types.ts       # RoleId/Phase/GameState/RuleConfig/EngineAction/EngineEffect
       roleMeta.ts    # per-role static data (camp, night order, isGod, implemented, ...)
       engine.ts      # reduce(state, action) -> {state, effects[]} + startGame(params)
-      roleBridge.ts  # RoleId (engine, 15 roles) <-> legacy Chinese-string Role (wire, 23 names)
+      roleBridge.ts  # RoleId <-> the Chinese role names the display tables are keyed by
       rules/         # deal, nightOrder, nightResolution, nightRules, winCondition,
                      # turnContext, setup (validateSetup/E01-E10), presets
     shared/      # the wire contract only: ClientAction/ServerEvent (events.ts, Zod-
                  # validated), RoomPublicState/Phase/NightStage (gameTypes.ts), the
-                 # legacy Role enum + role art/flavor lookups (roles.ts, roleSprites.ts,
-                 # etc.) - zero server-only deps, safe to import from both client and
-                 # server. deal.ts here is the legacy-Role-keyed shuffle still used to
-                 # physically deal a submitted roleConfig (see Dealing below) - not to
-                 # be confused with game/rules/deal.ts's RoleId-keyed buried-card logic.
+                 # role display lookups (roles.ts, roleSprites.ts, roleFlavor.ts,
+                 # i18n/roles.ts: take a RoleId, keyed internally by Chinese name) -
+                 # zero server-only deps, safe to import from both client and server.
     server/      # everything IO-bound - never imported from a +page.svelte
       game/          # the IO shell around the pure engine:
                      #   gameStateRepo.ts   - load/reduce/save under a per-room Redis
@@ -52,8 +50,7 @@ src/
                      #   gameSync.ts        - runGameAction(): the one path every game
                      #                        action takes (lock+check, reduce, ack, phase
                      #                        mirror, effects out, 假环节/pause timers)
-                     #   effectTranslator.ts - EngineEffect[] -> actual socket emits,
-                     #                        RoleId -> legacy Role translation
+                     #   effectTranslator.ts - EngineEffect[] -> actual socket emits
                      #   projection.ts      - GameState -> RoomPublicState/legacy-Phase
                      #                        projections (also the S4 role-redaction point)
       rooms/         # Redis access, room repo, Lua scripts for the pre-game atomics
@@ -72,7 +69,7 @@ server/index.ts   # production entrypoint: SvelteKit's Node adapter handler +
 static/audio/     # the judge's voice cues (mp3), reused from the old app
 ```
 
-The `game` / `shared` / `server` / `client` split is load-bearing: `game` never imports anything IO-related, so its `reduce()` is pure and directly unit-testable; `shared` is imported by both client and server so the socket event contract can't drift out of sync; `server` code must never leak into a `.svelte` file; `client` is the only layer that touches `socket.io-client`. `shared` and `game` each have their own `Role`-ish type — `shared`'s `Role` is the wire-facing legacy Chinese-string enum (23 names, some with no engine counterpart), `game`'s `RoleId` is the engine's own 15-value enum (§4.1's v1.0 roster) — `roleBridge.ts` is the only place that converts between them.
+The `game` / `shared` / `server` / `client` split is load-bearing: `game` never imports anything IO-related, so its `reduce()` is pure and directly unit-testable; `shared` is imported by both client and server so the socket event contract can't drift out of sync; `server` code must never leak into a `.svelte` file; `client` is the only layer that touches `socket.io-client`. Roles are the engine's `RoleId` (15 values, §4.1's v1.0 roster) everywhere: on the wire, in Redis, in the client store. The Chinese names (`shared/roles.ts`, 23 incl. 7 the engine doesn't implement) survive only as keys of the display tables; `roleBridge.ts` converts at that edge, and in `roomRepo` to read rooms saved with Chinese names before this change.
 
 **The engine is the source of truth for game rules.** `engine.ts`'s `reduce(state, action)` takes an `EngineAction` (`SUBMIT_NIGHT_ACTION`, `ADVANCE_STAGE`, `CAST_VOTE`, `TALLY_VOTES`, `NEXT_SPEAKER`, `BEGIN_VOTE`, `HUNTER_SHOOT`, `SELF_EXPLODE`, `KNIGHT_DUEL`, `HOST_OVERRIDE`, ...) and returns a new `GameState` plus a list of `EngineEffect`s (`BROADCAST`/`PRIVATE`/`NARRATE` — descriptions of what to tell whom, never actual socket calls). It never reads the clock or generates its own randomness — both arrive via the action or `startGame()`'s params, so the same `(state, action)` pair always produces the same result (a room's `room:{code}:actions` log is a complete, replayable history of every action that ever ran). `gameStateRepo.ts`'s `applyGameAction()` is the only place that actually calls `reduce()`, always under `withGameLock` (a `SET NX PX 3000` Redis lock) so two players' actions for the same room can never race each other.
 
@@ -88,7 +85,7 @@ The `game` / `shared` / `server` / `client` split is load-bearing: `game` never 
 
 **Secrecy**: `projection.ts` is where a `NightStage`/`GameState` gets redacted into what actually goes out. The room-wide broadcast never says which role is acting (`PublicNightStage` has no `role` field) — only the host gets the real stage, via a private `HostStageChanged` channel, so `JudgeAudioPlayer.svelte`'s narration still knows what to say. Live vote tallies are never broadcast, only who has voted (`votedSeats`); the full breakdown only reaches clients via `DayResolved`, after the vote already closed. A room locks against new (non-returning) joins once seats are locked or the game has started.
 
-**Dealing**: `shared/deal.ts`'s `dealCards()`/`deriveSeatCount()` shuffles the submitted (legacy-Role-keyed) `roleConfig` into seats — the last 2 cards go to the 盗贼's buried pile if THIEF is in play. The result is bridged through `roleBridge.ts` into `RoleId`-keyed identities before `startGame()` ever sees it.
+**Dealing**: `game/rules/deal.ts`'s `dealCards()`/`deriveSeatCount()` shuffles the submitted `roleConfig` into seats — the last 2 cards go to the 盗贼's buried pile if THIEF is in play; on a Re-deal, `previous` steers away from repeating a seat's role.
 
 ## Game logic notes
 

@@ -1,4 +1,4 @@
-import type { Role } from './roles';
+import type { RoleId } from '../game/types';
 
 export type Phase =
 	| 'LOBBY'
@@ -34,7 +34,7 @@ export const IN_PROGRESS_PHASES: readonly Phase[] = [
 	'DAY_HUNTER_SHOT'
 ];
 
-export type NightStage = { kind: 'ROLE_TURN'; role: Role } | { kind: 'COUPLE_REVEAL' };
+export type NightStage = { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' };
 
 /** S4: the room-wide broadcast form of NightStage - which role is acting is
  * exactly the information a non-actor shouldn't be able to read off the
@@ -68,7 +68,7 @@ export interface RoomPublicState {
 	 * a secret: it's an opaque id, not a bearer credential - the signed
 	 * session cookie is what actually authorizes anything. */
 	hostSessionId: string | null;
-	roleConfig: Partial<Record<Role, number>>;
+	roleConfig: Partial<Record<RoleId, number>>;
 	numberOfSeats: number;
 	lockStatus: boolean;
 	nightNumber: number;
@@ -113,5 +113,5 @@ export interface RoomPublicState {
 	 * whether a diary it saved before a reload belongs to this game. */
 	gameId?: string;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
-	identities?: Record<number, Role>;
+	identities?: Record<number, RoleId>;
 }

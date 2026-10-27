@@ -1,13 +1,9 @@
-// Bridges the wire/UI layer (still speaking the old Chinese-string `Role`
-// type from shared/roles.ts - untouched until M2's full role-roster rewrite)
-// to the new engine (which only knows the spec's 15-role `RoleId`). Every
-// value here is derived from ROLE_META.legacyRole so the two can never drift
-// out of sync independently.
-//
-// Lives alongside types.ts/roleMeta.ts/engine.ts (not under server/) because
-// it's pure data over ROLE_META - no Redis, no session, nothing IO-bound -
-// and RoleConfigPanel.svelte needs it client-side to narrow the role picker,
-// same as the M1 IO shell needs it server-side.
+// Converts between the engine's RoleId (used on the wire and in storage) and
+// the Chinese role names the display tables are keyed by (shared/roles.ts:
+// names, sprites, flavor lines). Only display lookups call this - plus
+// roomRepo, to read rooms saved with Chinese names before roles were stored
+// as ids. Every value is derived from ROLE_META.legacyRole so the two can
+// never drift apart.
 
 import type { RoleId } from './types';
 import { ALL_ROLE_IDS, ROLE_META } from './roleMeta';
@@ -27,15 +23,4 @@ export function legacyToRoleId(role: Role): RoleId | null {
 
 export function roleIdToLegacy(id: RoleId): Role {
 	return ROLE_META[id].legacyRole;
-}
-
-/** The subset of the old 23-role roster the new engine can actually
- * represent - used to narrow the room-config picker (RoleConfigPanel.svelte)
- * and to validate a submitted roleConfig before anyone deals cards for it. */
-export const SUPPORTED_LEGACY_ROLES: readonly Role[] = ALL_ROLE_IDS.map(
-	(id) => ROLE_META[id].legacyRole
-);
-
-export function isSupportedLegacyRole(role: Role): boolean {
-	return LEGACY_TO_ROLE_ID[role] !== undefined;
 }

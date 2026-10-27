@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { roleTeam, type Role } from '$lib/shared/roles';
-	import { ROLE_FLAVOR } from '$lib/shared/roleFlavor';
+	import { roleTeam } from '$lib/shared/roles';
+	import type { RoleId } from '$lib/game/types';
 	import { roleName, roleFlavor, campName, campNameShort } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import PixelSprite from './PixelSprite.svelte';
@@ -9,7 +9,7 @@
 		role,
 		size = 'lg',
 		showTeam = true
-	}: { role: Role; size?: 'lg' | 'sm'; showTeam?: boolean } = $props();
+	}: { role: RoleId; size?: 'lg' | 'sm'; showTeam?: boolean } = $props();
 
 	const team = $derived(roleTeam(role));
 </script>
@@ -35,7 +35,7 @@
 			</div>
 		{/if}
 		<div class="mt-1 text-sm text-zinc-400">
-			『{roleFlavor(role, i18n.lang, ROLE_FLAVOR)}』
+			『{roleFlavor(role, i18n.lang)}』
 		</div>
 	{:else if showTeam}
 		<div class="text-[10px] tracking-wide text-zinc-500 uppercase">

@@ -19,7 +19,6 @@ import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
 import { startGameAndBroadcast } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
-import { legacyToRoleId } from '../../../game/roleBridge';
 import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
 import {
 	defaultRuleConfig,
@@ -29,8 +28,7 @@ import {
 import type { RoleId } from '../../../game/types';
 import type { DealResult as EngineDealResult } from '../../../game/rules/deal';
 import type { StartGameParams } from '../../../game/engine';
-import { deriveSeatCount } from '../../../shared/deal';
-import type { Role } from '../../../shared/roles';
+import { deriveSeatCount } from '../../../game/rules/deal';
 import type { AckResponse } from '../../../shared/events';
 import type { RoomPublicState } from '../../../shared/gameTypes';
 import { requireRoomCode, requireHost, type GameSocket } from './helpers';
@@ -88,33 +86,25 @@ export async function handleRoomJoin(
 
 export async function handleRoomSubmitConfig(
 	socket: GameSocket,
-	roleConfig: Partial<Record<Role, number>>,
+	submitted: Partial<Record<RoleId, number>>,
 	cupidPoisonBlocksHunter: boolean,
 	ruleOverrides?: RuleConfigOverrides
 ): Promise<AckResponse & { issues?: ValidationIssue[] }> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
+	// Only roles actually in play are kept (the picker sends zeros too).
+	const roleConfig: Partial<Record<RoleId, number>> = {};
+	for (const [role, count] of Object.entries(submitted) as [RoleId, number][]) {
+		if (count > 0) roleConfig[role] = count;
+	}
 	const numberOfSeats = deriveSeatCount(roleConfig);
 	if (numberOfSeats <= 0) return { ok: false, error: 'empty_config' };
-
-	// The new engine only knows the spec's 15-role roster (M0 plan decision 3)
-	// - RoleConfigPanel.svelte already narrows the picker to just those, so
-	// this only ever fires for a stale client/cached page. Caught here,
-	// before anyone's seated or a single card is dealt, rather than leaving a
-	// host to discover it only once they try to start the game.
-	const roleIdConfig: Partial<Record<RoleId, number>> = {};
-	for (const [role, count] of Object.entries(roleConfig)) {
-		if ((count ?? 0) === 0) continue;
-		const roleId = legacyToRoleId(role as Role);
-		if (!roleId) return { ok: false, error: 'unsupported_role_in_config' };
-		roleIdConfig[roleId] = (roleIdConfig[roleId] ?? 0) + (count ?? 0);
-	}
 
 	// §5.2 E02-E09 - the composition checks that make sense before anyone's
 	// even seated. E01 (role total vs. actual player count) is deferred to
 	// RoomStartGame, when there's a real seated headcount to check against;
 	// against numberOfSeats itself it would just trivially always pass here.
-	const validation = validateSetup(buildSetup(roleIdConfig), numberOfSeats);
+	const validation = validateSetup(buildSetup(roleConfig), numberOfSeats);
 	if (!validation.ok) {
 		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
 	}
@@ -137,8 +127,7 @@ export async function handleRoomSubmitConfig(
 }
 
 /** Builds the engine's StartGameParams from everything the room already
- * dealt/seated during LOBBY/SEATING - the bridge point where the wire's old
- * Role-keyed world hands off to the new RoleId-keyed engine. */
+ * dealt/seated during LOBBY/SEATING. */
 function buildStartGameParams(
 	code: string,
 	seating: NonNullable<Awaited<ReturnType<typeof seatingForGameStart>>>
@@ -148,9 +137,7 @@ function buildStartGameParams(
 	const roleIdIdentities: Record<string, RoleId> = {};
 	let buried: [RoleId, RoleId] | null = null;
 	const buriedRoles: RoleId[] = [];
-	for (const [seatKey, role] of Object.entries(identities)) {
-		const roleId = legacyToRoleId(role);
-		if (!roleId) continue; // already rejected at RoomSubmitConfig time - defensive only
+	for (const [seatKey, roleId] of Object.entries(identities)) {
 		if (seatKey === 'buried1' || seatKey === 'buried2') {
 			buriedRoles.push(roleId);
 			continue;

@@ -18,7 +18,7 @@
 		formatGameOverText,
 		type Strings
 	} from '$lib/shared/i18n';
-	import type { Role } from '$lib/shared/roles';
+	import type { RoleId } from '$lib/game/types';
 
 	let unlocked = $state(false);
 	let warnedLocked = false;
@@ -32,23 +32,23 @@
 	const t = $derived(strings(i18n.lang).narration);
 
 	// Moderator-style call-outs, one per role with a night action.
-	const roleLineKeys: Partial<Record<Role, keyof Strings['narration']>> = {
-		普通狼人: 'wolfTurn',
-		预言家: 'seerTurn',
-		女巫: 'witchTurn',
-		守卫: 'guardTurn',
-		狼美人: 'wolfBeautyTurn',
-		丘比特: 'cupidTurn',
-		盗贼: 'thiefTurn',
-		猎人: 'hunterTurn',
+	const roleLineKeys: Partial<Record<RoleId, keyof Strings['narration']>> = {
+		WEREWOLF: 'wolfTurn',
+		SEER: 'seerTurn',
+		WITCH: 'witchTurn',
+		GUARD: 'guardTurn',
+		WOLF_BEAUTY: 'wolfBeautyTurn',
+		CUPID: 'cupidTurn',
+		THIEF: 'thiefTurn',
+		HUNTER: 'hunterTurn',
 		// Only his own 确认开枪状态 stage reaches here: during the pack's turn
-		// the host's stage is 普通狼人.
-		黑狼王: 'blackWolfKingTurn',
+		// the host's stage is WEREWOLF.
+		BLACK_WOLF_KING: 'blackWolfKingTurn',
 		// Without a line these three never relayed NightNarrationStarted, so
 		// their holder's prompt always sat behind the 8s fallback.
-		野孩子: 'wildChildTurn',
-		摄梦人: 'dreamWeaverTurn',
-		恶灵骑士: 'nightmareTurn'
+		WILD_CHILD: 'wildChildTurn',
+		DREAM_WEAVER: 'dreamWeaverTurn',
+		NIGHTMARE: 'nightmareTurn'
 	};
 
 	function unlockAudio() {
@@ -182,14 +182,14 @@
 		if (key === 'COUPLE_REVEAL') {
 			say(t.cupidClose, undefined, 'stage');
 			say(t.coupleReveal, undefined, 'stage');
-		} else if (key && roleLineKeys[key as Role]) {
+		} else if (key && roleLineKeys[key as RoleId]) {
 			// Every other client's NightActionPrompt for this role is held back
 			// until this specific line actually starts speaking (see gameStore's
 			// pendingTurnRole) - relay the moment it does, not just when it's queued.
 			say(
-				t[roleLineKeys[key as Role]!],
+				t[roleLineKeys[key as RoleId]!],
 				() => {
-					void sendAction({ kind: 'NightNarrationStarted', role: key as Role }, { quiet: true });
+					void sendAction({ kind: 'NightNarrationStarted', role: key as RoleId }, { quiet: true });
 				},
 				'stage'
 			);

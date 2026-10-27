@@ -1,5 +1,4 @@
 // Turns the engine's IO-agnostic EngineEffect[] into actual socket emits,
-// translating RoleId -> the old wire Role string (roleBridge.ts) and
 // reshaping a couple of payloads whose field names/shapes predate the
 // engine rewrite (SeerResult.isWolf, NightResolved's bare seat-number list)
 // so the client - untouched by M1 - keeps seeing exactly the same contract
@@ -18,17 +17,15 @@
 import type { Death, EngineEffect, RoleId } from '../../game/types';
 import type { NightStage as LegacyNightStage } from '../../shared/gameTypes';
 import type { PrivateInfo } from '../../shared/events';
-import type { Role } from '../../shared/roles';
 import { emitToRoom, emitToSession } from '../socket/emit';
 import { sessionInSeat, hostSessionOf } from '../rooms/roomRepo';
 import { toPublicStage } from './projection';
-import { roleIdToLegacy } from '../../game/roleBridge';
 
 function legacyStage(stage: unknown): LegacyNightStage | null {
 	const s = stage as { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' } | null;
 	if (!s) return null;
 	if (s.kind === 'COUPLE_REVEAL') return { kind: 'COUPLE_REVEAL' };
-	return { kind: 'ROLE_TURN', role: roleIdToLegacy(s.role) };
+	return { kind: 'ROLE_TURN', role: s.role };
 }
 
 async function emitPrivate(code: string, seat: number, event: PrivateInfo): Promise<void> {
@@ -199,10 +196,10 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				emitToRoom(code, {
 					kind: 'DayResolved',
 					eliminatedSeat: payload.eliminatedSeat as number | null,
-					identity: identity ? roleIdToLegacy(identity) : null,
+					identity,
 					tie: payload.tie as boolean,
 					followDeathSeat: payload.followDeathSeat as number | null,
-					followDeathIdentity: followDeathIdentity ? roleIdToLegacy(followDeathIdentity) : null,
+					followDeathIdentity,
 					// Previously dropped here, so every client treated the flipped
 					// idiot as dead: gone from every night-target list (wolves,
 					// witch, guard, seer) for the rest of the game.
@@ -223,14 +220,10 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'GameOver': {
 				const winnerMap = { GOOD: 'villagers', WEREWOLF: 'wolves', LOVERS: 'lovers' } as const;
 				const identities = payload.identities as Record<number, RoleId>;
-				const legacyIdentities: Record<number, ReturnType<typeof roleIdToLegacy>> = {};
-				for (const [seat, role] of Object.entries(identities)) {
-					legacyIdentities[Number(seat)] = roleIdToLegacy(role);
-				}
 				emitToRoom(code, {
 					kind: 'GameOver',
 					winner: winnerMap[payload.winner as 'GOOD' | 'WEREWOLF' | 'LOVERS'],
-					identities: legacyIdentities,
+					identities,
 					coupleSeats: payload.coupleSeats as [number, number] | null
 				});
 				continue;
@@ -239,14 +232,14 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'NightActionAck':
 				await emitToHost(code, {
 					kind: 'NightActionAck',
-					role: roleIdToLegacy(payload.role as RoleId)
+					role: payload.role as RoleId
 				});
 				continue;
 
 			case 'YourRole':
 				await emitPrivate(code, effect.seat!, {
 					kind: 'YourRole',
-					role: roleIdToLegacy(payload.role as RoleId)
+					role: payload.role as RoleId
 				});
 				continue;
 
@@ -271,10 +264,11 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				// buried array is only ever 0 or 2 entries (see startGame's
 				// thiefExtraCards), but the null-vs-tuple split still needs
 				// spelling out for TS.
-				const legacyBuried: [Role, Role] | null =
-					buried.length === 2 ? [roleIdToLegacy(buried[0]), roleIdToLegacy(buried[1])] : null;
-				if (!legacyBuried) continue;
-				await emitPrivate(code, effect.seat!, { kind: 'ThiefChoice', buried: legacyBuried });
+				if (buried.length !== 2) continue;
+				await emitPrivate(code, effect.seat!, {
+					kind: 'ThiefChoice',
+					buried: [buried[0], buried[1]]
+				});
 				continue;
 			}
 
@@ -282,7 +276,7 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				const context = payload.context as { seat: number } & Record<string, unknown>;
 				await emitPrivate(code, effect.seat!, {
 					kind: 'YourTurnPrompt',
-					role: roleIdToLegacy(payload.role as RoleId),
+					role: payload.role as RoleId,
 					context,
 					...(payload.replay === true ? { replay: true } : {})
 				});

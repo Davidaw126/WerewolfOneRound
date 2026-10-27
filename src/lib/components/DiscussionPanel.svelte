@@ -19,7 +19,7 @@
 	const dayDecided = $derived(roomState?.dayDecided ?? false);
 	// Hidden once the duel is spent - the server would only refuse it.
 	const hasKnight = $derived(
-		(roomState?.roleConfig?.['骑士'] ?? 0) > 0 && !(roomState?.knightUsed ?? false)
+		(roomState?.roleConfig?.['KNIGHT'] ?? 0) > 0 && !(roomState?.knightUsed ?? false)
 	);
 
 	// Two pickers: the seats that left the table today (multi-select), or a

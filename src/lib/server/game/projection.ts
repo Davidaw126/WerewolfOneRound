@@ -17,8 +17,6 @@ import type {
 	Phase as LegacyPhase,
 	Winner
 } from '../../shared/gameTypes';
-import type { Role } from '../../shared/roles';
-import { roleIdToLegacy } from '../../game/roleBridge';
 
 /**
  * The old app had a distinct Phase value for every branch (NIGHT_ACTIONS /
@@ -65,7 +63,7 @@ export function stageOf(state: GameState): LegacyNightStage | null {
 	const key = state.currentStepKey;
 	if (key === null) return null;
 	if (key === 'couple_reveal') return { kind: 'COUPLE_REVEAL' };
-	return { kind: 'ROLE_TURN', role: roleIdToLegacy(key.slice('role:'.length) as RoleId) };
+	return { kind: 'ROLE_TURN', role: key.slice('role:'.length) as RoleId };
 }
 
 /** S4: strips which role is acting - the room-wide broadcast form of
@@ -127,8 +125,8 @@ export function winnerOf(state: GameState): Winner | null {
 	}
 }
 
-export function identitiesOf(state: GameState): Record<number, Role> {
-	const out: Record<number, Role> = {};
-	for (const p of Object.values(state.players)) out[p.seat] = roleIdToLegacy(p.role);
+export function identitiesOf(state: GameState): Record<number, RoleId> {
+	const out: Record<number, RoleId> = {};
+	for (const p of Object.values(state.players)) out[p.seat] = p.role;
 	return out;
 }

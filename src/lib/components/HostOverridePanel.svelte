@@ -2,27 +2,25 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
-	import { SUPPORTED_LEGACY_ROLES } from '$lib/game/roleBridge';
+	import { PICKABLE_ROLES } from '$lib/shared/roles';
 	import { primeSpeech, narrate, speechSupported } from '$lib/client/sfx';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
-	import type { Role } from '$lib/shared/roles';
+	import type { RoleId } from '$lib/game/types';
 
 	/** `open` is owned by PhaseBanner, whose top-right button toggles it. */
 	let { gameRunning, open }: { gameRunning: boolean; open: boolean } = $props();
 
 	const t = $derived(strings(i18n.lang));
 	let seat = $state<number | null>(null);
-	let role = $state<Role | null>(null);
+	let role = $state<RoleId | null>(null);
 
 	const roomState = $derived(gameStore.state);
 	const seats = $derived(roomState?.seats.filter((s) => s.sessionId !== null) ?? []);
 	// Only this board's roles: a role with no stage tonight would leave the
 	// player holding a card the night never calls.
-	const boardRoles = $derived(
-		SUPPORTED_LEGACY_ROLES.filter((r) => (roomState?.roleConfig?.[r] ?? 0) > 0)
-	);
+	const boardRoles = $derived(PICKABLE_ROLES.filter((r) => (roomState?.roleConfig?.[r] ?? 0) > 0));
 
 	const voiceSupported = speechSupported();
 	/** Manual voice check/unlock - a tap here is itself the gesture iOS wants

@@ -1,5 +1,5 @@
 import type { NightStage, RoomPublicState, Winner } from '$lib/shared/gameTypes';
-import type { Role } from '$lib/shared/roles';
+import type { RoleId } from '$lib/game/types';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent, onActionError } from './socket';
 import { i18n } from './i18n.svelte';
@@ -83,10 +83,10 @@ class GameStore {
 	lastNightDeaths = $state<number[] | null>(null);
 	lastDayResult = $state<{
 		eliminatedSeat: number | null;
-		identity: Role | null;
+		identity: RoleId | null;
 		tie: boolean;
 		followDeathSeat: number | null;
-		followDeathIdentity: Role | null;
+		followDeathIdentity: RoleId | null;
 		idiotRevealed: boolean;
 	} | null>(null);
 	lastHunterResult = $state<{
@@ -96,18 +96,18 @@ class GameStore {
 	} | null>(null);
 	gameOverResult = $state<{
 		winner: Winner;
-		identities: Record<number, Role>;
+		identities: Record<number, RoleId>;
 		coupleSeats: [number, number] | null;
 	} | null>(null);
 
-	myRole = $state<Role | null>(null);
+	myRole = $state<RoleId | null>(null);
 	/** This phone's 确认 on the current 开枪状态/情侣相认 stage landed. */
 	stageConfirmed = $state(false);
 	/** A wolf teammate already made tonight's kill (this stage only). */
 	packKill = $state<{ bySeat: number; target: number | null } | null>(null);
 	/** Another holder of this role (a 上帝之手 duplicate) already acted. */
 	roleDoneByOther = $state(false);
-	myTurnRole = $state<Role | null>(null);
+	myTurnRole = $state<RoleId | null>(null);
 	/** Private per-turn info for whoever is acting - see TurnContext. */
 	turnContext = $state<TurnContext | null>(null);
 	/** The most recent 预言家 check result, mirrored out of the activity log so
@@ -125,7 +125,7 @@ class GameStore {
 	 * held back from myTurnRole/turnContext until a StageNarrationStarted
 	 * (or the fallback timer) promotes it, so the prompt card doesn't appear
 	 * before the role's own narration line has actually started. */
-	pendingTurnRole = $state<Role | null>(null);
+	pendingTurnRole = $state<RoleId | null>(null);
 	pendingTurnContext = $state<TurnContext | null>(null);
 
 	/** Centered, auto-dismissing popup for a private role result (seer check,
@@ -139,7 +139,7 @@ class GameStore {
 	private infoPopupToken = 0;
 
 	hunterAuthorized = $state(false);
-	thiefChoice = $state<[Role, Role] | null>(null);
+	thiefChoice = $state<[RoleId, RoleId] | null>(null);
 	toast = $state<string | null>(null);
 	private toastToken = 0;
 

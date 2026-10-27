@@ -4,26 +4,19 @@
 // split as every other handler in this directory.
 
 import { runGameAction } from '../../game/gameSync';
-import { legacyToRoleId } from '../../../game/roleBridge';
 import type { AckResponse } from '../../../shared/events';
-import type { Role } from '../../../shared/roles';
+import type { RoleId } from '../../../game/types';
 import { requireRoomCode, requireHost, ActionError, type GameSocket } from './helpers';
 
 export async function handleHostOverride(
 	socket: GameSocket,
 	overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE',
 	seat: number,
-	role?: Role
+	role?: RoleId
 ): Promise<AckResponse> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
 
-	let roleId = undefined;
-	if (overrideKind === 'SET_ROLE') {
-		if (!role) throw new ActionError('missing_role');
-		roleId = legacyToRoleId(role) ?? undefined;
-		if (!roleId) throw new ActionError('unsupported_role');
-	}
-
-	return runGameAction(code, { type: 'HOST_OVERRIDE', kind: overrideKind, seat, role: roleId });
+	if (overrideKind === 'SET_ROLE' && !role) throw new ActionError('missing_role');
+	return runGameAction(code, { type: 'HOST_OVERRIDE', kind: overrideKind, seat, role });
 }

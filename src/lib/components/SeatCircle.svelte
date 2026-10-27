@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { scale } from 'svelte/transition';
-	import type { Role } from '$lib/shared/roles';
+	import type { RoleId } from '$lib/game/types';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import { strings, roleName } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
@@ -19,7 +19,7 @@
 		onTake: (seat: number) => void;
 		disabled?: boolean;
 		hostSessionId?: string | null;
-		myTurnRole?: Role | null;
+		myTurnRole?: RoleId | null;
 	} = $props();
 
 	const seatClass = $derived(
@@ -60,7 +60,7 @@
 				<span
 					class="pointer-events-none absolute -bottom-1.5 rounded-sm border border-line bg-surface px-1 text-[8px] text-zinc-300"
 				>
-					{roleName('白痴', i18n.lang)}
+					{roleName('IDIOT', i18n.lang)}
 				</span>
 			{/if}
 			{#if seat.isDead}
@@ -90,7 +90,7 @@
 	<div
 		class="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-25"
 	>
-		<PixelSprite role="普通狼人" px={56} idle={false} />
+		<PixelSprite role="WEREWOLF" px={56} idle={false} />
 	</div>
 </div>
 

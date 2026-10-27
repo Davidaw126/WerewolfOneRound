@@ -30,7 +30,7 @@
 	);
 	/** Checking or idolising yourself makes no sense (the server refuses it
 	 * too) - not offered. The pack's kill turn keeps every seat. */
-	const noSelfPick = $derived(!packTurn && (role === '预言家' || role === '野孩子'));
+	const noSelfPick = $derived(!packTurn && (role === 'SEER' || role === 'WILD_CHILD'));
 	/** One potion per night unless the room's rules allow both. */
 	const onePotionOnly = $derived(!witch?.bothPotionsSameNight);
 
@@ -103,7 +103,7 @@
 						? t.packKillChosen(gameStore.packKill.bySeat, gameStore.packKill.target)
 						: t.roleDoneByOther}
 			</p>
-			{#if role === '预言家' && gameStore.lastSeerResult}
+			{#if role === 'SEER' && gameStore.lastSeerResult}
 				<!-- Kept on screen after submitting: the result popup alone is
 				     gone in a few seconds. -->
 				<p
@@ -114,7 +114,7 @@
 					{t.checkResult(gameStore.lastSeerResult.targetSeat, gameStore.lastSeerResult.isWolf)}
 				</p>
 			{/if}
-		{:else if ctx?.feared && role !== '恶灵骑士'}
+		{:else if ctx?.feared && role !== 'NIGHTMARE'}
 			<!-- 恶灵骑士 blocked this seat's skill tonight. Passing still goes
 			     through the normal submit + auto-advance, so the pause before
 			     the next role is the same as for a real action. -->
@@ -125,7 +125,7 @@
 			>
 				{t.fearedPass}
 			</button>
-			{#if role === '预言家' && gameStore.lastSeerResult}
+			{#if role === 'SEER' && gameStore.lastSeerResult}
 				<p class="text-sm">
 					<span
 						class="font-semibold {gameStore.lastSeerResult.isWolf ? 'text-wolf' : 'text-village'}"
@@ -134,7 +134,7 @@
 					</span>
 				</p>
 			{/if}
-		{:else if role === '猎人' || (role === '黑狼王' && ctx?.hunter)}
+		{:else if role === 'HUNTER' || (role === 'BLACK_WOLF_KING' && ctx?.hunter)}
 			<!-- The live thumbs up/down a physical host gives the hunter (and
 			     黑狼王, on his own 确认开枪状态 stage - his pack-kill turn has no
 			     `hunter` context) each night. Same verdict the server will
@@ -150,7 +150,7 @@
 				<p class="text-sm text-zinc-400">{strings(i18n.lang).room.stageConfirmedWait}</p>
 			{:else}
 				<p class="text-sm text-zinc-400">
-					{role === '猎人' ? t.hunterNoActionNeeded : t.statusNoActionNeeded}
+					{role === 'HUNTER' ? t.hunterNoActionNeeded : t.statusNoActionNeeded}
 				</p>
 				<!-- Everyone else - the host included - has their eyes shut, so
 				     the shooter moves the night on themselves. -->
@@ -161,15 +161,15 @@
 					{t.statusConfirm}
 				</button>
 			{/if}
-		{:else if role === '普通狼人' || role === '白狼王' || role === '黑狼王' || role === '预言家' || role === '守卫' || role === '狼美人' || role === '野孩子' || role === '摄梦人' || role === '恶灵骑士'}
-			{#if role === '普通狼人' || role === '白狼王' || role === '黑狼王' || role === '狼美人' || role === '恶灵骑士'}
+		{:else if role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING' || role === 'SEER' || role === 'GUARD' || role === 'WOLF_BEAUTY' || role === 'WILD_CHILD' || role === 'DREAM_WEAVER' || role === 'NIGHTMARE'}
+			{#if role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING' || role === 'WOLF_BEAUTY' || role === 'NIGHTMARE'}
 				<p class="text-sm text-wolf">
 					{wolfTeammates.length > 0
 						? t.wolfTeammates(wolfTeammates.map((s) => seatLabel(s, i18n.lang)).join('、'))
 						: t.soloWolf}
 				</p>
 			{/if}
-			{#if role === '守卫' && guardLastSeat !== null}
+			{#if role === 'GUARD' && guardLastSeat !== null}
 				<p class="text-sm text-zinc-400">
 					{t.guardLastProtected(guardLastSeat)}
 				</p>
@@ -178,18 +178,20 @@
 				{#if packTurn}
 					{t.selectWolfTarget}
 				{:else}
-					{role === '普通狼人' || role === '白狼王' || role === '黑狼王' ? t.selectWolfTarget : ''}
-					{role === '预言家' ? t.selectSeerTarget : ''}
-					{role === '守卫' ? t.selectGuardTarget : ''}
-					{role === '狼美人' ? t.selectWolfBeautyTarget : ''}
-					{role === '野孩子' ? t.selectWildChildTarget : ''}
-					{role === '摄梦人' ? t.selectDreamWeaverTarget : ''}
-					{role === '恶灵骑士' ? t.selectNightmareTarget : ''}
+					{role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING'
+						? t.selectWolfTarget
+						: ''}
+					{role === 'SEER' ? t.selectSeerTarget : ''}
+					{role === 'GUARD' ? t.selectGuardTarget : ''}
+					{role === 'WOLF_BEAUTY' ? t.selectWolfBeautyTarget : ''}
+					{role === 'WILD_CHILD' ? t.selectWildChildTarget : ''}
+					{role === 'DREAM_WEAVER' ? t.selectDreamWeaverTarget : ''}
+					{role === 'NIGHTMARE' ? t.selectNightmareTarget : ''}
 				{/if}
 			</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats.filter((s) => !(noSelfPick && s.seatNumber === ctx?.seat)) as seat (seat.seatNumber)}
-					{@const blocked = role === '守卫' && seat.seatNumber === guardLastSeat}
+					{@const blocked = role === 'GUARD' && seat.seatNumber === guardLastSeat}
 					<button
 						disabled={blocked}
 						onclick={() =>
@@ -238,7 +240,7 @@
 					{t.emptyKill}
 				</button>
 			{/if}
-		{:else if role === '女巫'}
+		{:else if role === 'WITCH'}
 			<p class="text-sm">
 				<span class="text-zinc-400">{t.witchAntidoteLabel}</span>
 				<span class={witch?.antidoteAvailable ? 'text-village' : 'text-zinc-500'}>
@@ -320,7 +322,7 @@
 					submit(
 						{
 							kind: 'NightSubmitAction',
-							action: { role: '女巫', poisonTarget, useAntidote }
+							action: { role: 'WITCH', poisonTarget, useAntidote }
 						},
 						[
 							useAntidote ? t.descWitchSaved(killedSeat!) : null,
@@ -333,7 +335,7 @@
 			>
 				{t.confirm}
 			</button>
-		{:else if role === '丘比特'}
+		{:else if role === 'CUPID'}
 			<p class="text-sm text-zinc-400">{t.cupidSelectTwo}</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats as seat (seat.seatNumber)}
@@ -361,7 +363,7 @@
 					submit(
 						{
 							kind: 'NightSubmitAction',
-							action: { role: '丘比特', seatA: coupleFirst, seatB: coupleSecond }
+							action: { role: 'CUPID', seatA: coupleFirst, seatB: coupleSecond }
 						},
 						t.descCupidLinked(coupleFirst, coupleSecond)
 					)}
@@ -370,7 +372,7 @@
 			>
 				{t.confirm}
 			</button>
-		{:else if role === '盗贼'}
+		{:else if role === 'THIEF'}
 			{#if gameStore.thiefChoice}
 				<p class="text-sm text-zinc-400">
 					{t.thiefBuriedCards(
@@ -419,7 +421,7 @@
 											i18n.lang
 										)
 									);
-						submit({ kind: 'NightSubmitAction', action: { role: '盗贼', swap } }, description);
+						submit({ kind: 'NightSubmitAction', action: { role: 'THIEF', swap } }, description);
 					}}
 					disabled={thiefPick === null}
 					class="btn-primary w-full"

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { ALL_ROLES, roleTeam, type Role } from '$lib/shared/roles';
-	import { SUPPORTED_LEGACY_ROLES, roleIdToLegacy } from '$lib/game/roleBridge';
+	import { PICKABLE_ROLES, roleTeam } from '$lib/shared/roles';
+	import { ALL_ROLE_IDS } from '$lib/game/roleMeta';
 	import { PRESET_BOARDS } from '$lib/game/rules/presets';
 	import { defaultRuleConfig } from '$lib/game/defaultRuleConfig';
 	import type { RoleId } from '$lib/game/types';
@@ -15,40 +15,33 @@
 	const t = $derived(strings(i18n.lang));
 
 	function issueText(i: ValidationIssue): string {
-		const roleLabel = i.params?.roleId
-			? roleName(roleIdToLegacy(i.params.roleId), i18n.lang)
-			: undefined;
+		const roleLabel = i.params?.roleId ? roleName(i.params.roleId, i18n.lang) : undefined;
 		return formatSetupIssue(i.code, i.reason, { ...i.params, roleLabel }, i18n.lang);
 	}
 
-	let counts = $state<Record<Role, number>>(
-		Object.fromEntries(ALL_ROLES.map((r) => [r, 0])) as Record<Role, number>
-	);
+	const noRoles = () =>
+		Object.fromEntries(ALL_ROLE_IDS.map((r) => [r, 0])) as Record<RoleId, number>;
+	let counts = $state<Record<RoleId, number>>(noRoles());
 	let cupidPoisonBlocksHunter = $state(false);
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
 	let issues = $state<string[]>([]);
 
-	// Narrowed to the 15 roles the new engine can represent (M0 plan decision
-	// 3) - the other 7 (禁言长老/高级村民/老流氓/隐狼/恶魔/机械狼/梦魇)
-	// have no RoleId counterpart, so a room configured with one of them would
-	// fail to start (server-side validated too, in handleRoomSubmitConfig).
-	const pickableRoles = ALL_ROLES.filter((r) => SUPPORTED_LEGACY_ROLES.includes(r));
-	const goodRoles = pickableRoles.filter((r) => roleTeam(r) === 'village');
-	const wolfRoles = pickableRoles.filter((r) => roleTeam(r) === 'wolf');
+	const goodRoles = PICKABLE_ROLES.filter((r) => roleTeam(r) === 'village');
+	const wolfRoles = PICKABLE_ROLES.filter((r) => roleTeam(r) === 'wolf');
 
 	const total = $derived(Object.values(counts).reduce((s: number, n) => s + (n ?? 0), 0));
 	const goodTotal = $derived(goodRoles.reduce((s, r) => s + (counts[r] ?? 0), 0));
 	const wolfTotal = $derived(wolfRoles.reduce((s, r) => s + (counts[r] ?? 0), 0));
 
-	function inc(role: Role, delta: number) {
+	function inc(role: RoleId, delta: number) {
 		counts[role] = Math.max(0, (counts[role] ?? 0) + delta);
 	}
 
 	function applyPreset(roleConfig: Partial<Record<RoleId, number>>) {
-		const next = Object.fromEntries(ALL_ROLES.map((r) => [r, 0])) as Record<Role, number>;
+		const next = noRoles();
 		for (const [roleId, count] of Object.entries(roleConfig) as [RoleId, number][]) {
-			next[roleIdToLegacy(roleId)] = count ?? 0;
+			next[roleId] = count ?? 0;
 		}
 		counts = next;
 	}
@@ -134,7 +127,13 @@
 	}
 </script>
 
-{#snippet section(title: string, subtitle: string, roles: Role[], count: number, good: boolean)}
+{#snippet section(
+	title: string,
+	subtitle: string,
+	roles: readonly RoleId[],
+	count: number,
+	good: boolean
+)}
 	<div class="panel p-3">
 		<div
 			class="mb-3 flex items-center justify-between border-[3px] border-line px-2 py-1.5 text-xs font-bold tracking-widest uppercase {good
@@ -321,7 +320,7 @@
 				)}
 			</div>
 
-			{#if (counts['黑狼王'] ?? 0) > 0}
+			{#if (counts['BLACK_WOLF_KING'] ?? 0) > 0}
 				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 					<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
 						{t.roleConfig.blackWolfKingHeader}
@@ -391,7 +390,7 @@
 		<!-- One row (count beside the button) to leave the role list more height. -->
 		<div class="flex items-center gap-3">
 			<p class="min-w-0 flex-1 text-xs leading-snug text-zinc-500">
-				{(counts['盗贼'] ?? 0) > 0
+				{(counts['THIEF'] ?? 0) > 0
 					? t.roleConfig.cardCountWithThief(total, total - 2)
 					: t.roleConfig.cardCountSummary(total)}
 			</p>

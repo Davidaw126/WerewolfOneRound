@@ -16,7 +16,7 @@ const { defaultRuleConfig } = await import('../../game/defaultRuleConfig');
 
 const HOST = 'host-session';
 const config = {
-	roleConfig: { 普通狼人: 1, 预言家: 1, 平民: 1 },
+	roleConfig: { WEREWOLF: 1, SEER: 1, VILLAGER: 1 },
 	numberOfSeats: 3,
 	cupidPoisonBlocksHunter: false,
 	ruleOverrides: {}
@@ -89,7 +89,22 @@ describe('creating and setting up a room', () => {
 		expect(hash?.cupidPoisonBlocksHunter).toBe(true);
 		expect(hash?.ruleOverrides).toEqual({ witch: { canPoisonSelf: true } });
 		const roles = await Promise.all([1, 2, 3].map((s) => room.currentRoleOfSeat(code, s)));
-		expect(roles.sort()).toEqual(['平民', '普通狼人', '预言家'].sort());
+		expect(roles.sort()).toEqual(['SEER', 'VILLAGER', 'WEREWOLF']);
+	});
+
+	it('still reads a room saved with Chinese role names before roles were stored as ids', async () => {
+		const code = await room.createRoom(HOST);
+		await redis.hset(`wolf:room:${code}`, {
+			phase: 'SEATING',
+			numberOfSeats: '2',
+			roleConfig: JSON.stringify({ 普通狼人: 1, 预言家: 1 })
+		});
+		await redis.hset(`wolf:room:${code}:identities`, { '1': '预言家', '2': '普通狼人' });
+		expect((await room.readRoomHash(code))?.roleConfig).toEqual({ WEREWOLF: 1, SEER: 1 });
+		expect(await room.currentRoleOfSeat(code, 1)).toBe('SEER');
+		await room.redeal(code);
+		const roles = await Promise.all([1, 2].map((s) => room.currentRoleOfSeat(code, s)));
+		expect(roles.sort()).toEqual(['SEER', 'WEREWOLF']);
 	});
 
 	it('refuses a second setup once seating has started', async () => {
@@ -155,7 +170,7 @@ describe('seen roles and Re-deal', () => {
 		await room.redeal(code);
 		expect(await room.getRevealedRoleIfAny(code, 's1')).toBeNull();
 		const roles = await Promise.all([1, 2, 3].map((s) => room.currentRoleOfSeat(code, s)));
-		expect(roles.sort()).toEqual(['平民', '普通狼人', '预言家'].sort());
+		expect(roles.sort()).toEqual(['SEER', 'VILLAGER', 'WEREWOLF']);
 	});
 });
 
@@ -182,8 +197,8 @@ describe('once a game has started', () => {
 	it("answers a seat's role from the game, not the seating deal", async () => {
 		const code = await seatedRoom();
 		await startGameWithRoles(code);
-		expect(await room.currentRoleOfSeat(code, 1)).toBe('预言家');
-		expect(await room.currentRoleOfSeat(code, 3)).toBe('普通狼人');
+		expect(await room.currentRoleOfSeat(code, 1)).toBe('SEER');
+		expect(await room.currentRoleOfSeat(code, 3)).toBe('WEREWOLF');
 	});
 
 	it('answers who sits where from the game, even if the seating data drifts', async () => {

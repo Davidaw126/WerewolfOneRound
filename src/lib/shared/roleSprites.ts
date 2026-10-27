@@ -1,4 +1,6 @@
 import { roleTeam, type Role } from './roles';
+import type { RoleId } from '../game/types';
+import { roleIdToLegacy } from '../game/roleBridge';
 
 // Hand-authored 16x16 pixel sprites. Each sprite is 16 rows of chars; each char
 // indexes PAL (space/'.' = transparent). Rendered crisp+scaled by PixelSprite.
@@ -111,6 +113,6 @@ const ART: Partial<Record<Role, string[]>> = {
 
 const GENERIC_VILLAGER = bust({ hat: 'b', cloth: 'b', accent: 'y' });
 
-export function spriteFor(role: Role): string[] {
-	return ART[role] ?? (roleTeam(role) === 'wolf' ? WOLF : GENERIC_VILLAGER);
+export function spriteFor(role: RoleId): string[] {
+	return ART[roleIdToLegacy(role)] ?? (roleTeam(role) === 'wolf' ? WOLF : GENERIC_VILLAGER);
 }

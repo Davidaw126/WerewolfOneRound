@@ -88,7 +88,7 @@ if (MODE === 'resume') {
 }
 
 const ALL_ROLES =
-	'普通狼人 预言家 女巫 猎人 守卫 狼美人 丘比特 盗贼 白痴 骑士 禁言长老 摄梦人 高级村民 老流氓 普通村民 白狼王 黑狼王 隐狼 恶魔 恶灵骑士 梦魇 机械狼 野孩子'.split(
+	'VILLAGER SEER WITCH HUNTER GUARD IDIOT KNIGHT DREAM_WEAVER CUPID THIEF WILD_CHILD WEREWOLF WOLF_KING BLACK_WOLF_KING WOLF_BEAUTY NIGHTMARE'.split(
 		' '
 	);
 
@@ -129,21 +129,21 @@ async function setupGame(label, seats, roles) {
 
 async function basicGame() {
 	const { players, host, code } = await setupGame('b', 6, {
-		普通狼人: 2,
-		预言家: 1,
-		女巫: 1,
-		普通村民: 2
+		WEREWOLF: 2,
+		SEER: 1,
+		WITCH: 1,
+		VILLAGER: 2
 	});
 	const seatOf = (p) => players.indexOf(p) + 1;
 	const byRole = (role) => players.filter((p) => p.role === role);
 	console.log('roles:', players.map((p) => `${seatOf(p)}=${p.role}`).join(' '));
 
 	// --- Night 1: play every prompt as it arrives -------------------------------
-	const villagers = byRole('普通村民');
+	const villagers = byRole('VILLAGER');
 	const victim = villagers[0];
-	const wolves = byRole('普通狼人');
-	const seer = byRole('预言家')[0];
-	const witch = byRole('女巫')[0];
+	const wolves = byRole('WEREWOLF');
+	const seer = byRole('SEER')[0];
+	const witch = byRole('WITCH')[0];
 	const night = async () => {
 		const deadline = Date.now() + 90000;
 		const done = new Set();
@@ -154,12 +154,12 @@ async function basicGame() {
 				if (!pr || done.has(pr)) continue;
 				done.add(pr);
 				let action = null;
-				if (pr.role === '普通狼人') action = { role: '普通狼人', targetSeat: seatOf(victim) };
-				if (pr.role === '预言家') action = { role: '预言家', targetSeat: seatOf(wolves[0]) };
-				if (pr.role === '女巫') action = { role: '女巫', poisonTarget: null, useAntidote: false };
+				if (pr.role === 'WEREWOLF') action = { role: 'WEREWOLF', targetSeat: seatOf(victim) };
+				if (pr.role === 'SEER') action = { role: 'SEER', targetSeat: seatOf(wolves[0]) };
+				if (pr.role === 'WITCH') action = { role: 'WITCH', poisonTarget: null, useAntidote: false };
 				if (!action) continue;
 				const r = await p.act({ kind: 'NightSubmitAction', action });
-				if (pr.role === '普通狼人' && p === wolves[0]) {
+				if (pr.role === 'WEREWOLF' && p === wolves[0]) {
 					check(r.ok, `wolf kill on seat ${seatOf(victim)}`);
 					if (MODE === 'halt') {
 						fs.writeFileSync(STATE_FILE, JSON.stringify({ code, hostCookie: host.cookie }));
@@ -167,12 +167,12 @@ async function basicGame() {
 						process.exit(0);
 					}
 				}
-				if (pr.role === '预言家') {
+				if (pr.role === 'SEER') {
 					check(r.ok, 'seer check');
 					// Double-tap: a second check the same night must be refused.
 					const again = await p.act({
 						kind: 'NightSubmitAction',
-						action: { role: '预言家', targetSeat: seatOf(villagers[1]) }
+						action: { role: 'SEER', targetSeat: seatOf(villagers[1]) }
 					});
 					check(
 						!again.ok && again.error === 'already_submitted',
@@ -219,11 +219,11 @@ async function basicGame() {
 		kind: 'HostOverride',
 		overrideKind: 'SET_ROLE',
 		seat: seatOf(target),
-		role: '普通村民'
+		role: 'VILLAGER'
 	});
 	check(so.ok, `host changed seat ${seatOf(target)} to 普通村民`);
 	await sleep(600);
-	check(target.role === '普通村民', 'target phone got the new card');
+	check(target.role === 'VILLAGER', 'target phone got the new card');
 	check(
 		target.priv.some((e) => e.kind === 'RoleChangedByHost' && e.forYou),
 		'target was told privately'
@@ -244,7 +244,7 @@ async function basicGame() {
 	const reload = await connect(target.cookie, 'reload');
 	await reload.act({ kind: 'RoomJoin', roomCode: code });
 	await sleep(400);
-	check(reload.role === '普通村民', `card after a refresh shows the new role (${reload.role})`);
+	check(reload.role === 'VILLAGER', `card after a refresh shows the new role (${reload.role})`);
 	reload.sock.disconnect();
 
 	// --- Leaving during the day resets the round --------------------------------
@@ -270,16 +270,16 @@ async function basicGame() {
  * up buried, so a role that isn't in play skips its own checks. */
 async function specialGame() {
 	const { players, host, code } = await setupGame('s', 7, {
-		普通狼人: 2,
-		丘比特: 1,
-		盗贼: 1,
-		守卫: 1,
-		猎人: 1,
-		预言家: 1,
-		普通村民: 2
+		WEREWOLF: 2,
+		CUPID: 1,
+		THIEF: 1,
+		GUARD: 1,
+		HUNTER: 1,
+		SEER: 1,
+		VILLAGER: 2
 	});
 	const seatOf = (p) => players.indexOf(p) + 1;
-	const isWolf = (p) => p.role === '普通狼人';
+	const isWolf = (p) => p.role === 'WEREWOLF';
 	console.log('[s] dealt:', players.map((p) => `${seatOf(p)}=${p.role}`).join(' '));
 
 	// Decided as the night unfolds - each needs the roles as they stand after
@@ -296,7 +296,7 @@ async function specialGame() {
 	const pickGuardSave = () => {
 		if (guardSave) return guardSave;
 		guardSave =
-			players.find((p) => !isWolf(p) && !lovers?.includes(p) && p.role !== '丘比特') ??
+			players.find((p) => !isWolf(p) && !lovers?.includes(p) && p.role !== 'CUPID') ??
 			players.find((p) => !isWolf(p));
 		return guardSave;
 	};
@@ -341,36 +341,36 @@ async function specialGame() {
 				if (!pr || done.has(pr)) continue;
 				done.add(pr);
 				const ctx = pr.context ?? {};
-				if (pr.role === '盗贼') {
+				if (pr.role === 'THIEF') {
 					thief = p;
 					const choice = p.priv.find((e) => e.kind === 'ThiefChoice')?.buried ?? [];
 					console.log(`[s] 盗贼 (seat ${seatOf(p)}) sees: ${choice.join(', ')}`);
 					// Take whichever buried card keeps the most of this board in play.
-					const order = ['守卫', '猎人', '丘比特', '预言家', '普通村民', '普通狼人'];
+					const order = ['GUARD', 'HUNTER', 'CUPID', 'SEER', 'VILLAGER', 'WEREWOLF'];
 					const best = [...choice].sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
 					const swap = choice[0] === best ? 'buried1' : 'buried2';
-					const r = await p.act({ kind: 'NightSubmitAction', action: { role: '盗贼', swap } });
+					const r = await p.act({ kind: 'NightSubmitAction', action: { role: 'THIEF', swap } });
 					check(r.ok, `[s] 盗贼 took ${best}`);
 					await sleep(400);
 					thiefNewRole = best;
 					check(p.role === best, `[s] 盗贼's phone now shows ${best} (${p.role})`);
-				} else if (pr.role === '丘比特') {
+				} else if (pr.role === 'CUPID') {
 					const cupid = p;
-					const hunter = players.find((x) => x.role === '猎人' && x !== cupid);
+					const hunter = players.find((x) => x.role === 'HUNTER' && x !== cupid);
 					const others = players.filter(
-						(x) => x !== cupid && x !== hunter && !isWolf(x) && x.role !== '守卫'
+						(x) => x !== cupid && x !== hunter && !isWolf(x) && x.role !== 'GUARD'
 					);
 					lovers = hunter ? [hunter, others[0]] : [others[0], others[1]];
 					const r = await p.act({
 						kind: 'NightSubmitAction',
-						action: { role: '丘比特', seatA: seatOf(lovers[0]), seatB: seatOf(lovers[1]) }
+						action: { role: 'CUPID', seatA: seatOf(lovers[0]), seatB: seatOf(lovers[1]) }
 					});
 					check(r.ok, `[s] 丘比特 linked ${seatOf(lovers[0])} & ${seatOf(lovers[1])}`);
-				} else if (pr.role === '守卫') {
+				} else if (pr.role === 'GUARD') {
 					if (n === 1) {
 						const r = await p.act({
 							kind: 'NightSubmitAction',
-							action: { role: '守卫', targetSeat: seatOf(pickGuardSave()) }
+							action: { role: 'GUARD', targetSeat: seatOf(pickGuardSave()) }
 						});
 						check(r.ok, `[s] 守卫 protects seat ${seatOf(guardSave)}`);
 					} else {
@@ -380,7 +380,7 @@ async function specialGame() {
 						);
 						const again = await p.act({
 							kind: 'NightSubmitAction',
-							action: { role: '守卫', targetSeat: seatOf(guardSave) }
+							action: { role: 'GUARD', targetSeat: seatOf(guardSave) }
 						});
 						check(
 							!again.ok && again.error === 'guard_repeat_target',
@@ -389,27 +389,27 @@ async function specialGame() {
 						const wolf = players.find(isWolf);
 						const r = await p.act({
 							kind: 'NightSubmitAction',
-							action: { role: '守卫', targetSeat: seatOf(wolf) }
+							action: { role: 'GUARD', targetSeat: seatOf(wolf) }
 						});
 						check(r.ok, '[s] 守卫 picks someone else instead');
 					}
-				} else if (pr.role === '普通狼人') {
+				} else if (pr.role === 'WEREWOLF') {
 					const victim = n === 1 ? pickGuardSave() : lovers?.[1];
 					if (!victim) continue;
 					const r = await p.act({
 						kind: 'NightSubmitAction',
-						action: { role: '普通狼人', targetSeat: seatOf(victim) }
+						action: { role: 'WEREWOLF', targetSeat: seatOf(victim) }
 					});
 					// The second wolf is refused (the first already chose) - fine.
 					if (r.ok) console.log(`[s] night ${n}: wolves attack seat ${seatOf(victim)}`);
-				} else if (pr.role === '预言家') {
+				} else if (pr.role === 'SEER') {
 					const wolf = players.find(isWolf);
 					const r = await p.act({
 						kind: 'NightSubmitAction',
-						action: { role: '预言家', targetSeat: seatOf(wolf) }
+						action: { role: 'SEER', targetSeat: seatOf(wolf) }
 					});
 					check(r.ok, `[s] 预言家 checked seat ${seatOf(wolf)}`);
-				} else if (pr.role === '猎人') {
+				} else if (pr.role === 'HUNTER') {
 					check(
 						typeof ctx.hunter?.canShoot === 'boolean',
 						`[s] 猎人 sees whether they can shoot (${ctx.hunter?.canShoot})`
@@ -429,7 +429,7 @@ async function specialGame() {
 	check(await playNight(1), '[s] night 1 reached dawn on its own');
 	await host.act({ kind: 'NightAnnounceResults' });
 	const after1 = await deadSeats();
-	const guardInPlay = players.some((p) => p.role === '守卫');
+	const guardInPlay = players.some((p) => p.role === 'GUARD');
 	if (guardInPlay)
 		check(
 			after1.deadSeats.length === 0,
@@ -473,7 +473,7 @@ async function specialGame() {
 				both.every((s) => after2.deadSeats.includes(s)),
 				`[s] a lover's death took the partner too (dead: ${JSON.stringify(after2.deadSeats)}, lovers: ${both})`
 			);
-			const hunter = lovers.find((l) => l.role === '猎人');
+			const hunter = lovers.find((l) => l.role === 'HUNTER');
 			if (hunter)
 				check(
 					hunter.priv.some((e) => e.kind === 'ShotStatus'),

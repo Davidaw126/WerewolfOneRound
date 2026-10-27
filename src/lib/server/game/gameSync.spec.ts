@@ -45,7 +45,7 @@ async function elapse(ms: number): Promise<void> {
 async function startedGame(): Promise<string> {
 	const code = await room.createRoom(HOST);
 	await room.submitRoomConfigAtomic(code, HOST, {
-		roleConfig: { 普通狼人: 1, 预言家: 1, 普通村民: 1, 女巫: 1 },
+		roleConfig: { WEREWOLF: 1, SEER: 1, VILLAGER: 1, WITCH: 1 },
 		numberOfSeats: 4,
 		cupidPoisonBlocksHunter: false,
 		ruleOverrides: {}

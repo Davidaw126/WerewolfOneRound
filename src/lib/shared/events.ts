@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ALL_ROLES, type Role } from './roles';
+import { ALL_ROLE_IDS } from '../game/roleMeta';
+import type { RoleId } from '../game/types';
 import type { Phase, NightStage, PublicNightStage, RoomPublicState, Winner } from './gameTypes';
 
 // ---------------------------------------------------------------------------
@@ -9,7 +10,9 @@ import type { Phase, NightStage, PublicNightStage, RoomPublicState, Winner } fro
 // instead of firing blind, so the UI can show inline validation errors.
 // ---------------------------------------------------------------------------
 
-const roleEnum = z.enum(ALL_ROLES as unknown as [Role, ...Role[]]);
+// Roles travel as the engine's RoleId everywhere on the wire; display names
+// are a client-only concern (shared/i18n/roles.ts).
+const roleEnum = z.enum(ALL_ROLE_IDS as unknown as [RoleId, ...RoleId[]]);
 
 // M2's RuleConfig switches (§6) exposed on the room-config screen - only the
 // subset called for by the M2 milestone (winCondition + the wolf/guard/witch/
@@ -60,32 +63,35 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 	// nullable (空刀/empty kill) - the engine's own wolf.allowEmptyKill switch
 	// (M2, default true) decides whether a null target is actually accepted;
 	// this schema only gates the *shape*, same split as 女巫's poisonTarget.
-	z.object({ role: z.literal('普通狼人'), targetSeat: z.number().int().positive().nullable() }),
+	z.object({ role: z.literal('WEREWOLF'), targetSeat: z.number().int().positive().nullable() }),
 	// 白狼王 (M3) shares 普通狼人's collective kill decision - same shape, same
 	// nullable target - it has no separate night action of its own (see
 	// roleMeta.ts's WOLF_KING.nightOrder comment).
-	z.object({ role: z.literal('白狼王'), targetSeat: z.number().int().positive().nullable() }),
+	z.object({ role: z.literal('WOLF_KING'), targetSeat: z.number().int().positive().nullable() }),
 	// 黑狼王 also shares the pack's kill - his own skill is the death shot.
-	z.object({ role: z.literal('黑狼王'), targetSeat: z.number().int().positive().nullable() }),
-	z.object({ role: z.literal('预言家'), targetSeat: z.number().int().positive() }),
 	z.object({
-		role: z.literal('女巫'),
+		role: z.literal('BLACK_WOLF_KING'),
+		targetSeat: z.number().int().positive().nullable()
+	}),
+	z.object({ role: z.literal('SEER'), targetSeat: z.number().int().positive() }),
+	z.object({
+		role: z.literal('WITCH'),
 		poisonTarget: z.number().int().positive().nullable(),
 		useAntidote: z.boolean()
 	}),
-	z.object({ role: z.literal('守卫'), targetSeat: z.number().int().positive() }),
+	z.object({ role: z.literal('GUARD'), targetSeat: z.number().int().positive() }),
 	// Nullable only for the pack's 空刀 - they join the pack's kill turn too.
-	z.object({ role: z.literal('狼美人'), targetSeat: z.number().int().positive().nullable() }),
+	z.object({ role: z.literal('WOLF_BEAUTY'), targetSeat: z.number().int().positive().nullable() }),
 	z.object({
-		role: z.literal('丘比特'),
+		role: z.literal('CUPID'),
 		seatA: z.number().int().positive(),
 		seatB: z.number().int().positive()
 	}),
-	z.object({ role: z.literal('盗贼'), swap: z.enum(['buried1', 'buried2']).nullable() }),
+	z.object({ role: z.literal('THIEF'), swap: z.enum(['buried1', 'buried2']).nullable() }),
 	// M7
-	z.object({ role: z.literal('野孩子'), targetSeat: z.number().int().positive() }),
-	z.object({ role: z.literal('摄梦人'), targetSeat: z.number().int().positive() }),
-	z.object({ role: z.literal('恶灵骑士'), targetSeat: z.number().int().positive().nullable() })
+	z.object({ role: z.literal('WILD_CHILD'), targetSeat: z.number().int().positive() }),
+	z.object({ role: z.literal('DREAM_WEAVER'), targetSeat: z.number().int().positive() }),
+	z.object({ role: z.literal('NIGHTMARE'), targetSeat: z.number().int().positive().nullable() })
 ]);
 export type NightActionSubmission = z.infer<typeof NightActionSubmissionSchema>;
 
@@ -94,7 +100,7 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('RoomJoin'), roomCode: z.string().regex(/^\d{6}$/) }),
 	z.object({
 		kind: z.literal('RoomSubmitConfig'),
-		roleConfig: z.record(roleEnum, z.number().int().min(0)),
+		roleConfig: z.partialRecord(roleEnum, z.number().int().min(0)),
 		cupidPoisonBlocksHunter: z.boolean(),
 		ruleOverrides: RuleConfigOverridesSchema.optional()
 	}),
@@ -176,12 +182,12 @@ export type ServerEvent =
 	| {
 			kind: 'DayResolved';
 			eliminatedSeat: number | null;
-			identity: Role | null;
+			identity: RoleId | null;
 			tie: boolean;
 			/** The eliminated seat's 丘比特 partner, if the vote also triggered
 			 * 殉情 - null if there's no couple or the elimination didn't touch it. */
 			followDeathSeat: number | null;
-			followDeathIdentity: Role | null;
+			followDeathIdentity: RoleId | null;
 			/** §9.5: the exiled seat was a not-yet-revealed 白痴 - they flipped
 			 * their card and STAY ALIVE (without a vote) instead of leaving. */
 			idiotRevealed?: boolean;
@@ -237,7 +243,7 @@ export type ServerEvent =
 	| {
 			kind: 'GameOver';
 			winner: Winner;
-			identities: Record<number, Role>;
+			identities: Record<number, RoleId>;
 			/** The two 丘比特-linked seats, if any (regardless of team/winner -
 			 * the reveal screen marks them either way, not just when they won). */
 			coupleSeats: [number, number] | null;
@@ -297,14 +303,14 @@ export interface TurnContext {
 }
 
 export type PrivateInfo =
-	| { kind: 'YourRole'; role: Role }
+	| { kind: 'YourRole'; role: RoleId }
 	| { kind: 'SeerResult'; targetSeat: number; isWolf: boolean }
 	| { kind: 'CoupleRevealed'; partnerSeat: number }
-	| { kind: 'ThiefChoice'; buried: [Role, Role] }
+	| { kind: 'ThiefChoice'; buried: [RoleId, RoleId] }
 	// `replay`: re-sent after a reconnect/reload (see turnReplay.ts) - the
 	// stage's narration already played, so the client shows it immediately
 	// instead of waiting on a StageNarrationStarted that won't come again.
-	| { kind: 'YourTurnPrompt'; role: Role; context: TurnContext; replay?: boolean }
+	| { kind: 'YourTurnPrompt'; role: RoleId; context: TurnContext; replay?: boolean }
 	| { kind: 'HunterAuthorized' }
 	| { kind: 'HunterDenied'; reason: 'poison' }
 	/** You (猎人/狼王/黑狼王) just died - may you shoot, at the table? */
@@ -321,7 +327,7 @@ export type PrivateInfo =
 	// S4: acknowledges a role's submission - host-only (see effectTranslator's
 	// emitToHost), since broadcasting it to everyone would out that role's
 	// current holder as having just acted.
-	| { kind: 'NightActionAck'; role: Role }
+	| { kind: 'NightActionAck'; role: RoleId }
 	/** Host-only counterpart to the room-wide (redacted) StageChanged - the
 	 * real stage, role included, so JudgeAudioPlayer knows what to narrate. */
 	| { kind: 'HostStageChanged'; stage: NightStage | null };

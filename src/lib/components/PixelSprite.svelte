@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Role } from '$lib/shared/roles';
+	import type { RoleId } from '$lib/game/types';
 	import { PAL, spriteFor } from '$lib/shared/roleSprites';
 
-	let { role, px = 48, idle = true }: { role: Role; px?: number; idle?: boolean } = $props();
+	let { role, px = 48, idle = true }: { role: RoleId; px?: number; idle?: boolean } = $props();
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 

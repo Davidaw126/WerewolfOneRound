@@ -1,4 +1,7 @@
 import { ALL_ROLES, type Role } from '../roles';
+import { ROLE_FLAVOR } from '../roleFlavor';
+import type { RoleId } from '../../game/types';
+import { roleIdToLegacy } from '../../game/roleBridge';
 import type { Lang } from './types';
 
 // The wire-facing `Role` type IS the Chinese name (a deliberate, unchanged
@@ -38,8 +41,8 @@ const EN_ROLE_NAME: Record<Role, string> = {
 
 const ROLE_NAME: Record<Lang, Record<Role, string>> = { zh: ZH_ROLE_NAME, en: EN_ROLE_NAME };
 
-export function roleName(role: Role, lang: Lang): string {
-	return ROLE_NAME[lang][role];
+export function roleName(role: RoleId, lang: Lang): string {
+	return ROLE_NAME[lang][roleIdToLegacy(role)];
 }
 
 // English flavor lines - not literal translations of ROLE_FLAVOR
@@ -71,8 +74,9 @@ const EN_ROLE_FLAVOR: Record<Role, string> = {
 	野孩子: 'Chooses an idol to follow - his own fate now tied to theirs'
 };
 
-export function roleFlavor(role: Role, lang: Lang, zhFlavor: Record<Role, string>): string {
-	return lang === 'zh' ? zhFlavor[role] : EN_ROLE_FLAVOR[role];
+export function roleFlavor(role: RoleId, lang: Lang): string {
+	const key = roleIdToLegacy(role);
+	return lang === 'zh' ? ROLE_FLAVOR[key] : EN_ROLE_FLAVOR[key];
 }
 
 export function campName(team: 'wolf' | 'village', lang: Lang): string {

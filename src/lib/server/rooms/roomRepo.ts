@@ -31,7 +31,6 @@ import {
 	fixedRoomKeys,
 	randomRoomCode
 } from './keys';
-import type { Role } from '../../shared/roles';
 import {
 	IN_PROGRESS_PHASES,
 	PRE_GAME_PHASES,
@@ -39,11 +38,13 @@ import {
 	type RoomPublicState,
 	type SeatState
 } from '../../shared/gameTypes';
-import { dealCards, type DealResult } from '../../shared/deal';
+import { dealCards, type DealResult } from '../../game/rules/deal';
 import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
-import type { GameState } from '../../game/types';
+import type { GameState, RoleId } from '../../game/types';
+import { ALL_ROLE_IDS } from '../../game/roleMeta';
 import { loadGameState, deleteGameState, clearGameActions } from '../game/gameStateRepo';
-import { roleIdToLegacy } from '../../game/roleBridge';
+import { legacyToRoleId } from '../../game/roleBridge';
+import type { Role } from '../../shared/roles';
 import {
 	mapToLegacyPhase,
 	stageOf,
@@ -100,7 +101,7 @@ redis.defineCommand('submitRoomConfig', { numberOfKeys: 4, lua: SUBMIT_ROOM_CONF
 export interface RoomHashData {
 	phase: Phase;
 	hostSessionId: string;
-	roleConfig: Partial<Record<Role, number>>;
+	roleConfig: Partial<Record<RoleId, number>>;
 	numberOfSeats: number;
 	lockStatus: boolean;
 	nightNumber: number;
@@ -117,13 +118,30 @@ export interface RoomHashData {
 
 const isPreGame = (phase: Phase) => PRE_GAME_PHASES.includes(phase);
 
+/** Roles are stored as RoleId. A room set up before that change (still in
+ * Redis across a deploy) has Chinese role names instead - read those too. */
+function asRoleId(value: string): RoleId | null {
+	return (ALL_ROLE_IDS as readonly string[]).includes(value)
+		? (value as RoleId)
+		: legacyToRoleId(value as Role);
+}
+
+function toRoleIdKeys(config: Record<string, number>): Partial<Record<RoleId, number>> {
+	const out: Partial<Record<RoleId, number>> = {};
+	for (const [role, count] of Object.entries(config)) {
+		const id = asRoleId(role);
+		if (id) out[id] = (out[id] ?? 0) + count;
+	}
+	return out;
+}
+
 export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 	const data = await redis.hgetall(roomKey(code));
 	if (!data.phase) return null;
 	return {
 		phase: (data.phase || 'LOBBY') as Phase,
 		hostSessionId: data.hostSessionId || '',
-		roleConfig: data.roleConfig ? JSON.parse(data.roleConfig) : {},
+		roleConfig: data.roleConfig ? toRoleIdKeys(JSON.parse(data.roleConfig)) : {},
 		numberOfSeats: Number(data.numberOfSeats || 0),
 		lockStatus: data.lockStatus === '1',
 		nightNumber: Number(data.nightNumber || 0),
@@ -274,12 +292,17 @@ export async function setSeatsLocked(code: string, locked: boolean): Promise<voi
 
 // -- Roles -------------------------------------------------------------------
 
-async function dealtIdentities(code: string): Promise<Record<string, Role>> {
-	return (await redis.hgetall(identitiesKey(code))) as Record<string, Role>;
+async function dealtIdentities(code: string): Promise<Record<string, RoleId>> {
+	const out: Record<string, RoleId> = {};
+	for (const [slot, role] of Object.entries(await redis.hgetall(identitiesKey(code)))) {
+		const id = asRoleId(role);
+		if (id) out[slot] = id;
+	}
+	return out;
 }
 
-function flattenDeal(deal: DealResult): Record<string, Role> {
-	const flat: Record<string, Role> = { ...deal.identities };
+function flattenDeal(deal: DealResult): Record<string, RoleId> {
+	const flat: Record<string, RoleId> = { ...deal.identities };
 	if (deal.buried) {
 		flat['buried1'] = deal.buried[0];
 		flat['buried2'] = deal.buried[1];
@@ -294,7 +317,7 @@ export async function submitRoomConfigAtomic(
 	code: string,
 	sessionId: string,
 	config: {
-		roleConfig: Partial<Record<Role, number>>;
+		roleConfig: Partial<Record<RoleId, number>>;
 		numberOfSeats: number;
 		cupidPoisonBlocksHunter: boolean;
 		ruleOverrides: RuleConfigOverrides;
@@ -339,12 +362,12 @@ export async function redeal(code: string): Promise<void> {
  * engine's GameState, not the deal from seating - the deal never learns
  * about in-game changes (上帝之手's 改变身份, the 盗贼 taking a buried card),
  * so replaying it on a refresh/reconnect showed the player their old card. */
-export async function currentRoleOfSeat(code: string, seat: number): Promise<Role | null> {
+export async function currentRoleOfSeat(code: string, seat: number): Promise<RoleId | null> {
 	const room = await readRoomHash(code);
 	if (room && !isPreGame(room.phase)) {
 		const gameState = await loadGameState(code);
 		const player = gameState?.players[seat];
-		if (player) return roleIdToLegacy(player.role);
+		if (player) return player.role;
 	}
 	return (await dealtIdentities(code))[String(seat)] ?? null;
 }
@@ -357,7 +380,10 @@ export async function markRevealed(code: string, sessionId: string): Promise<voi
 /** If this session has already looked at their current role, look it up
  * again (e.g. to replay it on reconnect) - otherwise null, so a client that
  * has never looked isn't shown one unprompted. */
-export async function getRevealedRoleIfAny(code: string, sessionId: string): Promise<Role | null> {
+export async function getRevealedRoleIfAny(
+	code: string,
+	sessionId: string
+): Promise<RoleId | null> {
 	if ((await redis.sismember(revealedKey(code), sessionId)) !== 1) return null;
 	const seat = await seatOf(code, sessionId);
 	if (seat === null) return null;
@@ -369,7 +395,7 @@ export async function getRevealedRoleIfAny(code: string, sessionId: string): Pro
 /** Everything seating produced, for building the engine's StartGameParams. */
 export async function seatingForGameStart(code: string): Promise<{
 	room: RoomHashData;
-	identities: Record<string, Role>;
+	identities: Record<string, RoleId>;
 	seated: SeatedPlayer[];
 } | null> {
 	const room = await readRoomHash(code);

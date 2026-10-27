@@ -1,11 +1,9 @@
 import { loadGameState } from '../../game/gameStateRepo';
 import { runGameAction } from '../../game/gameSync';
-import { legacyToRoleId } from '../../../game/roleBridge';
 import { stageOf } from '../../game/projection';
 import { emitToRoom } from '../emit';
 import type { AckResponse, NightActionSubmission } from '../../../shared/events';
-import type { Role } from '../../../shared/roles';
-import type { NightActions, Player } from '../../../game/types';
+import type { NightActions, Player, RoleId } from '../../../game/types';
 import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
 
 // The pause after a finished turn, the 假环节 timing and the stale-timer
@@ -25,34 +23,34 @@ import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './he
  */
 function buildNightAction(action: NightActionSubmission, player: Player): Partial<NightActions> {
 	switch (action.role) {
-		case '普通狼人':
-		case '白狼王': // shares 普通狼人's collective kill decision - see roleMeta.ts
-		case '黑狼王':
+		case 'WEREWOLF':
+		case 'WOLF_KING': // shares the pack's collective kill decision - see roleMeta.ts
+		case 'BLACK_WOLF_KING':
 			return { wolfKillTarget: action.targetSeat };
-		case '预言家':
+		case 'SEER':
 			return { seerCheckTarget: action.targetSeat };
-		case '女巫':
+		case 'WITCH':
 			return {
 				witchPoisonTarget: action.poisonTarget ?? undefined,
 				witchAntidoteTarget: action.useAntidote ? 0 : undefined
 			};
-		case '守卫':
+		case 'GUARD':
 			return { guardTarget: action.targetSeat };
-		case '狼美人':
+		case 'WOLF_BEAUTY':
 			return { wolfBeautyCharmTarget: action.targetSeat ?? undefined };
-		case '丘比特':
+		case 'CUPID':
 			return { cupidLinks: [action.seatA, action.seatB] };
-		case '盗贼': {
+		case 'THIEF': {
 			if (!action.swap) return {};
 			const idx = action.swap === 'buried1' ? 0 : 1;
 			const pick = player.thiefExtraCards?.[idx];
 			return pick ? { thiefPick: pick } : {};
 		}
-		case '野孩子':
+		case 'WILD_CHILD':
 			return { wildChildIdol: action.targetSeat };
-		case '摄梦人':
+		case 'DREAM_WEAVER':
 			return { dreamWeaverTarget: action.targetSeat };
-		case '恶灵骑士':
+		case 'NIGHTMARE':
 			return { nightmareFearTarget: action.targetSeat ?? undefined };
 	}
 }
@@ -70,9 +68,9 @@ export async function handleNightSubmitAction(
 		// were actually dealt, never an arbitrary claimed role. Read from the
 		// LIVE GameState, not a static identities snapshot - a 盗贼 swap changes
 		// this mid-game, and this must reflect that.
-		const roleId = legacyToRoleId(action.role);
+		const roleId = action.role;
 		const player = state.players[seat];
-		if (!roleId || !player || player.role !== roleId) {
+		if (!player || player.role !== roleId) {
 			return { ok: false, error: 'not_your_role' };
 		}
 		// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
@@ -129,7 +127,7 @@ export async function handleNightAdvanceStage(socket: GameSocket): Promise<AckRe
  * mutates GameState, only compares against its current stage. */
 export async function handleNightNarrationStarted(
 	socket: GameSocket,
-	role: Role
+	role: RoleId
 ): Promise<AckResponse> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
