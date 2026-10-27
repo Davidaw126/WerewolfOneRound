@@ -49,8 +49,9 @@ src/
       game/          # the IO shell around the pure engine:
                      #   gameStateRepo.ts   - load/reduce/save under a per-room Redis
                      #                        lock, plus the action log (room:{code}:actions)
-                     #   gameSync.ts        - broadcasts PhaseChanged on real transitions,
-                     #                        schedules 假环节/auto-advance timers
+                     #   gameSync.ts        - runGameAction(): the one path every game
+                     #                        action takes (lock+check, reduce, ack, phase
+                     #                        mirror, effects out, 假环节/pause timers)
                      #   effectTranslator.ts - EngineEffect[] -> actual socket emits,
                      #                        RoleId -> legacy Role translation
                      #   projection.ts      - GameState -> RoomPublicState/legacy-Phase
@@ -109,7 +110,7 @@ Response security headers (CSP via SvelteKit's own `csp` Vite-plugin option, plu
 - **Push and deploy only when explicitly asked.** Commit locally as you go; Render auto-deploys on every push to `master`. Live URL: https://werewolf-judge-helper.onrender.com (`/health` returns 200). To confirm a deploy, fetch `/` with `curl -L` (it redirects to `/register`), trace → `_app/immutable/entry/app.*.js` → `nodes/*` → `chunks/*` and grep for a string from the change — `/room/XXXX` has no app entry to trace from.
 - **Don't change the Render config** (`render.yaml`, env vars, headers like `ADDRESS_HEADER`) without asking first.
 - **Keep the legacy vote / `HUNTER_SHOOT` code** (unreachable while `shotsAtTable=false`). Report it as dead code; don't delete it.
-- **In-game reads come from `GameState`, never the seating-time Redis keys** (`identities`, `deadSeats`, …) — those drift once roles change in play (上帝之手 SET_ROLE, 盗贼, 野孩子). Use `roomRepo.currentRoleOfSeat()`. `rooms/roomRepo.ts` is the Room module: it alone touches the room's Redis keys and decides which store answers "who sits in seat N / what role is it" (handlers, `effectTranslator`, `gameSync` call it). Its tests (`roomRepo.spec.ts`) run against local Redis database 15.
+- **In-game reads come from `GameState`, never the seating-time Redis keys** (`identities`, `deadSeats`, …) — those drift once roles change in play (上帝之手 SET_ROLE, 盗贼, 野孩子). Use `roomRepo.currentRoleOfSeat()`. `rooms/roomRepo.ts` is the Room module: it alone touches the room's Redis keys and decides which store answers "who sits in seat N / what role is it" (handlers, `effectTranslator`, `gameSync` call it). Its tests (`roomRepo.spec.ts`) run against local Redis database 15. Game handlers only check who is asking and then call `gameSync.runGameAction()` (pass a function of the state for checks that must run under the lock); its tests (`gameSync.spec.ts`, database 14) use a fake io and fake timers.
 - **Secrecy invariants**: deaths stay out of every projection until 公布 (`deadSeatsOf` excludes `pendingNightDeaths`); 上帝之手 改变身份 goes only to the host and that player; the host's real stage (`hostStage`) only to the host; a dead role's turn still runs as a 假环节 with realistic timing (`fakeStageDurationMs` in `gameSync.ts`).
 - **Before calling a change done**: `npm test`, `npm run check`, `npm run lint`. For server/socket changes also run the real-server e2e: start Redis and `npm run dev -- --port 5173 --strictPort`, then `npm run e2e` (both games), `npm run e2e -- basic` or `npm run e2e -- special` (丘比特/盗贼/守卫/猎人). `-- halt` then restart the server then `-- resume` checks that night timers survive a restart. If registration hits the rate limit locally: `redis-cli del 'wolf:ratelimit:register:::1'`.
 - **Prove bugs before fixing**: write the test first and check it fails on the old code.

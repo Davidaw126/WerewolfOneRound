@@ -1,30 +1,43 @@
-// The one place every engine write funnels through on its way back out to
-// sockets: mirror the game's phase into the room (roomRepo.recordGamePhase,
-// which room-scope logic like handleRoomLeave's IN_PROGRESS_PHASES check
-// reads), broadcast
-// PhaseChanged only when the legacy-mapped phase actually changed (an
-// unconditional re-broadcast on every single player action - e.g. every
-// vote cast - would retrigger anything the client keys off phase, like
-// narration, on every one of those actions instead of just real
-// transitions), then hand every other effect to the translator.
+// The game-action module: the one path every engine write takes from a
+// handler (or a pacing timer) out to the phones.
+//
+//   runGameAction(code, action) -> lock, decide, reduce, save (gameStateRepo)
+//     -> interpret the result: a night-rule rejection or an ignored action
+//        becomes an error ack, anything else ok
+//     -> mirror the game's phase into the room (roomRepo.recordGamePhase),
+//        broadcast PhaseChanged only when the legacy-mapped phase actually
+//        changed (an unconditional re-broadcast on every vote cast would
+//        retrigger anything the client keys off phase, like narration)
+//     -> hand every other effect to the translator
+//     -> arm the night's pacing timers.
+//
+// Handlers only check who is asking (requireHost / requireSeat) and say what
+// they want; everything after that lives here. Messages go out through
+// socket/emit.ts's io instance and timers through setTimeout, so tests run
+// this module with a fake io and fake timers.
 
 import { redis } from '../redis';
 import { recordGamePhase } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
-import type { Phase as LegacyPhase } from '../../shared/gameTypes';
+import type { AckResponse } from '../../shared/events';
 import { actsInStage, PACK_KILL_ROLES, STATUS_STAGE_ROLES } from '../../game/roleMeta';
-import { stageConfirmComplete } from '../../game/engine';
+import { stageConfirmComplete, type StartGameParams } from '../../game/engine';
 import { mapToLegacyPhase } from './projection';
 import { translateEffects } from './effectTranslator';
-import { applyGameAction, loadGameState } from './gameStateRepo';
+import {
+	applyGameAction,
+	loadGameState,
+	startAndSaveGame,
+	type ActionInput
+} from './gameStateRepo';
 
 const randomMs = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
 /** The beat after a finished turn (an action submitted, a 确认 tapped)
  * before the next role is called: 3-5 s, random each time, so the gap
  * doesn't tick like a metronome the table can count. */
-export function postActionPauseMs(): number {
+function postActionPauseMs(): number {
 	return randomMs(3000, 5000);
 }
 
@@ -46,29 +59,25 @@ function roleHasLivingHolder(state: GameState, role: RoleId): boolean {
 	return Object.values(state.players).some((p) => !p.isDead && actsInStage(role, p.role));
 }
 
+const isNight = (state: GameState) => state.phase === 'NIGHT' || state.phase === 'FIRST_NIGHT';
+
 /** §8.5 假环节: a stage for a role with no living holder never gets a
- * submission to trigger night.ts's usual post-action auto-advance, so this
- * schedules the same pacing beat directly on stage ENTRY instead - a fake
- * stage still takes a consistent, predictable amount of time before moving
- * on, exactly like a real one, instead of sitting frozen until the host
- * happens to notice and tap through it manually. HUNTER is the one role
- * whose REAL stage is host-driven regardless (its "turn" is the host
- * confirming a live thumbs up/down gesture, not a decision to wait out - see
- * night.ts's own note) - but a FAKE Hunter stage (no living holder) must
- * still auto-advance exactly like the other 4 always-announced roles, or its
- * absence would be the one stage that visibly stalls every single night,
- * defeating the whole point of 假环节. The `roleHasLivingHolder` check below
- * is what tells those two cases apart - it must run before, not instead of,
- * the HUNTER-specific behavior. Safe to call on every single sync, real
- * stage or not: a redundant/stale timer's expectedStepKey simply won't match
- * by the time it fires if the stage already moved on. */
+ * submission to finish it, so this schedules the same pacing beat directly
+ * on stage ENTRY instead - a fake stage still takes a consistent, realistic
+ * amount of time before moving on, exactly like a real one, instead of
+ * sitting frozen until the host happens to notice and tap through it. A REAL
+ * 猎人 stage waits for its holder's 确认 like any status stage, but a FAKE
+ * one must still auto-advance like the other always-announced roles, or its
+ * absence would be the one stage that visibly stalls every night. Safe to
+ * call on every sync: a redundant/stale timer's expectedStepKey simply won't
+ * match by the time it fires if the stage already moved on. */
 function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 	const key = state.currentStepKey;
 	if (!key || !key.startsWith('role:')) return;
 	const role = key.slice('role:'.length) as RoleId;
 	// Not only the always-announced roles: any stage can lose its last holder
 	// mid-turn (上帝之手 kills or recasts them), and that stage must not freeze.
-	if (roleHasLivingHolder(state, role)) return; // real stage - HUNTER waits for the host; every other role's submission-triggered timer (night.ts) handles it
+	if (roleHasLivingHolder(state, role)) return;
 
 	scheduleAdvance(code, key, fakeStageDurationMs(role));
 }
@@ -76,13 +85,11 @@ function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 /** Moves the night on from `expectedStepKey` after `ms` - a no-op if the
  * stage has already moved on by then (the host advanced it, or another
  * timer won the race). */
-export function scheduleAdvance(code: string, expectedStepKey: string | null, ms: number): void {
+function scheduleAdvance(code: string, expectedStepKey: string | null, ms: number): void {
 	setTimeout(() => {
-		applyGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey }, Date.now())
-			.then(({ result, previousLegacyPhase }) =>
-				syncAndBroadcast(code, result, previousLegacyPhase)
-			)
-			.catch((err) => console.error('auto-advance failed', err));
+		runGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey }).catch((err) =>
+			console.error('auto-advance failed', err)
+		);
 	}, ms);
 }
 
@@ -98,6 +105,19 @@ function stageFinished(state: GameState): boolean {
 	return state.submittedRoles.includes(role);
 }
 
+/** Arms whatever the night now waits on: the pause before the next role
+ * when this action just finished the stage (a submission, the last 确认),
+ * or the made-up turn length of a stage nobody alive can take. */
+function scheduleNightTimers(code: string, before: GameState | null, after: GameState): void {
+	if (!isNight(after)) return;
+	const alreadyFinished =
+		before !== null && before.currentStepKey === after.currentStepKey && stageFinished(before);
+	if (stageFinished(after) && !alreadyFinished) {
+		scheduleAdvance(code, after.currentStepKey, postActionPauseMs());
+	}
+	maybeScheduleFakeStageAdvance(code, after);
+}
+
 /** The pacing timers live in memory, so a server restart (a deploy during a
  * game) dropped them and the night sat still until the host forced it on.
  * On startup, re-arm whatever each running night was waiting on. */
@@ -109,38 +129,66 @@ export async function resumeNightTimers(): Promise<void> {
 		for (const key of keys) {
 			const code = key.slice('wolf:room:'.length, -':gameState'.length);
 			const state = await loadGameState(code);
-			if (!state || (state.phase !== 'NIGHT' && state.phase !== 'FIRST_NIGHT')) continue;
-			if (stageFinished(state)) scheduleAdvance(code, state.currentStepKey, postActionPauseMs());
-			else maybeScheduleFakeStageAdvance(code, state);
+			if (state) scheduleNightTimers(code, null, state);
 		}
 	} while (cursor !== '0');
 }
 
-/** Used by every steady-state action (night submit/advance/announce, vote
- * cast/end, hunter shoot) - `previousLegacyPhase` is what the room hash said
- * right before this action ran (captured by applyGameAction), so this can
- * tell a real transition apart from an action that left the phase alone. */
-export async function syncAndBroadcast(
+/** Phase mirror, PhaseChanged on a real transition, every other effect to
+ * the translator, then the night's timers. `before` is null at game start,
+ * where there's no earlier game phase to compare against. */
+async function syncAndBroadcast(
 	code: string,
-	result: EngineResult,
-	previousLegacyPhase: LegacyPhase
+	before: GameState | null,
+	result: EngineResult
 ): Promise<void> {
 	const legacyPhase = mapToLegacyPhase(result.state);
 	await recordGamePhase(code, legacyPhase, result.state.round);
-	if (legacyPhase !== previousLegacyPhase) {
+	if (before === null || legacyPhase !== mapToLegacyPhase(before)) {
 		emitToRoom(code, { kind: 'PhaseChanged', phase: legacyPhase, nightNumber: result.state.round });
 	}
 	await translateEffects(code, result.effects);
-	maybeScheduleFakeStageAdvance(code, result.state);
+	scheduleNightTimers(code, before, result.state);
 }
 
-/** Used once, by RoomStartGame - there's no "previous" GameState to diff
- * against (the room was in SEATING, which is never what a fresh game maps
- * to), so this always broadcasts. */
-export async function syncAndBroadcastGameStart(code: string, result: EngineResult): Promise<void> {
-	const legacyPhase = mapToLegacyPhase(result.state);
-	await recordGamePhase(code, legacyPhase, result.state.round);
-	emitToRoom(code, { kind: 'PhaseChanged', phase: legacyPhase, nightNumber: result.state.round });
-	await translateEffects(code, result.effects);
-	maybeScheduleFakeStageAdvance(code, result.state);
+export interface RunOptions {
+	/** What to answer when the engine ignored the action (no effects at all:
+	 * wrong phase, a double tap, a seat it can't apply to). Without this an
+	 * ignored action still answers ok. */
+	ignored?: string | ((state: GameState) => AckResponse);
+}
+
+/** Runs one game action end to end and answers the caller's ack. */
+export async function runGameAction(
+	code: string,
+	input: ActionInput,
+	options: RunOptions = {}
+): Promise<AckResponse> {
+	const applied = await applyGameAction(code, input, Date.now());
+	if ('refused' in applied) return applied.refused;
+	const { previous, result } = applied;
+
+	// A night-rule violation comes back as a NightActionRejected PRIVATE
+	// effect for the submitter, and is the ONLY effect such a submission
+	// produces - it becomes the ack's error instead of anything sent.
+	const rejection = result.effects.find(
+		(e) => (e.payload as { kind?: string })?.kind === 'NightActionRejected'
+	);
+	if (rejection) return { ok: false, error: (rejection.payload as { error: string }).error };
+
+	if (result.effects.length === 0 && options.ignored !== undefined) {
+		return typeof options.ignored === 'string'
+			? { ok: false, error: options.ignored }
+			: options.ignored(result.state);
+	}
+
+	await syncAndBroadcast(code, previous, result);
+	return { ok: true };
+}
+
+/** Deals the opening GameState from what seating produced and tells the
+ * room - the one-time counterpart of runGameAction for RoomStartGame. */
+export async function startGameAndBroadcast(code: string, params: StartGameParams): Promise<void> {
+	const result = await startAndSaveGame(code, params);
+	await syncAndBroadcast(code, null, result);
 }

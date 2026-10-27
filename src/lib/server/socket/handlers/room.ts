@@ -17,8 +17,7 @@ import {
 import { IN_PROGRESS_PHASES, PRE_GAME_PHASES } from '../../../shared/gameTypes';
 import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel } from '../emit';
-import { startAndSaveGame } from '../../game/gameStateRepo';
-import { syncAndBroadcastGameStart } from '../../game/gameSync';
+import { startGameAndBroadcast } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
@@ -208,8 +207,7 @@ export async function handleRoomStartGame(
 		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
 	}
 
-	const result = await startAndSaveGame(code, params);
-	await syncAndBroadcastGameStart(code, result);
+	await startGameAndBroadcast(code, params);
 	return { ok: true };
 }
 

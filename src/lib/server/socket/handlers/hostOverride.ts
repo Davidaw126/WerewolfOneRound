@@ -3,8 +3,7 @@
 // actual state mutation; this is just the auth + wire-shape bridge, same
 // split as every other handler in this directory.
 
-import { applyGameAction } from '../../game/gameStateRepo';
-import { syncAndBroadcast } from '../../game/gameSync';
+import { runGameAction } from '../../game/gameSync';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import type { AckResponse } from '../../../shared/events';
 import type { Role } from '../../../shared/roles';
@@ -26,11 +25,5 @@ export async function handleHostOverride(
 		if (!roleId) throw new ActionError('unsupported_role');
 	}
 
-	const { result, previousLegacyPhase } = await applyGameAction(
-		code,
-		{ type: 'HOST_OVERRIDE', kind: overrideKind, seat, role: roleId },
-		Date.now()
-	);
-	await syncAndBroadcast(code, result, previousLegacyPhase);
-	return { ok: true };
+	return runGameAction(code, { type: 'HOST_OVERRIDE', kind: overrideKind, seat, role: roleId });
 }

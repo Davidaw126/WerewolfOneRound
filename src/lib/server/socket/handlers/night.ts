@@ -1,29 +1,15 @@
-import { applyGameAction, loadGameState } from '../../game/gameStateRepo';
-import { syncAndBroadcast, postActionPauseMs, scheduleAdvance } from '../../game/gameSync';
-import { stageConfirmComplete } from '../../../game/engine';
+import { loadGameState } from '../../game/gameStateRepo';
+import { runGameAction } from '../../game/gameSync';
 import { legacyToRoleId } from '../../../game/roleBridge';
 import { stageOf } from '../../game/projection';
 import { emitToRoom } from '../emit';
 import type { AckResponse, NightActionSubmission } from '../../../shared/events';
 import type { Role } from '../../../shared/roles';
-import type { NightActions, Player, RoleId } from '../../../game/types';
+import type { NightActions, Player } from '../../../game/types';
 import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
 
-// Pacing beat after a player's night action (or 确认), before the next role
-// gets prompted (or the night resolves) - gives the group a moment to notice
-// the turn actually changed, and the host device's narration time to finish.
-// Random 3-5 s each time - see gameSync.ts's postActionPauseMs.
-
-/** Not awaited by the caller - the pause is pacing for the *next* prompt, not
- * part of the submitting player's own acknowledgment, so it must not extend
- * how long their NightSubmitAction ack takes to come back. `expectedStepKey`
- * (captured right after the submission that triggered this) is what keeps a
- * stale timer - one that fires after the host already manually advanced, or
- * after a different player's own timer already won the race - from
- * double-advancing past whatever stage came next. */
-function scheduleAutoAdvance(code: string, expectedStepKey: string | null): void {
-	scheduleAdvance(code, expectedStepKey, postActionPauseMs());
-}
+// The pause after a finished turn, the 假环节 timing and the stale-timer
+// guard all live in gameSync.ts's runGameAction.
 
 /**
  * Old wire shape -> the engine's NightActions. Two fields are worth a note:
@@ -78,120 +64,62 @@ export async function handleNightSubmitAction(
 	const code = requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 
-	const state = await loadGameState(code);
-	if (!state) return { ok: false, error: 'game_not_started' };
-
-	// The server-side role-match check that closed the old app's cheating
-	// vector: a client can only ever submit an action for the role they were
-	// actually dealt, never an arbitrary claimed role. Read from the LIVE
-	// GameState, not a static identities snapshot - a 盗贼 swap changes this
-	// mid-game, and this must reflect that.
-	const roleId = legacyToRoleId(action.role);
-	const player = state.players[seat];
-	if (!roleId || !player || player.role !== roleId) {
-		return { ok: false, error: 'not_your_role' };
-	}
-
-	// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
-	// 恶灵骑士 would otherwise be read as their own skill's target.
-	const nightAction =
-		state.currentStepKey === 'role:WEREWOLF' && 'targetSeat' in action
-			? { wolfKillTarget: action.targetSeat }
-			: buildNightAction(action, player);
-	return submitForSeat(code, seat, roleId, nightAction);
+	return runGameAction(code, (state) => {
+		// The server-side role-match check that closed the old app's cheating
+		// vector: a client can only ever submit an action for the role they
+		// were actually dealt, never an arbitrary claimed role. Read from the
+		// LIVE GameState, not a static identities snapshot - a 盗贼 swap changes
+		// this mid-game, and this must reflect that.
+		const roleId = legacyToRoleId(action.role);
+		const player = state.players[seat];
+		if (!roleId || !player || player.role !== roleId) {
+			return { ok: false, error: 'not_your_role' };
+		}
+		// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
+		// 恶灵骑士 would otherwise be read as their own skill's target.
+		const nightAction =
+			state.currentStepKey === 'role:WEREWOLF' && 'targetSeat' in action
+				? { wolfKillTarget: action.targetSeat }
+				: buildNightAction(action, player);
+		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction };
+	});
 }
 
 /** A feared player (恶灵骑士) ends their turn without acting. The engine only
- * accepts it for a seat that really is feared tonight - for anyone else an
- * empty submission is a silent no-op - and it goes through the same
- * auto-advance as a real action, so the pause is indistinguishable. */
+ * accepts it for a seat that really is feared tonight, and it goes through
+ * the same auto-advance as a real action, so the pause is indistinguishable. */
 export async function handleNightPass(socket: GameSocket): Promise<AckResponse> {
 	const code = requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
-	const state = await loadGameState(code);
-	if (!state) return { ok: false, error: 'game_not_started' };
-	const player = state.players[seat];
-	if (!player) return { ok: false, error: 'not_your_role' };
-	if (state.fearedSeat !== seat) return { ok: false, error: 'not_feared' };
-	return submitForSeat(code, seat, player.role, {});
+	return runGameAction(code, (state) => {
+		const player = state.players[seat];
+		if (!player) return { ok: false, error: 'not_your_role' };
+		if (state.fearedSeat !== seat) return { ok: false, error: 'not_feared' };
+		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: player.role, action: {} };
+	});
 }
 
 export async function handleNightConfirmStage(socket: GameSocket): Promise<AckResponse> {
 	const code = requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
-	const { result, previousLegacyPhase } = await applyGameAction(
+	return runGameAction(
 		code,
 		{ type: 'CONFIRM_STAGE', seat },
-		Date.now()
+		{
+			// 情侣相认 shows the same button on every phone, so a non-lover's tap
+			// must look exactly like a lover's - no error popup to give it away.
+			ignored: (state) =>
+				state.currentStepKey === 'couple_reveal'
+					? { ok: true }
+					: { ok: false, error: 'not_your_turn' }
+		}
 	);
-	if (result.effects.length === 0) {
-		// 情侣相认 shows the same button on every phone, so a non-lover's tap
-		// must look exactly like a lover's - no error popup to give it away.
-		if (result.state.currentStepKey === 'couple_reveal') return { ok: true };
-		return { ok: false, error: 'not_your_turn' };
-	}
-	await syncAndBroadcast(code, result, previousLegacyPhase);
-	// Same pause as after any other finished turn before the next role.
-	if (stageConfirmComplete(result.state)) scheduleAutoAdvance(code, result.state.currentStepKey);
-	return { ok: true };
-}
-
-async function submitForSeat(
-	code: string,
-	seat: number,
-	roleId: RoleId,
-	nightAction: Partial<NightActions>
-): Promise<AckResponse> {
-	const before = await loadGameState(code);
-	const { result, previousLegacyPhase } = await applyGameAction(
-		code,
-		{ type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction },
-		Date.now()
-	);
-
-	// A rejected action (rule violation) surfaces as a NightActionRejected
-	// PRIVATE effect targeting the submitter, never a room broadcast - matches
-	// the old app's submitNightAction returning {ok:false,error} straight from
-	// the ack instead of pushing an event. A rejection is the ONLY effect a
-	// failed submission ever produces (engine.ts's `reject()` returns before
-	// anything else runs), so there's nothing else here to translate either way.
-	const rejection = result.effects.find(
-		(e) => e.seat === seat && (e.payload as { kind?: string })?.kind === 'NightActionRejected'
-	);
-	if (rejection) {
-		return { ok: false, error: (rejection.payload as { error: string }).error };
-	}
-
-	await syncAndBroadcast(code, result, previousLegacyPhase);
-
-	// HUNTER's turn is informational only (§4.2 HUNTER_STATUS) - nobody ever
-	// submits an action for it, so this branch is unreachable for that role
-	// today, but the exclusion is spelled out for when that changes. Every
-	// other role that reaches here just submitted a real decision, so the
-	// stage should move on without the host needing to tap anything.
-	// Only schedule when the submission actually landed - a silently ignored
-	// one (e.g. an empty pass from a seat that isn't feared) mustn't skip the
-	// turn for everyone else.
-	const changed =
-		JSON.stringify(before?.submittedRoles) !== JSON.stringify(result.state.submittedRoles);
-	if (roleId !== 'HUNTER' && changed) {
-		scheduleAutoAdvance(code, result.state.currentStepKey);
-	}
-
-	return { ok: true };
 }
 
 export async function handleNightAdvanceStage(socket: GameSocket): Promise<AckResponse> {
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
-	const { result, previousLegacyPhase } = await applyGameAction(
-		code,
-		{ type: 'ADVANCE_STAGE' },
-		Date.now()
-	);
-	if (result.effects.length === 0) return { ok: false, error: 'invalid_phase' };
-	await syncAndBroadcast(code, result, previousLegacyPhase);
-	return { ok: true };
+	return runGameAction(code, { type: 'ADVANCE_STAGE' }, { ignored: 'invalid_phase' });
 }
 
 /** Relays "this role's narration line just started speaking" from the host's
@@ -222,15 +150,11 @@ export async function handleNightAnnounceResults(socket: GameSocket): Promise<Ac
 	const code = requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
 
-	const { result, previousLegacyPhase } = await applyGameAction(
-		code,
-		{ type: 'ANNOUNCE_NIGHT_RESULTS' },
-		Date.now()
-	);
 	// A genuine no-op (nothing was pending, or a double-tap race) produces
 	// zero effects - see engine.ts's early-return guard.
-	if (result.effects.length === 0) return { ok: false, error: 'nothing_to_announce' };
-
-	await syncAndBroadcast(code, result, previousLegacyPhase);
-	return { ok: true };
+	return runGameAction(
+		code,
+		{ type: 'ANNOUNCE_NIGHT_RESULTS' },
+		{ ignored: 'nothing_to_announce' }
+	);
 }

@@ -13,8 +13,6 @@ import { ROOM_TTL_SECONDS, gameStateKey, gameLockKey, gameActionsKey } from '../
 import { reduce, startGame, type StartGameParams } from '../../game/engine';
 import type { EngineAction, EngineResult, GameState } from '../../game/types';
 import { ActionError } from '../socket/actionError';
-import { mapToLegacyPhase } from './projection';
-import type { Phase as LegacyPhase } from '../../shared/gameTypes';
 
 const LOCK_TTL_MS = 3000;
 const ACQUIRE_RETRY_DELAY_MS = 50;
@@ -85,7 +83,7 @@ export async function clearGameActions(code: string): Promise<void> {
  * every later `applyGameAction`. Locked for consistency with every other
  * write to this room's state, even though only the host can trigger it.
  * Returns the full EngineResult (not just effects) - callers need the final
- * `state` too, to sync the legacy room-hash phase and broadcast it. */
+ * `state` too, to sync the room's phase and broadcast it. */
 export async function startAndSaveGame(
 	code: string,
 	params: StartGameParams
@@ -97,33 +95,39 @@ export async function startAndSaveGame(
 	});
 }
 
-export interface ApplyResult {
-	result: EngineResult;
-	/** The legacy-mapped phase from BEFORE this action ran - gameSync.ts uses
-	 * this to tell a real phase transition apart from an action (e.g. a vote
-	 * cast) that left the phase alone, so PhaseChanged only ever broadcasts on
-	 * an actual change. */
-	previousLegacyPhase: LegacyPhase;
-}
+/** What a caller hands applyGameAction: the action itself, or a function
+ * that decides it from the current state (inside the lock) - returning a
+ * refusal instead when the action isn't allowed right now. */
+export type ActionInput = EngineAction | ((state: GameState) => EngineAction | Refusal);
+export type Refusal = { ok: false; error: string };
 
-/** The engine's steady-state entry point from the IO shell: load -> reduce ->
- * save -> log, all under one lock acquisition so the read and the write can
- * never straddle someone else's write. Throws ActionError('game_not_started')
- * if this room has no game in progress - every call site already gates on
- * the room being in an in-game phase before it gets here, so that should
- * only ever fire on a genuine bug, not routine player action. */
+export type ApplyResult =
+	| { refused: Refusal }
+	| {
+			/** The state right before this action, for telling a real
+			 * transition apart from an action that left things alone. */
+			previous: GameState;
+			result: EngineResult;
+	  };
+
+/** The engine's steady-state entry point from the IO shell: load -> decide
+ * -> reduce -> save -> log, all under one lock acquisition so the read and
+ * the write can never straddle someone else's write. A refusal saves
+ * nothing. Throws ActionError('game_not_started') if this room has no game
+ * in progress. */
 export async function applyGameAction(
 	code: string,
-	action: EngineAction,
+	input: ActionInput,
 	now: number
 ): Promise<ApplyResult> {
 	return withGameLock(code, async () => {
 		const state = await loadGameState(code);
 		if (!state) throw new ActionError('game_not_started');
-		const previousLegacyPhase = mapToLegacyPhase(state);
+		const action = typeof input === 'function' ? input(state) : input;
+		if ('ok' in action) return { refused: action };
 		const result = reduce(state, action);
 		await saveGameState(code, result.state);
 		await appendGameAction(code, action, now);
-		return { result, previousLegacyPhase };
+		return { previous: state, result };
 	});
 }
