@@ -42,6 +42,14 @@ export function deadSeatsOf(state: GameState): number[] {
 		.sort((a, b) => a - b);
 }
 
+/** 白痴 who flipped on being voted out: alive, but without a vote. Public. */
+export function revealedIdiotsOf(state: GameState): number[] {
+	return Object.values(state.players)
+		.filter((p) => p.isRevealedIdiot)
+		.map((p) => p.seat)
+		.sort((a, b) => a - b);
+}
+
 /** S11: WHO has voted, never who they voted for. */
 export function votedSeatsOf(state: GameState): number[] {
 	return Object.keys(state.votes).map(Number);

@@ -146,10 +146,23 @@ describe('time of day', () => {
 });
 
 describe('events', () => {
-	it('night results mark the dead and log one public line, in either language', () => {
+	it('takes who is dead and who flipped from the server, both ways (上帝之手 REVIVE)', () => {
+		const store = phoneOf('s1', room());
+		store.applyServerEvent({ kind: 'DeathsUpdated', deadSeats: [2, 4], revealedIdiots: [3] });
+		expect(store.state?.seats.map((s) => [s.isDead, !!s.revealedIdiot])).toEqual([
+			[false, false],
+			[true, false],
+			[false, true],
+			[true, false]
+		]);
+		store.applyServerEvent({ kind: 'DeathsUpdated', deadSeats: [4], revealedIdiots: [3] });
+		expect(store.state?.deadSeats).toEqual([4]);
+		expect(store.state?.seats[1].isDead).toBe(false);
+	});
+
+	it('night results log one public line, in either language', () => {
 		const store = phoneOf('s1', room({ phase: 'DAWN' }));
 		store.applyServerEvent({ kind: 'NightResolved', nightNumber: 1, deaths: [2] });
-		expect(store.state?.seats.find((s) => s.seatNumber === 2)?.isDead).toBe(true);
 		expect(store.activityLog).toHaveLength(1);
 		expect(store.roomLog).toHaveLength(1);
 		const [entry] = store.activityLog;

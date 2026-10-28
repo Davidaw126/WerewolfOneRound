@@ -161,6 +161,29 @@ describe('a real night turn', () => {
 	});
 });
 
+describe('who is dead, as the room learns it', () => {
+	it('a night kill reaches no phone until the Host announces it', async () => {
+		const code = await startedGame();
+		await hostAdvanceTo(code, 'role:WEREWOLF');
+		await runGameAction(code, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 3 }
+		});
+		for (let i = 0; i < 5 && (await loadGameState(code))?.phase !== 'DAWN'; i++) {
+			await runGameAction(code, { type: 'ADVANCE_STAGE' });
+		}
+		expect((await loadGameState(code))?.phase).toBe('DAWN');
+		const deathsSent = () =>
+			sent.filter((s) => s.event.kind === 'DeathsUpdated').map((s) => s.event.deadSeats);
+		expect(deathsSent().flat()).not.toContain(3);
+
+		await runGameAction(code, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		expect(deathsSent().at(-1)).toEqual([3]);
+	});
+});
+
 describe('Host-only actions', () => {
 	it('are refused for anyone else, under the lock, and change nothing', async () => {
 		const code = await startedGame();

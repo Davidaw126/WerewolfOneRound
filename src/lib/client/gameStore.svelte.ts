@@ -413,38 +413,6 @@ export class GameStore {
 		this.unsubscribers = [];
 	}
 
-	private markRevealedIdiot(seat: number): void {
-		if (!this.state) return;
-		this.state = {
-			...this.state,
-			seats: this.state.seats.map((s) =>
-				s.seatNumber === seat ? { ...s, revealedIdiot: true } : s
-			)
-		};
-	}
-
-	private markDead(seat: number): void {
-		if (!this.state) return;
-		if (this.state.deadSeats.includes(seat)) return;
-		this.state = {
-			...this.state,
-			deadSeats: [...this.state.deadSeats, seat].sort((a, b) => a - b),
-			seats: this.state.seats.map((s) => (s.seatNumber === seat ? { ...s, isDead: true } : s))
-		};
-	}
-
-	/** M6 上帝之手 REVIVE only - every other death is permanent, so nothing
-	 * else ever needs to undo markDead. */
-	private markAlive(seat: number): void {
-		if (!this.state) return;
-		if (!this.state.deadSeats.includes(seat)) return;
-		this.state = {
-			...this.state,
-			deadSeats: this.state.deadSeats.filter((s) => s !== seat),
-			seats: this.state.seats.map((s) => (s.seatNumber === seat ? { ...s, isDead: false } : s))
-		};
-	}
-
 	/** Applies a full state snapshot - shared by the `StateSnapshot` broadcast
 	 * event and by callers that received a `state` field directly in an
 	 * action's ack response (e.g. `RoomJoin`/`ResyncRequest`), which is never
@@ -578,9 +546,20 @@ export class GameStore {
 				break;
 			case 'NightResolved':
 				this.lastNightDeaths = event.deaths;
-				for (const seat of event.deaths) this.markDead(seat);
 				this.logPublic(logLine('nightDeaths', event.deaths));
 				break;
+			case 'DeathsUpdated': {
+				this.state = {
+					...this.state,
+					deadSeats: event.deadSeats,
+					seats: this.state.seats.map((s) => ({
+						...s,
+						isDead: event.deadSeats.includes(s.seatNumber),
+						...(event.revealedIdiots.includes(s.seatNumber) ? { revealedIdiot: true } : {})
+					}))
+				};
+				break;
+			}
 			case 'DayDecided':
 				this.state = { ...this.state, dayDecided: true };
 				break;
@@ -601,13 +580,6 @@ export class GameStore {
 					idiotRevealed: event.idiotRevealed === true
 				};
 				this.state = { ...this.state, pkCandidates: event.pkCandidates ?? [] };
-				if (event.idiotRevealed && event.eliminatedSeat !== null) {
-					// Flipped, not dead - see SeatState.revealedIdiot.
-					this.markRevealedIdiot(event.eliminatedSeat);
-				} else if (event.eliminatedSeat !== null) {
-					this.markDead(event.eliminatedSeat);
-				}
-				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				this.logPublic(
 					logLine('dayResult', {
 						tie: event.tie,
@@ -625,20 +597,17 @@ export class GameStore {
 				this.state = { ...this.state, currentSpeaker: event.seat, speechOrder: event.order };
 				break;
 			case 'DayOut': {
-				for (const seat of [...event.seats, ...event.followDeaths]) this.markDead(seat);
 				this.logPublic(logLine('dayOut', event.seats, event.followDeaths));
 				break;
 			}
 			case 'SelfExploded': {
 				this.logPublic(logLine('selfExplode', event.seat));
-				this.markDead(event.seat);
 				break;
 			}
 			case 'KnightDuelResolved': {
 				this.logPublic(
 					logLine('knightDuel', event.knightSeat, event.targetSeat, event.targetWasWolf)
 				);
-				for (const seat of event.deaths) this.markDead(seat);
 				this.state = { ...this.state, knightUsed: true };
 				break;
 			}
@@ -653,8 +622,6 @@ export class GameStore {
 				};
 				this.hunterAuthorized = false;
 				this.state = { ...this.state, hunterSeat: null };
-				if (event.shotSeat !== null) this.markDead(event.shotSeat);
-				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
 				this.logPublic(
 					logLine('hunterResult', {
 						hunterSeat: event.hunterSeat,
@@ -694,8 +661,6 @@ export class GameStore {
 				this.revealTurn();
 				break;
 			case 'HostOverrideApplied': {
-				if (event.overrideKind === 'KILL') for (const seat of event.deaths) this.markDead(seat);
-				if (event.overrideKind === 'REVIVE') this.markAlive(event.seat);
 				this.logPublic(logLine('hostOverride', event.seat, event.overrideKind));
 				break;
 			}

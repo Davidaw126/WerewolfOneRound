@@ -176,6 +176,10 @@ export type ServerEvent =
 	// S4: room-wide - never carries which role is acting, see PublicNightStage.
 	| { kind: 'StageChanged'; stage: PublicNightStage | null }
 	| { kind: 'NightResolved'; nightNumber: number; deaths: number[] }
+	/** Who is dead and which 白痴 have flipped, as the room may know it -
+	 * sent whenever an action changes either. Night deaths only appear once
+	 * the Host has announced them. The one source phones take this from. */
+	| { kind: 'DeathsUpdated'; deadSeats: number[]; revealedIdiots: number[] }
 	// S11: WHO has voted, never who they voted for or a running tally.
 	| { kind: 'VoteUpdated'; votedSeats: number[]; totalVoters: number }
 	| {

@@ -8,7 +8,8 @@
 //        broadcast PhaseChanged only when the phase actually changed (an
 //        unconditional re-broadcast on every vote cast would retrigger
 //        anything the client keys off phase, like narration)
-//     -> hand every other effect to the translator
+//     -> hand every other effect to the translator, then tell the room who
+//        is dead if that changed (DeathsUpdated - the phones' only source)
 //     -> arm the night's pacing timers.
 //
 // Handlers only check who is asking (requireHost / requireSeat) and say what
@@ -30,6 +31,7 @@ import {
 	stageFinished
 } from '../../game/rules/stage';
 import { translateEffects } from './effectTranslator';
+import { deadSeatsOf, revealedIdiotsOf } from './projection';
 import {
 	applyGameAction,
 	loadGameState,
@@ -133,8 +135,20 @@ async function syncAndBroadcast(
 		emitToRoom(code, { kind: 'PhaseChanged', phase, nightNumber: result.state.round });
 	}
 	await translateEffects(code, result.effects);
+	const deadSeats = deadSeatsOf(result.state);
+	const revealedIdiots = revealedIdiotsOf(result.state);
+	if (
+		before === null ||
+		!sameSeats(deadSeats, deadSeatsOf(before)) ||
+		!sameSeats(revealedIdiots, revealedIdiotsOf(before))
+	) {
+		emitToRoom(code, { kind: 'DeathsUpdated', deadSeats, revealedIdiots });
+	}
 	scheduleNightTimers(code, before, result.state);
 }
+
+const sameSeats = (a: number[], b: number[]) =>
+	a.length === b.length && a.every((s, i) => s === b[i]);
 
 const NOT_HOST: Refusal = { ok: false, error: 'not_host' };
 
