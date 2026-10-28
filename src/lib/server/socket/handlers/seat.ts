@@ -9,7 +9,7 @@ import type { AckResponse } from '../../../shared/events';
 import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 
 export async function handleSeatTake(socket: GameSocket, seatNumber: number): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const result = await takeSeatAtomic(
 		code,
 		socket.data.sessionId,
@@ -31,7 +31,7 @@ export async function handleSeatTake(socket: GameSocket, seatNumber: number): Pr
 }
 
 export async function handleRevealRole(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 
 	const role = await currentRoleOfSeat(code, seat);

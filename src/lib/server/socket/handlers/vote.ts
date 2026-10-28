@@ -1,7 +1,7 @@
 import { runGameAction } from '../../game/gameSync';
 import type { AckResponse } from '../../../shared/events';
 import type { GameState } from '../../../game/types';
-import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
+import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 
 // Voting only opens once the host has announced last night's outcome -
 // otherwise players would be discussing/voting on information (who's dead)
@@ -15,7 +15,7 @@ export async function handleVoteCast(
 	socket: GameSocket,
 	target: number | 'abstain'
 ): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 	return runGameAction(code, (state) =>
 		nightAnnounced(state)
@@ -25,9 +25,11 @@ export async function handleVoteCast(
 }
 
 export async function handleVoteEnd(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-	return runGameAction(code, (state) =>
-		nightAnnounced(state) ? { type: 'TALLY_VOTES', random: Math.random() } : NOT_ANNOUNCED
+	const code = await requireRoomCode(socket);
+	return runGameAction(
+		code,
+		(state) =>
+			nightAnnounced(state) ? { type: 'TALLY_VOTES', random: Math.random() } : NOT_ANNOUNCED,
+		{ host: socket.data.sessionId }
 	);
 }

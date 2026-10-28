@@ -6,7 +6,7 @@
 import { runGameAction } from '../../game/gameSync';
 import type { AckResponse } from '../../../shared/events';
 import type { RoleId } from '../../../game/types';
-import { requireRoomCode, requireHost, ActionError, type GameSocket } from './helpers';
+import { requireRoomCode, ActionError, type GameSocket } from './helpers';
 
 export async function handleHostOverride(
 	socket: GameSocket,
@@ -14,9 +14,11 @@ export async function handleHostOverride(
 	seat: number,
 	role?: RoleId
 ): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-
+	const code = await requireRoomCode(socket);
 	if (overrideKind === 'SET_ROLE' && !role) throw new ActionError('missing_role');
-	return runGameAction(code, { type: 'HOST_OVERRIDE', kind: overrideKind, seat, role });
+	return runGameAction(
+		code,
+		{ type: 'HOST_OVERRIDE', kind: overrideKind, seat, role },
+		{ host: socket.data.sessionId }
+	);
 }

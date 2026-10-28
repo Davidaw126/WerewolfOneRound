@@ -161,6 +161,20 @@ describe('a real night turn', () => {
 	});
 });
 
+describe('Host-only actions', () => {
+	it('are refused for anyone else, under the lock, and change nothing', async () => {
+		const code = await startedGame();
+		const before = await step(code);
+		const ack = await runGameAction(code, { type: 'ADVANCE_STAGE' }, { host: 's1' });
+		expect(ack).toEqual({ ok: false, error: 'not_host' });
+		expect(await step(code)).toBe(before);
+		expect(await runGameAction(code, { type: 'ADVANCE_STAGE' }, { host: HOST })).toEqual({
+			ok: true
+		});
+		expect(await step(code)).not.toBe(before);
+	});
+});
+
 describe('answering the caller', () => {
 	it("returns the engine's rule error and tells nobody", async () => {
 		const code = await startedGame();

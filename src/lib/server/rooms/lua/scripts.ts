@@ -124,9 +124,9 @@ return cjson.encode({ ok = true, vacated = true })
 // ARGV[5] = ttlSeconds, ARGV[6] = cupidPoisonBlocksHunter ('0'/'1'),
 // ARGV[7] = ruleOverridesJson
 //
-// Guards phase === LOBBY so a client can't reassign themselves host mid-game
-// by resubmitting the config form - the concrete fix for the old app's real
-// host-hijack gap, which had no such guard at all.
+// Only the room's Host (set at creation) may submit, and only from LOBBY -
+// checked here, in the same atomic step as the write, rather than by a
+// separate read beforehand. The Host is never rewritten by this script.
 export const SUBMIT_ROOM_CONFIG_LUA = `
 local roomKey = KEYS[1]
 local identitiesKey = KEYS[2]
@@ -141,6 +141,10 @@ local ttl = tonumber(ARGV[5])
 local cupidPoisonBlocksHunter = ARGV[6]
 local ruleOverridesJson = ARGV[7]
 
+if redis.call('HGET', roomKey, 'hostSessionId') ~= sessionId then
+	return cjson.encode({ ok = false, error = 'not_host' })
+end
+
 local phase = redis.call('HGET', roomKey, 'phase')
 if phase and phase ~= '' and phase ~= 'LOBBY' then
 	return cjson.encode({ ok = false, error = 'game_already_started' })
@@ -151,8 +155,6 @@ redis.call(
 	roomKey,
 	'phase',
 	'SEATING',
-	'hostSessionId',
-	sessionId,
 	'roleConfig',
 	roleConfigJson,
 	'numberOfSeats',
@@ -185,6 +187,6 @@ return cjson.encode({ ok = true })
 // ADVANCE_STAGE_LUA and HUNTER_SHOT_LUA (the old stageIndex/stageEpoch CAS
 // and the hunterShotResolved exactly-once guard) retired in M1: both
 // concerns are now handled by the new engine's own per-room lock
-// (gameStateRepo.ts's withGameLock) around every load -> reduce -> save
+// (gameStateRepo.ts's withRoomLock) around every load -> reduce -> save
 // cycle, which makes both kinds of race structurally impossible rather than
 // needing a narrow, field-specific guard for each one.

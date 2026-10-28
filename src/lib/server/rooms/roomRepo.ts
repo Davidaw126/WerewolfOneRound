@@ -42,7 +42,13 @@ import { dealCards, type DealResult } from '../../game/rules/deal';
 import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
 import type { GameState, RoleId } from '../../game/types';
 import { ALL_ROLE_IDS } from '../../game/roleMeta';
-import { loadGameState, deleteGameState, clearGameActions } from '../game/gameStateRepo';
+import {
+	loadGameState,
+	deleteGameState,
+	clearGameActions,
+	withRoomLock,
+	type Refusal
+} from '../game/gameStateRepo';
 import { legacyToRoleId } from '../../game/roleBridge';
 import type { Role } from '../../shared/roles';
 import {
@@ -201,6 +207,51 @@ export async function hostSessionOf(code: string): Promise<string | null> {
 
 export async function isHost(code: string, sessionId: string): Promise<boolean> {
 	return (await hostSessionOf(code)) === sessionId;
+}
+
+/** Runs `fn` only if `sessionId` is the Host, with the check and `fn` both
+ * under the room lock - so nothing (a later Hand over host, a Leave) can
+ * change the Host in between. `fn` must not take the room lock itself. */
+export async function asHost<T>(
+	code: string,
+	sessionId: string,
+	fn: () => Promise<T>
+): Promise<T | Refusal> {
+	return withRoomLock(code, async () =>
+		(await isHost(code, sessionId)) ? fn() : { ok: false as const, error: 'not_host' }
+	);
+}
+
+export type LeaveOutcome =
+	/** The Host left: the room is gone. */
+	| { kind: 'closed' }
+	/** A player left mid-round: back to SEATING for everyone. */
+	| { kind: 'round_ended'; seat: number | null }
+	/** A player left before (or after) a round. */
+	| { kind: 'left'; vacated: boolean; redealt: boolean }
+	/** The room no longer exists. */
+	| { kind: 'none' };
+
+/** Leave (离开), under the room lock. What it means depends on who leaves and
+ * when: the Host leaving closes the room (nobody else could ever run it); a
+ * player leaving mid-round ends the round; otherwise their seat is freed
+ * (see freeSeat). Telling the room and unhooking phones is the caller's. */
+export async function leaveRoom(code: string, sessionId: string): Promise<LeaveOutcome> {
+	return withRoomLock(code, async () => {
+		const room = await readRoomHash(code);
+		if (!room) return { kind: 'none' };
+		if (room.hostSessionId === sessionId) {
+			await destroyRoom(code);
+			return { kind: 'closed' };
+		}
+		if (IN_PROGRESS_PHASES.includes(room.phase)) {
+			const seat = await seatOf(code, sessionId);
+			await freeSeat(code, sessionId);
+			await resetToSeating(code);
+			return { kind: 'round_ended', seat };
+		}
+		return { kind: 'left', ...(await freeSeat(code, sessionId)) };
+	});
 }
 
 // -- Seats -------------------------------------------------------------------

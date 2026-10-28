@@ -63,6 +63,7 @@ async function startGameWithRoles(code: string) {
 		players: [1, 2, 3].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
 		now: 1000
 	});
+	if ('ok' in result) throw new Error(result.error);
 	await recordGamePhase(code, result.state.phase, result.state.round);
 }
 
@@ -111,6 +112,17 @@ describe('creating and setting up a room', () => {
 		const code = await room.createRoom(HOST);
 		await redis.hset(`wolf:room:${code}`, { phase: 'DAY_VOTE' });
 		expect((await room.readRoomHash(code))?.phase).toBe('VOTE');
+	});
+
+	it('lets only the Host submit the setup, and never changes who the Host is', async () => {
+		const code = await room.createRoom(HOST);
+		expect(await room.submitRoomConfigAtomic(code, 's1', config)).toEqual({
+			ok: false,
+			error: 'not_host'
+		});
+		expect((await room.readRoomHash(code))?.phase).toBe('LOBBY');
+		await room.submitRoomConfigAtomic(code, HOST, config);
+		expect(await room.hostSessionOf(code)).toBe(HOST);
 	});
 
 	it('refuses a second setup once seating has started', async () => {
@@ -246,5 +258,45 @@ describe('closing a room', () => {
 		await room.destroyRoom(code);
 		expect(await room.roomExists(code)).toBe(false);
 		expect(await redis.keys(`wolf:room:${code}*`)).toEqual([]);
+	});
+});
+
+describe('Host-only operations', () => {
+	it('run only for the Host', async () => {
+		const code = await seatedRoom();
+		expect(await room.asHost(code, 's1', () => room.setSeatsLocked(code, true))).toEqual({
+			ok: false,
+			error: 'not_host'
+		});
+		expect((await room.readRoomHash(code))?.lockStatus).toBe(false);
+		await room.asHost(code, HOST, () => room.setSeatsLocked(code, true));
+		expect((await room.readRoomHash(code))?.lockStatus).toBe(true);
+	});
+});
+
+describe('Leave', () => {
+	it('by the Host closes the room', async () => {
+		const code = await seatedRoom();
+		expect(await room.leaveRoom(code, HOST)).toEqual({ kind: 'closed' });
+		expect(await room.roomExists(code)).toBe(false);
+	});
+
+	it('by a player mid-round ends the round for everyone', async () => {
+		const code = await seatedRoom();
+		await startGameWithRoles(code);
+		expect(await room.leaveRoom(code, 's2')).toEqual({ kind: 'round_ended', seat: 2 });
+		expect((await room.readRoomHash(code))?.phase).toBe('SEATING');
+		expect(await loadGameState(code)).toBeNull();
+		expect(await room.seatOf(code, 's2')).toBeNull();
+	});
+
+	it('by a player during seating frees their seat', async () => {
+		const code = await seatedRoom();
+		expect(await room.leaveRoom(code, 's3')).toEqual({
+			kind: 'left',
+			vacated: true,
+			redealt: false
+		});
+		expect(await room.sessionInSeat(code, 3)).toBeNull();
 	});
 });

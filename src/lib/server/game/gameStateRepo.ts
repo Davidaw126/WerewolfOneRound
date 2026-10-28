@@ -34,7 +34,10 @@ else
 end
 `;
 
-async function withGameLock<T>(code: string, fn: () => Promise<T>): Promise<T> {
+/** The per-room lock. Every game write runs under it, and so do the Room
+ * module's Host-only operations, so a Host check and the change it guards
+ * happen as one step. Not reentrant. */
+export async function withRoomLock<T>(code: string, fn: () => Promise<T>): Promise<T> {
 	const token = randomUUID();
 	const key = gameLockKey(code);
 
@@ -86,9 +89,12 @@ export async function clearGameActions(code: string): Promise<void> {
  * `state` too, to sync the room's phase and broadcast it. */
 export async function startAndSaveGame(
 	code: string,
-	params: StartGameParams
-): Promise<EngineResult> {
-	return withGameLock(code, async () => {
+	params: StartGameParams,
+	authorize?: () => Promise<Refusal | null>
+): Promise<EngineResult | Refusal> {
+	return withRoomLock(code, async () => {
+		const refusal = authorize ? await authorize() : null;
+		if (refusal) return refusal;
 		const result = startGame(params);
 		await saveGameState(code, result.state);
 		return result;
@@ -113,14 +119,18 @@ export type ApplyResult =
 /** The engine's steady-state entry point from the IO shell: load -> decide
  * -> reduce -> save -> log, all under one lock acquisition so the read and
  * the write can never straddle someone else's write. A refusal saves
- * nothing. Throws ActionError('game_not_started') if this room has no game
- * in progress. */
+ * nothing. `authorize` (e.g. a Host check) runs under the same lock first.
+ * Throws ActionError('game_not_started') if this room has no game in
+ * progress. */
 export async function applyGameAction(
 	code: string,
 	input: ActionInput,
-	now: number
+	now: number,
+	authorize?: () => Promise<Refusal | null>
 ): Promise<ApplyResult> {
-	return withGameLock(code, async () => {
+	return withRoomLock(code, async () => {
+		const refusal = authorize ? await authorize() : null;
+		if (refusal) return { refused: refusal };
 		const state = await loadGameState(code);
 		if (!state) throw new ActionError('game_not_started');
 		const action = typeof input === 'function' ? input(state) : input;

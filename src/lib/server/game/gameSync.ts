@@ -17,7 +17,7 @@
 // this module with a fake io and fake timers.
 
 import { redis } from '../redis';
-import { recordGamePhase } from '../rooms/roomRepo';
+import { recordGamePhase, isHost, readRoomHash } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { AckResponse } from '../../shared/events';
@@ -28,7 +28,8 @@ import {
 	applyGameAction,
 	loadGameState,
 	startAndSaveGame,
-	type ActionInput
+	type ActionInput,
+	type Refusal
 } from './gameStateRepo';
 
 const randomMs = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
@@ -150,7 +151,16 @@ async function syncAndBroadcast(
 	scheduleNightTimers(code, before, result.state);
 }
 
+const NOT_HOST: Refusal = { ok: false, error: 'not_host' };
+
+/** A Host check that runs under the room lock, together with the write. */
+function hostCheck(code: string, sessionId: string): () => Promise<Refusal | null> {
+	return async () => ((await isHost(code, sessionId)) ? null : NOT_HOST);
+}
+
 export interface RunOptions {
+	/** Host-only: the asking session, checked under the room lock. */
+	host?: string;
 	/** What to answer when the engine ignored the action (no effects at all:
 	 * wrong phase, a double tap, a seat it can't apply to). Without this an
 	 * ignored action still answers ok. */
@@ -163,7 +173,8 @@ export async function runGameAction(
 	input: ActionInput,
 	options: RunOptions = {}
 ): Promise<AckResponse> {
-	const applied = await applyGameAction(code, input, Date.now());
+	const authorize = options.host === undefined ? undefined : hostCheck(code, options.host);
+	const applied = await applyGameAction(code, input, Date.now(), authorize);
 	if ('refused' in applied) return applied.refused;
 	const { previous, result } = applied;
 
@@ -186,8 +197,24 @@ export async function runGameAction(
 }
 
 /** Deals the opening GameState from what seating produced and tells the
- * room - the one-time counterpart of runGameAction for RoomStartGame. */
-export async function startGameAndBroadcast(code: string, params: StartGameParams): Promise<void> {
-	const result = await startAndSaveGame(code, params);
+ * room - the one-time counterpart of runGameAction for RoomStartGame. With
+ * `host`, only that Host may start, and only with the seats still locked,
+ * both checked under the room lock. */
+export async function startGameAndBroadcast(
+	code: string,
+	params: StartGameParams,
+	host?: string
+): Promise<AckResponse> {
+	const authorize =
+		host === undefined
+			? undefined
+			: async (): Promise<Refusal | null> => {
+					if (!(await isHost(code, host))) return NOT_HOST;
+					const room = await readRoomHash(code);
+					return room?.lockStatus ? null : { ok: false, error: 'seats_not_locked' };
+				};
+	const result = await startAndSaveGame(code, params, authorize);
+	if ('ok' in result) return result;
 	await syncAndBroadcast(code, null, result);
+	return { ok: true };
 }

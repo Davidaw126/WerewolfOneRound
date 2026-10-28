@@ -59,7 +59,7 @@ export async function handleNightSubmitAction(
 	socket: GameSocket,
 	action: NightActionSubmission
 ): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 
 	return runGameAction(code, (state) => {
@@ -87,7 +87,7 @@ export async function handleNightSubmitAction(
  * accepts it for a seat that really is feared tonight, and it goes through
  * the same auto-advance as a real action, so the pause is indistinguishable. */
 export async function handleNightPass(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 	return runGameAction(code, (state) => {
 		const player = state.players[seat];
@@ -98,7 +98,7 @@ export async function handleNightPass(socket: GameSocket): Promise<AckResponse> 
 }
 
 export async function handleNightConfirmStage(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	const seat = await requireSeat(code, socket.data.sessionId);
 	return runGameAction(
 		code,
@@ -115,9 +115,12 @@ export async function handleNightConfirmStage(socket: GameSocket): Promise<AckRe
 }
 
 export async function handleNightAdvanceStage(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-	return runGameAction(code, { type: 'ADVANCE_STAGE' }, { ignored: 'invalid_phase' });
+	const code = await requireRoomCode(socket);
+	return runGameAction(
+		code,
+		{ type: 'ADVANCE_STAGE' },
+		{ ignored: 'invalid_phase', host: socket.data.sessionId }
+	);
 }
 
 /** Relays "this role's narration line just started speaking" from the host's
@@ -129,7 +132,7 @@ export async function handleNightNarrationStarted(
 	socket: GameSocket,
 	role: RoleId
 ): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	await requireHost(code, socket.data.sessionId);
 
 	const state = await loadGameState(code);
@@ -145,14 +148,12 @@ export async function handleNightNarrationStarted(
 }
 
 export async function handleNightAnnounceResults(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-
+	const code = await requireRoomCode(socket);
 	// A genuine no-op (nothing was pending, or a double-tap race) produces
 	// zero effects - see engine.ts's early-return guard.
 	return runGameAction(
 		code,
 		{ type: 'ANNOUNCE_NIGHT_RESULTS' },
-		{ ignored: 'nothing_to_announce' }
+		{ ignored: 'nothing_to_announce', host: socket.data.sessionId }
 	);
 }

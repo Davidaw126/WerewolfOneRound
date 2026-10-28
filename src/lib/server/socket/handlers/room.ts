@@ -5,18 +5,17 @@ import {
 	getPublicState,
 	readRoomHash,
 	getRevealedRoleIfAny,
-	freeSeat,
-	seatOf,
 	belongsToRoom,
 	seatingForGameStart,
 	setSeatsLocked,
 	redeal,
 	resetToSeating,
-	destroyRoom
+	asHost,
+	leaveRoom
 } from '../../rooms/roomRepo';
-import { IN_PROGRESS_PHASES, PRE_GAME_PHASES } from '../../../shared/gameTypes';
+import { PRE_GAME_PHASES } from '../../../shared/gameTypes';
 import { setSessionRoom } from '../../session';
-import { emitToRoom, emitToSession, roomChannel } from '../emit';
+import { emitToRoom, emitToSession, roomChannel, removeSessionFromRoom } from '../emit';
 import { startGameAndBroadcast } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
 import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
@@ -31,7 +30,7 @@ import type { StartGameParams } from '../../../game/engine';
 import { deriveSeatCount } from '../../../game/rules/deal';
 import type { AckResponse } from '../../../shared/events';
 import type { RoomPublicState } from '../../../shared/gameTypes';
-import { requireRoomCode, requireHost, type GameSocket } from './helpers';
+import { requireRoomCode, type GameSocket } from './helpers';
 
 export async function handleRoomCreate(
 	socket: GameSocket
@@ -90,8 +89,8 @@ export async function handleRoomSubmitConfig(
 	cupidPoisonBlocksHunter: boolean,
 	ruleOverrides?: RuleConfigOverrides
 ): Promise<AckResponse & { issues?: ValidationIssue[] }> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
+	const code = await requireRoomCode(socket);
+	// Only the Host may submit - checked atomically by submitRoomConfigAtomic.
 	// Only roles actually in play are kept (the picker sends zeros too).
 	const roleConfig: Partial<Record<RoleId, number>> = {};
 	for (const [role, count] of Object.entries(submitted) as [RoleId, number][]) {
@@ -178,8 +177,7 @@ function buildStartGameParams(
 export async function handleRoomStartGame(
 	socket: GameSocket
 ): Promise<AckResponse & { issues?: ValidationIssue[] }> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
+	const code = await requireRoomCode(socket);
 	const seating = await seatingForGameStart(code);
 	if (!seating || !seating.room.lockStatus) return { ok: false, error: 'seats_not_locked' };
 
@@ -194,87 +192,82 @@ export async function handleRoomStartGame(
 		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
 	}
 
-	await startGameAndBroadcast(code, params);
-	return { ok: true };
+	// The Host and the seat lock are checked again under the room lock.
+	return startGameAndBroadcast(code, params, socket.data.sessionId);
 }
 
 export async function handleRoomLockSeats(
 	socket: GameSocket,
 	locked: boolean
 ): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
+	const code = await requireRoomCode(socket);
 	// Host-only in both directions - locking gates the start-game handoff above,
 	// and an unlock from anyone else would reopen SeatTake mid-handoff too.
-	await requireHost(code, socket.data.sessionId);
-	await setSeatsLocked(code, locked);
+	const done = await asHost(code, socket.data.sessionId, () => setSeatsLocked(code, locked));
+	if (done) return done;
 	emitToRoom(code, { kind: 'LockUpdated', locked });
 	return { ok: true };
 }
 
 export async function handleRoomRerollRoles(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-
-	const room = await readRoomHash(code);
-	if (!room || room.phase !== 'SEATING') return { ok: false, error: 'invalid_phase' };
-
-	await redeal(code);
+	const code = await requireRoomCode(socket);
+	const done = await asHost(code, socket.data.sessionId, async () => {
+		const room = await readRoomHash(code);
+		if (!room || room.phase !== 'SEATING') return { ok: false as const, error: 'invalid_phase' };
+		await redeal(code);
+		return null;
+	});
+	if (done) return done;
 	emitToRoom(code, { kind: 'RolesRerolled' });
 	return { ok: true };
 }
 
-/** Back to SEATING with the same setup (see roomRepo.resetToSeating), then
- * tells the room. Shared by the Host's explicit RoomStopGame/GameOverScreen's
- * "再来一局" and a non-host's mid-game RoomLeave. */
-async function softResetToSeating(code: string): Promise<void> {
-	await resetToSeating(code);
+/** Tells the room it's back to SEATING (see roomRepo.resetToSeating).
+ * Shared by the Host's RoomStopGame/"再来一局" and a player's mid-round Leave. */
+async function announceBackToSeating(code: string): Promise<void> {
 	const state = await getPublicState(code);
 	if (state) emitToRoom(code, { kind: 'StateSnapshot', state });
 	emitToRoom(code, { kind: 'GameReset' });
 }
 
 export async function handleRoomStopGame(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	await requireHost(code, socket.data.sessionId);
-
-	const room = await readRoomHash(code);
-	if (!room || room.phase === 'LOBBY') return { ok: false, error: 'invalid_phase' };
-
-	await softResetToSeating(code);
+	const code = await requireRoomCode(socket);
+	const done = await asHost(code, socket.data.sessionId, async () => {
+		const room = await readRoomHash(code);
+		if (!room || room.phase === 'LOBBY') return { ok: false as const, error: 'invalid_phase' };
+		await resetToSeating(code);
+		return null;
+	});
+	if (done) return done;
+	await announceBackToSeating(code);
 	return { ok: true };
 }
 
 export async function handleRoomLeave(socket: GameSocket): Promise<AckResponse> {
-	const code = requireRoomCode(socket);
-	const room = await readRoomHash(code);
+	const code = await requireRoomCode(socket);
+	const sessionId = socket.data.sessionId;
+	const outcome = await leaveRoom(code, sessionId);
 
-	if (room) {
-		const isHost = room.hostSessionId !== '' && room.hostSessionId === socket.data.sessionId;
-
-		if (isHost) {
-			await destroyRoom(code);
+	switch (outcome.kind) {
+		case 'closed':
 			emitToRoom(code, { kind: 'RoomClosed', reason: 'host_left' });
-		} else if (IN_PROGRESS_PHASES.includes(room.phase)) {
-			const leavingSeat = await seatOf(code, socket.data.sessionId);
-			await freeSeat(code, socket.data.sessionId);
-			await softResetToSeating(code);
-			emitToRoom(code, {
-				kind: 'ErrorToast',
-				reason: 'player_left_mid_game',
-				seat: leavingSeat
-			});
-		} else {
-			const { vacated, redealt } = await freeSeat(code, socket.data.sessionId);
-			if (vacated) {
+			break;
+		case 'round_ended':
+			await announceBackToSeating(code);
+			emitToRoom(code, { kind: 'ErrorToast', reason: 'player_left_mid_game', seat: outcome.seat });
+			break;
+		case 'left': {
+			if (outcome.vacated) {
 				const state = await getPublicState(code);
 				if (state) emitToRoom(code, { kind: 'SeatUpdated', seats: state.seats });
 			}
-			if (redealt) emitToRoom(code, { kind: 'RolesRerolled', reason: 'seen_role_left' });
+			if (outcome.redealt) emitToRoom(code, { kind: 'RolesRerolled', reason: 'seen_role_left' });
+			break;
 		}
 	}
 
-	await setSessionRoom(socket.data.sessionId, null);
-	socket.leave(roomChannel(code));
+	await setSessionRoom(sessionId, null);
+	removeSessionFromRoom(sessionId, code);
 	socket.data.roomCode = null;
 	return { ok: true };
 }

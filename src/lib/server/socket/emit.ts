@@ -22,3 +22,10 @@ export function emitToRoom(roomCode: string, event: ServerEvent): void {
 export function emitToSession(sessionId: string, event: PrivateInfo): void {
 	requireIo().to(sessionChannel(sessionId)).emit('server:private', event);
 }
+
+/** Takes every phone of this session out of the room's broadcast channel -
+ * the caller's own socket and any other tab or device, on any server
+ * instance. Used when someone leaves the room (and by a Kick). */
+export function removeSessionFromRoom(sessionId: string, roomCode: string): void {
+	requireIo().in(sessionChannel(sessionId)).socketsLeave(roomChannel(roomCode));
+}

@@ -109,7 +109,7 @@ export async function dispatchAction(
 			case 'HostOverride':
 				return await handleHostOverride(socket, action.overrideKind, action.seat, action.role);
 			case 'ResyncRequest': {
-				const code = requireRoomCode(socket);
+				const code = await requireRoomCode(socket);
 				const state = await getPublicState(code, socket.data.sessionId);
 				const revealedRole = await getRevealedRoleIfAny(code, socket.data.sessionId);
 				if (revealedRole) {
