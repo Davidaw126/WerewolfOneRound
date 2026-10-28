@@ -34,7 +34,9 @@ src/
                  # Svelte/Socket.IO/Redis, safe to unit-test in isolation
       types.ts       # RoleId/Phase/GameState/RuleConfig/EngineAction/EngineEffect
       roleMeta.ts    # per-role static data (camp, night order, isGod, implemented, ...)
-      engine.ts      # reduce(state, action) -> {state, effects[]} + startGame(params)
+      engine.ts      # reduce(state, action) -> {state, effects[]} + startGame(params);
+                     # the reducers behind it: reducers/ (night, day, daySpecials,
+                     # hostOverride, core)
       roleBridge.ts  # RoleId <-> the Chinese role names the display tables are keyed by
       rules/         # deal, nightOrder, nightResolution, nightRules, winCondition,
                      # turnContext, setup (validateSetup/E01-E10), presets
