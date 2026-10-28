@@ -5,6 +5,7 @@
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
+	import { line as logLine, renderLine } from '$lib/client/logLines';
 
 	const t = $derived(strings(i18n.lang));
 
@@ -27,9 +28,12 @@
 		const res = await sendAction<AckResponse>({ kind: 'VoteCast', target });
 		if (!res.ok) return;
 		myVoteTarget = target;
-		const description = target === 'abstain' ? t.vote.myVoteAbstain : t.vote.myVoteFor(target);
-		gameStore.logActivity(description);
-		gameStore.showConfirm(`✓ ${description}`, 3000);
+		const entry =
+			target === 'abstain'
+				? logLine('text', 'vote', 'myVoteAbstain')
+				: logLine('text', 'vote', 'myVoteFor', target);
+		gameStore.logActivity(entry);
+		gameStore.showConfirm(`✓ ${renderLine(entry, i18n.lang)}`, 3000);
 	}
 
 	async function endVote() {

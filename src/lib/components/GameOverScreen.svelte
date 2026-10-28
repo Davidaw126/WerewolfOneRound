@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { renderLine, renderRound } from '$lib/client/logLines';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import { strings, formatGameOverText, seatLabel } from '$lib/shared/i18n';
@@ -62,8 +63,8 @@
 				<div class="max-h-[40dvh] space-y-2 overflow-y-auto">
 					{#each timeline as entry, i (i)}
 						<div class="border-2 border-line bg-surface-2 px-3 py-2 text-xs">
-							<div class="mb-1 text-ember">{entry.round}</div>
-							<div class="text-bone">{entry.text}</div>
+							<div class="mb-1 text-ember">{renderRound(entry.round, i18n.lang)}</div>
+							<div class="text-bone">{renderLine(entry.line, i18n.lang)}</div>
 						</div>
 					{/each}
 				</div>

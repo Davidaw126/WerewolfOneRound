@@ -9,18 +9,9 @@ import type { RoleId } from '$lib/game/types';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
 import { onServerEvent, onPrivateEvent, onActionError } from './socket';
 import { i18n } from './i18n.svelte';
+import { line as logLine, isLogLine, type LogLine, type Round } from './logLines';
 import {
 	strings,
-	formatNightDeaths,
-	formatDayResult,
-	formatHunterResult,
-	formatGameOverText,
-	formatSelfExplode,
-	formatDayOut,
-	formatKnightDuel,
-	formatHostOverrideApplied,
-	formatSeerResult,
-	formatCoupleRevealed,
 	formatRolesReshuffled,
 	formatRolesReshuffledConfirm,
 	formatHunterDenied,
@@ -58,9 +49,11 @@ export interface TurnRules {
 	onePotionOnly: boolean;
 }
 
+/** One diary line: when, what (as data - see client/logLines.ts), and
+ * whether everyone at the table learned it too. */
 export interface ActivityLogEntry {
-	round: string;
-	text: string;
+	round: Round;
+	line: LogLine;
 	public: boolean;
 }
 
@@ -80,8 +73,9 @@ function saveDiary(roomCode: string, gameId: string, log: ActivityLogEntry[]): v
 function loadDiary(roomCode: string, gameId: string): ActivityLogEntry[] {
 	try {
 		const saved = JSON.parse(localStorage.getItem(LS_DIARY) ?? 'null');
+		// A diary saved by an older version (finished text) is dropped.
 		if (saved?.roomCode === roomCode && saved?.gameId === gameId && Array.isArray(saved.log))
-			return saved.log;
+			return saved.log.filter((e: { line?: unknown }) => isLogLine(e?.line));
 	} catch {
 		/* unreadable - start empty */
 	}
@@ -89,8 +83,8 @@ function loadDiary(roomCode: string, gameId: string): ActivityLogEntry[] {
 }
 
 export interface RoomLogEntry {
-	round: string;
-	text: string;
+	round: Round;
+	line: LogLine;
 }
 
 /** How long a role's night-turn prompt can stay held back waiting for its
@@ -253,8 +247,8 @@ export class GameStore {
 		this.infoPopup = null;
 	}
 
-	logRoom(text: string): void {
-		this.roomLog = [...this.roomLog, { round: this.roundLabel(), text }];
+	logRoom(line: LogLine): void {
+		this.roomLog = [...this.roomLog, { round: this.currentRound(), line }];
 	}
 
 	/** Promotes a pending night-turn to active (myTurnRole/turnContext),
@@ -278,21 +272,9 @@ export class GameStore {
 
 	private unsubscribers: (() => void)[] = [];
 
-	private roundLabel(): string {
+	private currentRound(): Round {
 		const phase = this.state?.phase;
-		const night = this.state?.nightNumber ?? 0;
-		const t = strings(i18n.lang).phaseBanner;
-		switch (phase && phaseGroup(phase)) {
-			case 'night':
-				return t.night(night);
-			case 'vote':
-			case 'hunter':
-				return i18n.lang === 'zh' ? `第 ${night} 天` : `Day ${night}`;
-			case 'over':
-				return t.gameOver;
-			default:
-				return '';
-		}
+		return { group: phase ? phaseGroup(phase) : null, n: this.state?.nightNumber ?? 0 };
 	}
 
 	// --- This phone's view: what it may see and do right now -------------
@@ -389,10 +371,17 @@ export class GameStore {
 		};
 	}
 
-	logActivity(text: string, opts?: { public?: boolean }): void {
+	/** A line everyone at the table learned: into the diary (marked public)
+	 * and the room log. */
+	private logPublic(line: LogLine): void {
+		this.logActivity(line, { public: true });
+		this.logRoom(line);
+	}
+
+	logActivity(line: LogLine, opts?: { public?: boolean }): void {
 		this.activityLog = [
 			...this.activityLog,
-			{ round: this.roundLabel(), text, public: opts?.public ?? false }
+			{ round: this.currentRound(), line, public: opts?.public ?? false }
 		];
 		const s = this.state;
 		if (s?.gameId) saveDiary(s.roomCode, s.gameId, this.activityLog);
@@ -414,8 +403,8 @@ export class GameStore {
 		this.disconnect();
 		onActionError((code) => this.showInfoPopup(formatActionError(code, i18n.lang), 'bad', 4000));
 		this.unsubscribers.push(
-			onServerEvent((event) => this.handleServerEvent(event)),
-			onPrivateEvent((event) => this.handlePrivateEvent(event))
+			onServerEvent((event) => this.applyServerEvent(event)),
+			onPrivateEvent((event) => this.applyPrivateEvent(event))
 		);
 	}
 
@@ -516,7 +505,8 @@ export class GameStore {
 		this.roomClosedMessage = null;
 	}
 
-	private handleServerEvent(event: ServerEvent): void {
+	/** Applies one room-wide event (also the socket subscription target). */
+	applyServerEvent(event: ServerEvent): void {
 		if (event.kind === 'StateSnapshot') {
 			this.applyState(event.state);
 			return;
@@ -539,7 +529,7 @@ export class GameStore {
 				// Broadcast to every client (not just the host who clicked it) -
 				// everyone's identity just changed, so everyone gets the
 				// confirmation and the permanent room-log record of it.
-				this.logRoom(formatRolesReshuffled(i18n.lang, event.reason));
+				this.logRoom(logLine('rolesReshuffled', event.reason));
 				this.showConfirm(
 					event.reason
 						? formatRolesReshuffled(i18n.lang, event.reason)
@@ -589,11 +579,7 @@ export class GameStore {
 			case 'NightResolved':
 				this.lastNightDeaths = event.deaths;
 				for (const seat of event.deaths) this.markDead(seat);
-				{
-					const text = formatNightDeaths(event.deaths, i18n.lang);
-					this.logActivity(text, { public: true });
-					this.logRoom(text);
-				}
+				this.logPublic(logLine('nightDeaths', event.deaths));
 				break;
 			case 'DayDecided':
 				this.state = { ...this.state, dayDecided: true };
@@ -622,18 +608,15 @@ export class GameStore {
 					this.markDead(event.eliminatedSeat);
 				}
 				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
-				{
-					const text = formatDayResult({
+				this.logPublic(
+					logLine('dayResult', {
 						tie: event.tie,
 						eliminatedSeat: event.eliminatedSeat,
 						identity: event.identity,
 						followDeathSeat: event.followDeathSeat,
-						idiotRevealed: event.idiotRevealed === true,
-						lang: i18n.lang
-					});
-					this.logActivity(text, { public: true });
-					this.logRoom(text);
-				}
+						idiotRevealed: event.idiotRevealed === true
+					})
+				);
 				break;
 			case 'LastWordsSpeakerChanged':
 				this.state = { ...this.state, currentSpeaker: event.seat };
@@ -643,27 +626,18 @@ export class GameStore {
 				break;
 			case 'DayOut': {
 				for (const seat of [...event.seats, ...event.followDeaths]) this.markDead(seat);
-				const text = formatDayOut(event.seats, event.followDeaths, i18n.lang);
-				this.logActivity(text, { public: true });
-				this.logRoom(text);
+				this.logPublic(logLine('dayOut', event.seats, event.followDeaths));
 				break;
 			}
 			case 'SelfExploded': {
-				const text = formatSelfExplode(event.seat, i18n.lang);
-				this.logActivity(text, { public: true });
-				this.logRoom(text);
+				this.logPublic(logLine('selfExplode', event.seat));
 				this.markDead(event.seat);
 				break;
 			}
 			case 'KnightDuelResolved': {
-				const text = formatKnightDuel(
-					event.knightSeat,
-					event.targetSeat,
-					event.targetWasWolf,
-					i18n.lang
+				this.logPublic(
+					logLine('knightDuel', event.knightSeat, event.targetSeat, event.targetWasWolf)
 				);
-				this.logActivity(text, { public: true });
-				this.logRoom(text);
 				for (const seat of event.deaths) this.markDead(seat);
 				this.state = { ...this.state, knightUsed: true };
 				break;
@@ -681,16 +655,13 @@ export class GameStore {
 				this.state = { ...this.state, hunterSeat: null };
 				if (event.shotSeat !== null) this.markDead(event.shotSeat);
 				if (event.followDeathSeat !== null) this.markDead(event.followDeathSeat);
-				{
-					const text = formatHunterResult({
+				this.logPublic(
+					logLine('hunterResult', {
 						hunterSeat: event.hunterSeat,
 						shotSeat: event.shotSeat,
-						followDeathSeat: event.followDeathSeat,
-						lang: i18n.lang
-					});
-					this.logActivity(text, { public: true });
-					this.logRoom(text);
-				}
+						followDeathSeat: event.followDeathSeat
+					})
+				);
 				break;
 			case 'GameOver':
 				this.gameOverResult = {
@@ -704,21 +675,16 @@ export class GameStore {
 					winner: event.winner,
 					identities: event.identities
 				};
-				{
-					const text = formatGameOverText(event.winner, i18n.lang, false);
-					this.logActivity(text, { public: true });
-					this.logRoom(text);
-				}
+				this.logPublic(logLine('gameOver', event.winner));
 				break;
 			case 'ErrorToast': {
-				const text = formatPlayerLeftMidGame(event.seat, i18n.lang);
-				this.logRoom(text);
-				this.showToast(text);
+				this.logRoom(logLine('playerLeftMidGame', event.seat));
+				this.showToast(formatPlayerLeftMidGame(event.seat, i18n.lang));
 				break;
 			}
 			case 'RoomClosed': {
 				const text = formatRoomClosedByHost(i18n.lang);
-				this.logRoom(text);
+				this.logRoom(logLine('roomClosedByHost'));
 				this.showToast(text);
 				this.roomClosedMessage = text;
 				this.roomClosed = true;
@@ -730,15 +696,14 @@ export class GameStore {
 			case 'HostOverrideApplied': {
 				if (event.overrideKind === 'KILL') for (const seat of event.deaths) this.markDead(seat);
 				if (event.overrideKind === 'REVIVE') this.markAlive(event.seat);
-				const text = formatHostOverrideApplied(event.seat, event.overrideKind, i18n.lang);
-				this.logActivity(text, { public: true });
-				this.logRoom(text);
+				this.logPublic(logLine('hostOverride', event.seat, event.overrideKind));
 				break;
 			}
 		}
 	}
 
-	private handlePrivateEvent(event: PrivateInfo): void {
+	/** Applies one event private to this phone. */
+	applyPrivateEvent(event: PrivateInfo): void {
 		switch (event.kind) {
 			case 'YourRole':
 				// 上帝之手 changed this card mid-turn: drop a prompt that belongs
@@ -756,26 +721,29 @@ export class GameStore {
 				break;
 			case 'RoleChangedByHost': {
 				if (event.forYou) {
-					const text = strings(i18n.lang).nightPrompt.roleChangedForYou;
-					this.logActivity(text);
-					this.showInfoPopup(text, 'neutral', 6000);
+					this.logActivity(logLine('text', 'nightPrompt', 'roleChangedForYou'));
+					this.showInfoPopup(strings(i18n.lang).nightPrompt.roleChangedForYou, 'neutral', 6000);
 				} else {
-					this.logActivity(formatHostOverrideApplied(event.seat, 'SET_ROLE', i18n.lang));
+					this.logActivity(logLine('hostOverride', event.seat, 'SET_ROLE'));
 				}
 				break;
 			}
 			case 'RoleDoneByOther': {
 				this.roleDoneByOther = true;
-				const text = strings(i18n.lang).nightPrompt.roleDoneByOther;
-				this.logActivity(text);
-				this.showInfoPopup(text, 'neutral', 5000);
+				this.logActivity(logLine('text', 'nightPrompt', 'roleDoneByOther'));
+				this.showInfoPopup(strings(i18n.lang).nightPrompt.roleDoneByOther, 'neutral', 5000);
 				break;
 			}
 			case 'PackKillChosen': {
 				this.packKill = { bySeat: event.bySeat, target: event.target };
-				const text = strings(i18n.lang).nightPrompt.packKillChosen(event.bySeat, event.target);
-				this.logActivity(text);
-				this.showInfoPopup(text, 'neutral', 5000);
+				this.logActivity(
+					logLine('text', 'nightPrompt', 'packKillChosen', event.bySeat, event.target)
+				);
+				this.showInfoPopup(
+					strings(i18n.lang).nightPrompt.packKillChosen(event.bySeat, event.target),
+					'neutral',
+					5000
+				);
 				break;
 			}
 			case 'SeerResult':
@@ -783,7 +751,7 @@ export class GameStore {
 				// '坏人'/'好人', not the specific role - the seer only ever learns
 				// good/bad (isWolf is the only thing the server ever sends), so the
 				// wording shouldn't imply anything more specific than that either.
-				this.logActivity(formatSeerResult(event.targetSeat, event.isWolf, i18n.lang));
+				this.logActivity(logLine('seerResult', event.targetSeat, event.isWolf));
 				// lastSeerResult above is the lasting record (shown inline in the
 				// prompt/activity log) - the popup is just the "here's the answer"
 				// moment, same treatment as the role-reveal card.
@@ -793,7 +761,7 @@ export class GameStore {
 				);
 				break;
 			case 'CoupleRevealed':
-				this.logActivity(formatCoupleRevealed(event.partnerSeat, i18n.lang));
+				this.logActivity(logLine('coupleRevealed', event.partnerSeat));
 				// Held for the COUPLE_REVEAL stage's own reveal button, not shown
 				// right away - see myPartnerSeat's own comment.
 				this.myPartnerSeat = event.partnerSeat;
@@ -828,13 +796,16 @@ export class GameStore {
 				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good');
 				break;
 			case 'ShotStatus': {
-				const text = formatShotStatus(event.canShoot, i18n.lang);
-				this.logActivity(text);
-				this.showInfoPopup(text, event.canShoot ? 'good' : 'bad', 8000);
+				this.logActivity(logLine('shotStatus', event.canShoot));
+				this.showInfoPopup(
+					formatShotStatus(event.canShoot, i18n.lang),
+					event.canShoot ? 'good' : 'bad',
+					8000
+				);
 				break;
 			}
 			case 'HunterDenied':
-				this.logActivity(formatHunterDenied(i18n.lang));
+				this.logActivity(logLine('hunterDenied'));
 				this.showInfoPopup(formatHunterDenied(i18n.lang), 'bad');
 				break;
 			case 'HostStageChanged':

@@ -7,6 +7,7 @@
 	import type { AckResponse, ClientAction, NightActionSubmission } from '$lib/shared/events';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import PixelSprite from './PixelSprite.svelte';
+	import { line as logLine, renderLine, type LogLine } from '$lib/client/logLines';
 	import { promptFor, selectLabelFor, statusLabelFor } from '$lib/client/roleNight';
 	import { PACK_MEMBER_ROLES } from '$lib/game/roleMeta';
 
@@ -70,7 +71,7 @@
 		// until one is cleared, rather than silently replacing a choice.
 	}
 
-	async function submit(action: ClientAction, description: string) {
+	async function submit(action: ClientAction, entry: LogLine) {
 		submitted = true;
 		const res = await sendAction<AckResponse>(action);
 		if (!res.ok) {
@@ -78,11 +79,11 @@
 			submitted = false;
 			return;
 		}
-		gameStore.logActivity(description);
+		gameStore.logActivity(entry);
 		// A page-level banner (not nested in this component) so it survives if
 		// the server advances the stage - and unmounts this whole prompt -
 		// before the 3s would otherwise have elapsed.
-		gameStore.showConfirm(t.doneCloseEyes(description), 4000);
+		gameStore.showConfirm(t.doneCloseEyes(renderLine(entry, i18n.lang)), 4000);
 	}
 </script>
 
@@ -118,7 +119,8 @@
 			     the next role is the same as for a real action. -->
 			<p class="text-sm text-wolf">{t.fearedTonight}</p>
 			<button
-				onclick={() => submit({ kind: 'NightPass' }, t.descFearedPassed)}
+				onclick={() =>
+					submit({ kind: 'NightPass' }, logLine('text', 'nightPrompt', 'descFearedPassed'))}
 				class="btn-primary w-full"
 			>
 				{t.fearedPass}
@@ -206,7 +208,7 @@
 							kind: 'NightSubmitAction',
 							action: { role, targetSeat: singleTarget } as NightActionSubmission
 						},
-						t.descSelectedSeat(singleTarget)
+						logLine('text', 'nightPrompt', 'descSelectedSeat', singleTarget)
 					)}
 				disabled={singleTarget === null}
 				class="btn-primary w-full"
@@ -222,7 +224,7 @@
 								kind: 'NightSubmitAction',
 								action: { role, targetSeat: null } as NightActionSubmission
 							},
-							t.descEmptyKill
+							logLine('text', 'nightPrompt', 'descEmptyKill')
 						)}
 					class="btn-ghost w-full py-2 text-sm"
 				>
@@ -313,12 +315,7 @@
 							kind: 'NightSubmitAction',
 							action: { role: 'WITCH', poisonTarget, useAntidote }
 						},
-						[
-							useAntidote ? t.descWitchSaved(killedSeat!) : null,
-							poisonTarget ? t.descWitchPoisoned(poisonTarget) : null
-						]
-							.filter(Boolean)
-							.join(i18n.lang === 'zh' ? '，' : '; ') || t.descWitchNoAction
+						logLine('witchNight', useAntidote ? killedSeat : null, poisonTarget)
 					)}
 				class="btn-primary w-full"
 			>
@@ -354,7 +351,7 @@
 							kind: 'NightSubmitAction',
 							action: { role: 'CUPID', seatA: coupleFirst, seatB: coupleSecond }
 						},
-						t.descCupidLinked(coupleFirst, coupleSecond)
+						logLine('text', 'nightPrompt', 'descCupidLinked', coupleFirst, coupleSecond)
 					)}
 				disabled={coupleFirst === null || coupleSecond === null}
 				class="btn-primary w-full"
@@ -399,18 +396,12 @@
 					onclick={() => {
 						if (thiefPick === null) return;
 						const swap = thiefPick === 'keep' ? null : thiefPick;
-						const description =
-							thiefPick === 'keep'
-								? t.descThiefKept
-								: t.descThiefSwapped(
-										roleName(
-											thiefPick === 'buried1'
-												? gameStore.thiefChoice![0]
-												: gameStore.thiefChoice![1],
-											i18n.lang
-										)
-									);
-						submit({ kind: 'NightSubmitAction', action: { role: 'THIEF', swap } }, description);
+						const taken =
+							thiefPick === 'keep' ? null : gameStore.thiefChoice![thiefPick === 'buried1' ? 0 : 1];
+						submit(
+							{ kind: 'NightSubmitAction', action: { role: 'THIEF', swap } },
+							logLine('thiefNight', taken)
+						);
 					}}
 					disabled={thiefPick === null}
 					class="btn-primary w-full"

@@ -60,7 +60,10 @@ src/
       socket/        # dispatch.ts's switch -> handlers/*.ts, session/auth middleware,
                      # rate limiting
     client/      # thin socket.io-client wrapper + the reactive game store
-                 # ($state-based, gameStore.svelte.ts) that drives the room UI
+                 # ($state-based, gameStore.svelte.ts) that drives the room UI;
+                 # diary/room-log lines are stored as data (logLines.ts) and
+                 # rendered in the current language; roleNight.ts holds each
+                 # role's night presentation
     components/  # room/game UI: seat circle, role config, per-role night-action
                  # prompts, day-phase panels, vote board, game-over screen, etc.
   routes/

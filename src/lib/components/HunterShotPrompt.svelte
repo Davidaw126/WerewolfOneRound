@@ -4,6 +4,7 @@
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { AckResponse } from '$lib/shared/events';
+	import { line as logLine, renderLine } from '$lib/client/logLines';
 
 	const t = $derived(strings(i18n.lang));
 	const seats = $derived(gameStore.state?.seats ?? []);
@@ -21,8 +22,12 @@
 			submitted = false;
 			return;
 		}
-		const description = target === null ? t.hunterShot.descNoShoot : t.hunterShot.descShot(target);
-		gameStore.logActivity(description);
+		const entry =
+			target === null
+				? logLine('text', 'hunterShot', 'descNoShoot')
+				: logLine('text', 'hunterShot', 'descShot', target);
+		const description = renderLine(entry, i18n.lang);
+		gameStore.logActivity(entry);
 		// Page-level banner, not nested here - hunter-shot resolution has no
 		// server-side pause at all, so gameStore.hunterAuthorized can flip false
 		// (unmounting this component) almost immediately after the ack, well

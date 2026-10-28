@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { renderLine, renderRound } from '$lib/client/logLines';
 	import { fade, scale } from 'svelte/transition';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { strings } from '$lib/shared/i18n';
@@ -49,8 +50,8 @@
 				{:else}
 					{#each gameStore.roomLog as entry, i (i)}
 						<div class="border-2 border-line bg-surface-2 px-3 py-2 text-xs">
-							<div class="mb-1 text-ember">{entry.round}</div>
-							<div class="text-bone">{entry.text}</div>
+							<div class="mb-1 text-ember">{renderRound(entry.round, i18n.lang)}</div>
+							<div class="text-bone">{renderLine(entry.line, i18n.lang)}</div>
 						</div>
 					{/each}
 				{/if}

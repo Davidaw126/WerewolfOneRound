@@ -2,6 +2,7 @@
 // now - tested through the store itself, no browser needed.
 import { describe, it, expect } from 'vitest';
 import { GameStore } from './gameStore.svelte';
+import { renderLine, renderRound } from './logLines';
 import type { RoomPublicState, SeatState } from '$lib/shared/gameTypes';
 
 const seat = (n: number, extra: Partial<SeatState> = {}): SeatState => ({
@@ -141,5 +142,51 @@ describe('time of day', () => {
 		expect(phoneOf('s1', room({ phase: 'VOTE_PK' })).timeOfDay).toBe('day');
 		expect(phoneOf('s1', room({ phase: 'DISCUSSION' })).timeOfDay).toBe('day');
 		expect(phoneOf('s1', room({ phase: 'GAME_OVER', winner: 'lovers' })).timeOfDay).toBe('lovers');
+	});
+});
+
+describe('events', () => {
+	it('night results mark the dead and log one public line, in either language', () => {
+		const store = phoneOf('s1', room({ phase: 'DAWN' }));
+		store.applyServerEvent({ kind: 'NightResolved', nightNumber: 1, deaths: [2] });
+		expect(store.state?.seats.find((s) => s.seatNumber === 2)?.isDead).toBe(true);
+		expect(store.activityLog).toHaveLength(1);
+		expect(store.roomLog).toHaveLength(1);
+		const [entry] = store.activityLog;
+		expect(entry.public).toBe(true);
+		// Stored as data, so the same entry reads in whichever language is on.
+		expect(renderLine(entry.line, 'zh')).toContain('2');
+		expect(renderLine(entry.line, 'zh')).not.toBe(renderLine(entry.line, 'en'));
+		expect(renderRound(entry.round, 'en')).toBe('Night 1');
+	});
+
+	it("a seer's result goes into their own diary only, not the room log", () => {
+		const store = phoneOf('s3', room({ phase: 'NIGHT' }));
+		store.applyPrivateEvent({ kind: 'SeerResult', targetSeat: 1, isWolf: true });
+		expect(store.lastSeerResult).toEqual({ targetSeat: 1, isWolf: true });
+		expect(store.activityLog.map((e) => e.public)).toEqual([false]);
+		expect(store.roomLog).toEqual([]);
+	});
+
+	it('a new stage clears the last turn and the 情侣相认 tap', () => {
+		const store = phoneOf('s1', room({ phase: 'NIGHT' }));
+		store.myTurnRole = 'SEER';
+		store.coupleConfirmed = true;
+		store.applyServerEvent({ kind: 'StageChanged', stage: { kind: 'ROLE_TURN' } });
+		expect(store.myTurnRole).toBeNull();
+		expect(store.coupleConfirmed).toBe(false);
+	});
+
+	it('the end of the game records the winner', () => {
+		const store = phoneOf('s1', room({ phase: 'VOTE' }));
+		store.applyServerEvent({
+			kind: 'GameOver',
+			winner: 'wolves',
+			identities: { 1: 'WEREWOLF' },
+			coupleSeats: null
+		});
+		expect(store.state?.phase).toBe('GAME_OVER');
+		expect(store.timeOfDay).toBe('wolves');
+		expect(store.roomLog.at(-1)?.line).toEqual({ key: 'gameOver', args: ['wolves'] });
 	});
 });

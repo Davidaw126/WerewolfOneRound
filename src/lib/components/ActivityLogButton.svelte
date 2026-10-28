@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { renderLine, renderRound } from '$lib/client/logLines';
 	import { fade, scale } from 'svelte/transition';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { strings } from '$lib/shared/i18n';
@@ -39,12 +40,12 @@
 					{#each gameStore.activityLog as entry, i (i)}
 						<div class="border-2 border-line bg-surface-2 px-3 py-2 text-xs">
 							<div class="mb-1 flex items-center justify-between">
-								<span class="text-ember">{entry.round}</span>
+								<span class="text-ember">{renderRound(entry.round, i18n.lang)}</span>
 								{#if entry.public}
 									<span class="chip !px-1.5 !py-0.5 text-[10px]">{t.activityLog.publicChip}</span>
 								{/if}
 							</div>
-							<div class="text-bone">{entry.text}</div>
+							<div class="text-bone">{renderLine(entry.line, i18n.lang)}</div>
 						</div>
 					{/each}
 				{/if}
