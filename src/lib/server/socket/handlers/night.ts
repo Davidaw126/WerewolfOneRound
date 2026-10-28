@@ -1,6 +1,7 @@
 import { loadGameState } from '../../game/gameStateRepo';
 import { runGameAction } from '../../game/gameSync';
 import { stageOf } from '../../game/projection';
+import { currentStage, currentStageRole } from '../../../game/rules/stage';
 import { emitToRoom } from '../emit';
 import type { AckResponse, NightActionSubmission } from '../../../shared/events';
 import type { NightActions, Player, RoleId } from '../../../game/types';
@@ -76,7 +77,7 @@ export async function handleNightSubmitAction(
 		// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
 		// 恶灵骑士 would otherwise be read as their own skill's target.
 		const nightAction =
-			state.currentStepKey === 'role:WEREWOLF' && 'targetSeat' in action
+			currentStageRole(state) === 'WEREWOLF' && 'targetSeat' in action
 				? { wolfKillTarget: action.targetSeat }
 				: buildNightAction(action, player);
 		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction };
@@ -107,7 +108,7 @@ export async function handleNightConfirmStage(socket: GameSocket): Promise<AckRe
 			// 情侣相认 shows the same button on every phone, so a non-lover's tap
 			// must look exactly like a lover's - no error popup to give it away.
 			ignored: (state) =>
-				state.currentStepKey === 'couple_reveal'
+				currentStage(state)?.kind === 'COUPLE_REVEAL'
 					? { ok: true }
 					: { ok: false, error: 'not_your_turn' }
 		}

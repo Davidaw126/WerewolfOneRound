@@ -13,12 +13,12 @@
 //     handleNightSubmitAction pulls this out of the effect list itself
 //     before calling into this translator.
 
-import type { Death, EngineEffect, RoleId } from '../../game/types';
+import type { Camp, Death, EngineEffect, RoleId } from '../../game/types';
 import type { NightStage as LegacyNightStage } from '../../shared/gameTypes';
 import type { PrivateInfo } from '../../shared/events';
 import { emitToRoom, emitToSession } from '../socket/emit';
 import { sessionInSeat, hostSessionOf } from '../rooms/roomRepo';
-import { toPublicStage } from './projection';
+import { toPublicStage, toWireWinner } from './projection';
 
 function legacyStage(stage: unknown): LegacyNightStage | null {
 	const s = stage as { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' } | null;
@@ -216,11 +216,10 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				continue;
 
 			case 'GameOver': {
-				const winnerMap = { GOOD: 'villagers', WEREWOLF: 'wolves', LOVERS: 'lovers' } as const;
 				const identities = payload.identities as Record<number, RoleId>;
 				emitToRoom(code, {
 					kind: 'GameOver',
-					winner: winnerMap[payload.winner as 'GOOD' | 'WEREWOLF' | 'LOVERS'],
+					winner: toWireWinner(payload.winner as Camp),
 					identities,
 					coupleSeats: payload.coupleSeats as [number, number] | null
 				});

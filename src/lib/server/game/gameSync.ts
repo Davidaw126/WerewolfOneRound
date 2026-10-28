@@ -21,8 +21,14 @@ import { recordGamePhase, isHost, readRoomHash } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import type { AckResponse } from '../../shared/events';
-import { actsInStage, PACK_KILL_ROLES, STATUS_STAGE_ROLES } from '../../game/roleMeta';
-import { stageConfirmComplete, type StartGameParams } from '../../game/engine';
+import { STATUS_STAGE_ROLES } from '../../game/roleMeta';
+import type { StartGameParams } from '../../game/engine';
+import {
+	currentStageRole,
+	isNightPhase,
+	roleHasLivingHolder,
+	stageFinished
+} from '../../game/rules/stage';
 import { translateEffects } from './effectTranslator';
 import {
 	applyGameAction,
@@ -53,14 +59,6 @@ function fakeStageDurationMs(role: RoleId): number {
 	return think + postActionPauseMs();
 }
 
-function roleHasLivingHolder(state: GameState, role: RoleId): boolean {
-	// actsInStage, not role equality: a lone surviving wolf king is the real
-	// holder of the WEREWOLF stage, not an absent role to auto-skip.
-	return Object.values(state.players).some((p) => !p.isDead && actsInStage(role, p.role));
-}
-
-const isNight = (state: GameState) => state.phase === 'NIGHT' || state.phase === 'FIRST_NIGHT';
-
 /** §8.5 假环节: a stage for a role with no living holder never gets a
  * submission to finish it, so this schedules the same pacing beat directly
  * on stage ENTRY instead - a fake stage still takes a consistent, realistic
@@ -72,14 +70,13 @@ const isNight = (state: GameState) => state.phase === 'NIGHT' || state.phase ===
  * call on every sync: a redundant/stale timer's expectedStepKey simply won't
  * match by the time it fires if the stage already moved on. */
 function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
-	const key = state.currentStepKey;
-	if (!key || !key.startsWith('role:')) return;
-	const role = key.slice('role:'.length) as RoleId;
+	const role = currentStageRole(state);
+	if (!role) return;
 	// Not only the always-announced roles: any stage can lose its last holder
 	// mid-turn (上帝之手 kills or recasts them), and that stage must not freeze.
 	if (roleHasLivingHolder(state, role)) return;
 
-	scheduleAdvance(code, key, fakeStageDurationMs(role));
+	scheduleAdvance(code, state.currentStepKey, fakeStageDurationMs(role));
 }
 
 /** Moves the night on from `expectedStepKey` after `ms` - a no-op if the
@@ -93,23 +90,11 @@ function scheduleAdvance(code: string, expectedStepKey: string | null, ms: numbe
 	}, ms);
 }
 
-/** The current night stage got everything it waits for (a submission, or
- * every 确认) and only the pause before the next role is left. */
-function stageFinished(state: GameState): boolean {
-	const key = state.currentStepKey;
-	if (!key) return false;
-	if (key === 'couple_reveal') return stageConfirmComplete(state);
-	const role = key.slice('role:'.length) as RoleId;
-	if (STATUS_STAGE_ROLES.has(role)) return stageConfirmComplete(state);
-	if (role === 'WEREWOLF') return state.submittedRoles.some((r) => PACK_KILL_ROLES.has(r));
-	return state.submittedRoles.includes(role);
-}
-
 /** Arms whatever the night now waits on: the pause before the next role
  * when this action just finished the stage (a submission, the last 确认),
  * or the made-up turn length of a stage nobody alive can take. */
 function scheduleNightTimers(code: string, before: GameState | null, after: GameState): void {
-	if (!isNight(after)) return;
+	if (!isNightPhase(after)) return;
 	const alreadyFinished =
 		before !== null && before.currentStepKey === after.currentStepKey && stageFinished(before);
 	if (stageFinished(after) && !alreadyFinished) {

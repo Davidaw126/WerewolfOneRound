@@ -34,6 +34,13 @@ import type {
 	Player,
 	Camp
 } from './types';
+import {
+	stageKey,
+	currentStage,
+	currentStageRole,
+	isNightPhase,
+	roleHasLivingHolder
+} from './rules/stage';
 import type { DealResult } from './rules/deal';
 import {
 	buildNight1Order,
@@ -87,10 +94,6 @@ function reject(effects: EngineEffect[], seat: Seat, error: NightRuleError): voi
 // actually persisted on GameState.
 // ---------------------------------------------------------------------------
 
-function stageKey(stage: NightStage): string {
-	return stage.kind === 'ROLE_TURN' ? `role:${stage.role}` : 'couple_reveal';
-}
-
 function computeStageOrder(state: GameState): NightStage[] {
 	if (state.isFirstNight) return buildNight1Order(state.setup.roleConfig);
 
@@ -104,10 +107,6 @@ function computeStageOrder(state: GameState): NightStage[] {
 	}
 	const living = livingRolesFrom(identities, seatedSeatNumbers, deadSeats);
 	return buildRepeatingOrder(living, state.setup.roleConfig);
-}
-
-function roleHasLivingHolder(state: GameState, role: RoleId): boolean {
-	return Object.values(state.players).some((p) => !p.isDead && actsInStage(role, p.role));
 }
 
 /** Finds the next stage after `fromKey` (null = before the first stage),
@@ -762,7 +761,8 @@ function handleConfirmStage(
 		const key = draft.currentStepKey;
 		const player = draft.players[action.seat];
 		if (!key || !player || player.isDead) return;
-		if (key === stageKey({ kind: 'COUPLE_REVEAL' })) {
+		const stage = currentStage(draft);
+		if (stage?.kind === 'COUPLE_REVEAL') {
 			const lovers = (draft.lovers ?? []).filter((s) => !draft.players[s]?.isDead);
 			const confirms = draft.stageConfirms ?? [];
 			if (!lovers.includes(action.seat) || confirms.includes(action.seat)) return;
@@ -771,31 +771,12 @@ function handleConfirmStage(
 			return;
 		}
 
-		const role = key.startsWith('role:') ? (key.slice('role:'.length) as RoleId) : null;
+		const role = currentStageRole(draft);
 		if (!role || !STATUS_STAGE_ROLES.has(role) || !actsInStage(role, player.role)) return;
 		if ((draft.stageConfirms ?? []).includes(action.seat)) return;
 		draft.stageConfirms = [...(draft.stageConfirms ?? []), action.seat];
 		effects.push({ kind: 'PRIVATE', seat: action.seat, payload: { kind: 'StageConfirmed' } });
 	});
-}
-
-/** Whether everyone the current stage waits on has tapped 确认 - the
- * shooter on a 开枪状态 stage, every living lover on 情侣相认. */
-export function stageConfirmComplete(state: GameState): boolean {
-	const key = state.currentStepKey;
-	const confirms = state.stageConfirms ?? [];
-	if (key === stageKey({ kind: 'COUPLE_REVEAL' })) {
-		const lovers = (state.lovers ?? []).filter((s) => !state.players[s]?.isDead);
-		return lovers.length > 0 && lovers.every((s) => confirms.includes(s));
-	}
-	// Every living holder, not just the first to tap: with a 上帝之手 second
-	// 猎人 the stage used to move on while the other was still looking.
-	const role = key?.startsWith('role:') ? (key.slice('role:'.length) as RoleId) : null;
-	if (!role) return false;
-	const holders = Object.values(state.players).filter(
-		(p) => !p.isDead && actsInStage(role, p.role)
-	);
-	return holders.length > 0 && holders.every((p) => confirms.includes(p.seat));
 }
 
 function handleCastVote(
@@ -1293,9 +1274,8 @@ function handleHostOverride(
 			// hasn't been used yet), wake them for it. A turn already past
 			// tonight is simply missed; later stages pick the new role up on
 			// their own, since the stage order is recomputed each step.
-			const key = draft.currentStepKey;
-			if ((draft.phase === 'FIRST_NIGHT' || draft.phase === 'NIGHT') && key?.startsWith('role:')) {
-				const stageRole = key.slice('role:'.length) as RoleId;
+			const stageRole = isNightPhase(draft) ? currentStageRole(draft) : null;
+			if (stageRole) {
 				if (
 					!player.isDead &&
 					actsInStage(stageRole, action.role) &&

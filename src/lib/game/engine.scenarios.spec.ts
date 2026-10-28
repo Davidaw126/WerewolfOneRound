@@ -9,7 +9,8 @@
 // each living holder of an acting role really got their turn prompt.
 
 import { describe, it, expect } from 'vitest';
-import { startGame, reduce, stageConfirmComplete } from './engine';
+import { startGame, reduce } from './engine';
+import { stageConfirmComplete } from './rules/stage';
 import { buildSetup, validateSetup } from './rules/setup';
 import { dealCards, deriveSeatCount } from './rules/deal';
 import { PRESET_BOARDS } from './rules/presets';

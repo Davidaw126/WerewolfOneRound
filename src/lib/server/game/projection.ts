@@ -10,7 +10,8 @@
 // go to one session, and GAME_OVER is the only phase where full identities
 // are exposed at all).
 
-import type { GameState, RoleId } from '../../game/types';
+import type { Camp, GameState, RoleId } from '../../game/types';
+import { currentStage } from '../../game/rules/stage';
 import type {
 	NightStage as LegacyNightStage,
 	PublicNightStage,
@@ -18,10 +19,7 @@ import type {
 } from '../../shared/gameTypes';
 
 export function stageOf(state: GameState): LegacyNightStage | null {
-	const key = state.currentStepKey;
-	if (key === null) return null;
-	if (key === 'couple_reveal') return { kind: 'COUPLE_REVEAL' };
-	return { kind: 'ROLE_TURN', role: key.slice('role:'.length) as RoleId };
+	return currentStage(state);
 }
 
 /** S4: strips which role is acting - the room-wide broadcast form of
@@ -70,17 +68,15 @@ export function pkCandidatesOf(state: GameState): number[] {
 	return state.phase === 'VOTE_PK' ? [...state.pkCandidates] : [];
 }
 
+const WIRE_WINNER = { GOOD: 'villagers', WEREWOLF: 'wolves', LOVERS: 'lovers' } as const;
+
+/** The engine's winning camp as the phones name it. */
+export function toWireWinner(camp: Camp): Winner {
+	return WIRE_WINNER[camp];
+}
+
 export function winnerOf(state: GameState): Winner | null {
-	switch (state.winner) {
-		case 'GOOD':
-			return 'villagers';
-		case 'WEREWOLF':
-			return 'wolves';
-		case 'LOVERS':
-			return 'lovers';
-		default:
-			return null;
-	}
+	return state.winner ? toWireWinner(state.winner) : null;
 }
 
 export function identitiesOf(state: GameState): Record<number, RoleId> {
