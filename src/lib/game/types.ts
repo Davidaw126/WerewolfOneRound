@@ -4,6 +4,9 @@
 // types, built alongside the current (working) app and cut over in one
 // commit once parity is proven. See the M0 plan for the full rationale.
 
+import type { NightStage } from './rules/nightOrder';
+import type { TurnContext } from './rules/turnContext';
+
 // ---------------------------------------------------------------------------
 // §4.1 Roles - the spec's 15-role roster, adopted exactly (a deliberate,
 // user-confirmed decision to drop the current app's 8 extra mechanics-less
@@ -436,12 +439,79 @@ export type EngineAction =
 	| { type: 'KNIGHT_DUEL'; knightSeat: Seat; targetSeat: Seat }
 	| { type: 'HOST_OVERRIDE'; kind: 'KILL' | 'REVIVE' | 'SET_ROLE'; seat: Seat; role?: RoleId };
 
+/** Everything the engine can tell the room (BROADCAST) or one seat
+ * (PRIVATE). The IO shell's effectTranslator turns these into socket
+ * events; most travel unchanged, a few are reshaped or split there. */
+export type EnginePayload =
+	// The IO shell broadcasts the phase itself (gameSync); DAWN is how the
+	// room learns the night's results are waiting for the Host.
+	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number }
+	| { kind: 'NightAnnouncePending' }
+	// Becomes the submitter's ack error, never a sent event.
+	| { kind: 'NightActionRejected'; error: string }
+	| {
+			kind: 'HostOverrideApplied';
+			seat: Seat;
+			overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE';
+			deaths?: Seat[];
+	  }
+	| { kind: 'StageChanged'; stage: NightStage | null }
+	| { kind: 'LastWordsSpeakerChanged'; seat: Seat | null }
+	| { kind: 'DiscussionSpeakerChanged'; seat: Seat | null; order: Seat[] }
+	| { kind: 'DayDecided' }
+	| { kind: 'DayOut'; seats: Seat[]; followDeaths: Seat[] }
+	| { kind: 'SelfExploded'; seat: Seat }
+	| {
+			kind: 'KnightDuelResolved';
+			knightSeat: Seat;
+			targetSeat: Seat;
+			targetWasWolf: boolean;
+			deaths: Seat[];
+	  }
+	| { kind: 'NightResultsAnnounced'; deaths: Death[]; nightNumber: number }
+	| { kind: 'HunterPending'; hunterSeat: Seat }
+	| { kind: 'HunterAuthorized' }
+	| { kind: 'HunterDenied'; reason: 'poison' }
+	| {
+			kind: 'HunterResolved';
+			hunterSeat: Seat;
+			shotSeat: Seat | null;
+			followDeathSeat: Seat | null;
+	  }
+	| { kind: 'PackKillChosen'; bySeat: Seat; target: Seat | null }
+	| { kind: 'RoleDoneByOther' }
+	| { kind: 'StageConfirmed' }
+	| { kind: 'ShotStatus'; canShoot: boolean }
+	| {
+			kind: 'DayResolved';
+			eliminatedSeat: Seat | null;
+			identity: RoleId | null;
+			tie: boolean;
+			followDeathSeat: Seat | null;
+			followDeathIdentity: RoleId | null;
+			idiotRevealed?: boolean;
+			pkCandidates?: Seat[];
+	  }
+	| { kind: 'VoteUpdated'; votedSeats: Seat[]; totalVoters: number }
+	| {
+			kind: 'GameOver';
+			winner: Camp;
+			identities: Record<Seat, RoleId>;
+			coupleSeats: [Seat, Seat] | null;
+	  }
+	| { kind: 'NightActionAck'; role: RoleId }
+	| { kind: 'YourRole'; role: RoleId }
+	| { kind: 'SeerResult'; targetSeat: Seat; isBad: boolean }
+	| { kind: 'CoupleRevealed'; partnerSeat: Seat }
+	| { kind: 'ThiefChoice'; buried: RoleId[] }
+	| { kind: 'YourTurnPrompt'; role: RoleId; context: TurnContext; replay?: boolean };
+
 export interface EngineEffect {
 	/** Effects are side-effect *descriptions* the IO shell (M1) turns into
 	 * actual socket emits - the engine itself never touches a socket. */
-	kind: 'BROADCAST' | 'PRIVATE' | 'NARRATE';
+	kind: 'BROADCAST' | 'PRIVATE';
 	seat?: Seat; // required when kind === 'PRIVATE'
-	payload: unknown;
+	payload: EnginePayload;
 }
 
 export interface EngineResult {

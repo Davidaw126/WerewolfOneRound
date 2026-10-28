@@ -1,31 +1,21 @@
-// Turns the engine's IO-agnostic EngineEffect[] into actual socket emits,
-// reshaping a couple of payloads whose field names/shapes predate the
-// engine rewrite (SeerResult.isWolf, NightResolved's bare seat-number list)
-// so the client - untouched by M1 - keeps seeing exactly the same contract
-// it always has.
+// Turns the engine's typed EngineEffect[] into actual socket emits. Most
+// payloads already have the wire's shape and go out as they are; this file
+// only holds the ones that are reshaped or split (改变身份 to two people,
+// stage redaction, night results, the winner's name, SeerResult.isWolf,
+// the thief's two cards) and who each one is delivered to.
 //
-// These effect kinds are deliberately NOT handled here, by design:
+// Not handled here, by design:
 //   - 'PhaseChanged' / 'NightAnnouncePending' - the IO shell broadcasts the
 //     phase itself, from the final state, only when it really changed (see
 //     gameSync.ts); DAWN is how the room learns results are pending.
-//   - 'NightActionRejected' - the old app surfaced a rejected night action
-//     through the socket ACK (`{ok:false,error}`), never a pushed event.
-//     handleNightSubmitAction pulls this out of the effect list itself
-//     before calling into this translator.
+//   - 'NightActionRejected' - becomes the submitter's ack error
+//     (runGameAction), never a pushed event.
 
-import type { Camp, Death, EngineEffect, RoleId } from '../../game/types';
-import type { NightStage as LegacyNightStage } from '../../shared/gameTypes';
+import type { EngineEffect } from '../../game/types';
 import type { PrivateInfo } from '../../shared/events';
 import { emitToRoom, emitToSession } from '../socket/emit';
 import { sessionInSeat, hostSessionOf } from '../rooms/roomRepo';
 import { toPublicStage, toWireWinner } from './projection';
-
-function legacyStage(stage: unknown): LegacyNightStage | null {
-	const s = stage as { kind: 'ROLE_TURN'; role: RoleId } | { kind: 'COUPLE_REVEAL' } | null;
-	if (!s) return null;
-	if (s.kind === 'COUPLE_REVEAL') return { kind: 'COUPLE_REVEAL' };
-	return { kind: 'ROLE_TURN', role: s.role };
-}
 
 async function emitPrivate(code: string, seat: number, event: PrivateInfo): Promise<void> {
 	const sessionId = await sessionInSeat(code, seat);
@@ -45,7 +35,8 @@ async function emitToHost(code: string, event: PrivateInfo): Promise<void> {
 
 export async function translateEffects(code: string, effects: EngineEffect[]): Promise<void> {
 	for (const effect of effects) {
-		const payload = effect.payload as { kind: string } & Record<string, unknown>;
+		const payload = effect.payload;
+		const seat = effect.seat!;
 
 		switch (payload.kind) {
 			// Broadcast by gameSync from the final state - the room learns DAWN
@@ -55,237 +46,103 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'NightActionRejected':
 				continue;
 
-			case 'HostOverrideApplied':
-				if (payload.overrideKind === 'SET_ROLE') {
-					const seat = payload.seat as number;
-					const [playerSession, host] = await Promise.all([
-						sessionInSeat(code, seat),
-						hostSessionOf(code)
-					]);
-					if (playerSession)
-						emitToSession(playerSession, { kind: 'RoleChangedByHost', seat, forYou: true });
-					if (host && host !== playerSession)
-						emitToSession(host, { kind: 'RoleChangedByHost', seat, forYou: false });
-					continue;
-				}
-				emitToRoom(code, {
-					kind: 'HostOverrideApplied',
-					seat: payload.seat as number,
-					overrideKind: payload.overrideKind as 'KILL' | 'REVIVE' | 'SET_ROLE',
-					deaths: (payload.deaths as number[] | undefined) ?? []
-				});
-				continue;
-
-			case 'StageChanged': {
-				const stage = legacyStage(payload.stage);
-				// S4: everyone gets the redacted (role-less) form; the host also
-				// gets a private, full copy (with role) so JudgeAudioPlayer knows
-				// what to narrate - see PublicNightStage's own comment.
-				emitToRoom(code, { kind: 'StageChanged', stage: toPublicStage(stage) });
-				await emitToHost(code, { kind: 'HostStageChanged', stage });
-				continue;
-			}
-
+			// --- Sent as they are ---------------------------------------------
 			case 'LastWordsSpeakerChanged':
-				emitToRoom(code, {
-					kind: 'LastWordsSpeakerChanged',
-					seat: payload.seat as number | null
-				});
-				continue;
-
 			case 'DiscussionSpeakerChanged':
-				emitToRoom(code, {
-					kind: 'DiscussionSpeakerChanged',
-					seat: payload.seat as number | null,
-					order: payload.order as number[]
-				});
-				continue;
-
 			case 'DayDecided':
-				emitToRoom(code, { kind: 'DayDecided' });
-				continue;
-
 			case 'DayOut':
-				emitToRoom(code, {
-					kind: 'DayOut',
-					seats: payload.seats as number[],
-					followDeaths: payload.followDeaths as number[]
-				});
-				continue;
-
 			case 'SelfExploded':
-				emitToRoom(code, { kind: 'SelfExploded', seat: payload.seat as number });
-				continue;
-
 			case 'KnightDuelResolved':
-				emitToRoom(code, {
-					kind: 'KnightDuelResolved',
-					knightSeat: payload.knightSeat as number,
-					targetSeat: payload.targetSeat as number,
-					targetWasWolf: payload.targetWasWolf as boolean,
-					deaths: payload.deaths as number[]
-				});
-				continue;
-
-			case 'NightResultsAnnounced': {
-				const deaths = payload.deaths as Death[];
-				// The old wire event only ever carried WHO died, never why - keep
-				// that exact privacy property (see nightResolution.ts's DeathCause
-				// tracking, which is server-internal only for now).
-				emitToRoom(code, {
-					kind: 'NightResolved',
-					nightNumber: payload.nightNumber as number,
-					deaths: deaths.map((d) => d.seat).sort((a, b) => a - b)
-				});
-				continue;
-			}
-
 			case 'HunterPending':
-				emitToRoom(code, { kind: 'HunterPending', hunterSeat: payload.hunterSeat as number });
+			case 'HunterResolved':
+			case 'DayResolved':
+			case 'VoteUpdated':
+				emitToRoom(code, payload);
 				continue;
 
 			case 'HunterAuthorized':
-				await emitPrivate(code, effect.seat!, { kind: 'HunterAuthorized' });
-				continue;
-
-			case 'PackKillChosen':
-				await emitPrivate(code, effect.seat!, {
-					kind: 'PackKillChosen',
-					bySeat: payload.bySeat as number,
-					target: payload.target as number | null
-				});
-				continue;
-
-			case 'RoleDoneByOther':
-				await emitPrivate(code, effect.seat!, { kind: 'RoleDoneByOther' });
-				continue;
-
-			case 'StageConfirmed':
-				await emitPrivate(code, effect.seat!, { kind: 'StageConfirmed' });
-				continue;
-
-			case 'ShotStatus':
-				await emitPrivate(code, effect.seat!, {
-					kind: 'ShotStatus',
-					canShoot: payload.canShoot as boolean
-				});
-				continue;
-
 			case 'HunterDenied':
-				await emitPrivate(code, effect.seat!, {
-					kind: 'HunterDenied',
-					reason: payload.reason as 'poison'
-				});
-				continue;
-
-			case 'HunterResolved':
-				emitToRoom(code, {
-					kind: 'HunterResolved',
-					hunterSeat: payload.hunterSeat as number,
-					shotSeat: payload.shotSeat as number | null,
-					followDeathSeat: payload.followDeathSeat as number | null
-				});
-				continue;
-
-			case 'DayResolved': {
-				const identity = payload.identity as RoleId | null;
-				const followDeathIdentity = payload.followDeathIdentity as RoleId | null;
-				const pkCandidates = payload.pkCandidates as number[] | undefined;
-				emitToRoom(code, {
-					kind: 'DayResolved',
-					eliminatedSeat: payload.eliminatedSeat as number | null,
-					identity,
-					tie: payload.tie as boolean,
-					followDeathSeat: payload.followDeathSeat as number | null,
-					followDeathIdentity,
-					// Previously dropped here, so every client treated the flipped
-					// idiot as dead: gone from every night-target list (wolves,
-					// witch, guard, seer) for the rest of the game.
-					...(payload.idiotRevealed === true ? { idiotRevealed: true } : {}),
-					...(pkCandidates ? { pkCandidates } : {})
-				});
-				continue;
-			}
-
-			case 'VoteUpdated':
-				emitToRoom(code, {
-					kind: 'VoteUpdated',
-					votedSeats: payload.votedSeats as number[],
-					totalVoters: payload.totalVoters as number
-				});
-				continue;
-
-			case 'GameOver': {
-				const identities = payload.identities as Record<number, RoleId>;
-				emitToRoom(code, {
-					kind: 'GameOver',
-					winner: toWireWinner(payload.winner as Camp),
-					identities,
-					coupleSeats: payload.coupleSeats as [number, number] | null
-				});
-				continue;
-			}
-
-			case 'NightActionAck':
-				await emitToHost(code, {
-					kind: 'NightActionAck',
-					role: payload.role as RoleId
-				});
-				continue;
-
+			case 'PackKillChosen':
+			case 'RoleDoneByOther':
+			case 'StageConfirmed':
+			case 'ShotStatus':
 			case 'YourRole':
-				await emitPrivate(code, effect.seat!, {
-					kind: 'YourRole',
-					role: payload.role as RoleId
+			case 'CoupleRevealed':
+			case 'YourTurnPrompt':
+				await emitPrivate(code, seat, payload);
+				continue;
+
+			// S4: acknowledges a role's submission - to the Host only, since
+			// telling the room would out that role's holder as having acted.
+			case 'NightActionAck':
+				await emitToHost(code, payload);
+				continue;
+
+			// --- Reshaped or split --------------------------------------------
+			case 'HostOverrideApplied':
+				// 改变身份 goes only to that seat's player and the Host: a
+				// room-wide notice would point every player at that seat.
+				if (payload.overrideKind === 'SET_ROLE') {
+					const [playerSession, host] = await Promise.all([
+						sessionInSeat(code, payload.seat),
+						hostSessionOf(code)
+					]);
+					if (playerSession)
+						emitToSession(playerSession, {
+							kind: 'RoleChangedByHost',
+							seat: payload.seat,
+							forYou: true
+						});
+					if (host && host !== playerSession)
+						emitToSession(host, { kind: 'RoleChangedByHost', seat: payload.seat, forYou: false });
+					continue;
+				}
+				emitToRoom(code, { ...payload, deaths: payload.deaths ?? [] });
+				continue;
+
+			case 'StageChanged':
+				// S4: everyone gets the redacted (role-less) form; the Host also
+				// gets a private, full copy (with role) so JudgeAudioPlayer knows
+				// what to narrate - see PublicNightStage's own comment.
+				emitToRoom(code, { kind: 'StageChanged', stage: toPublicStage(payload.stage) });
+				await emitToHost(code, { kind: 'HostStageChanged', stage: payload.stage });
+				continue;
+
+			case 'NightResultsAnnounced':
+				// Only WHO died, never why - DeathCause stays server-internal.
+				emitToRoom(code, {
+					kind: 'NightResolved',
+					nightNumber: payload.nightNumber,
+					deaths: payload.deaths.map((d) => d.seat).sort((a, b) => a - b)
 				});
+				continue;
+
+			case 'GameOver':
+				emitToRoom(code, { ...payload, winner: toWireWinner(payload.winner) });
 				continue;
 
 			case 'SeerResult':
-				await emitPrivate(code, effect.seat!, {
+				await emitPrivate(code, seat, {
 					kind: 'SeerResult',
-					targetSeat: payload.targetSeat as number,
-					isWolf: payload.isBad as boolean
+					targetSeat: payload.targetSeat,
+					isWolf: payload.isBad
 				});
 				continue;
 
-			case 'CoupleRevealed':
-				await emitPrivate(code, effect.seat!, {
-					kind: 'CoupleRevealed',
-					partnerSeat: payload.partnerSeat as number
-				});
-				continue;
-
-			case 'ThiefChoice': {
-				const buried = payload.buried as RoleId[];
-				// PrivateInfo's ThiefChoice wants a fixed 2-tuple; the engine's
-				// buried array is only ever 0 or 2 entries (see startGame's
-				// thiefExtraCards), but the null-vs-tuple split still needs
-				// spelling out for TS.
-				if (buried.length !== 2) continue;
-				await emitPrivate(code, effect.seat!, {
+			case 'ThiefChoice':
+				// The engine's buried pile is only ever empty or 2 cards.
+				if (payload.buried.length !== 2) continue;
+				await emitPrivate(code, seat, {
 					kind: 'ThiefChoice',
-					buried: [buried[0], buried[1]]
+					buried: [payload.buried[0], payload.buried[1]]
 				});
 				continue;
-			}
 
-			case 'YourTurnPrompt': {
-				const context = payload.context as { seat: number } & Record<string, unknown>;
-				await emitPrivate(code, effect.seat!, {
-					kind: 'YourTurnPrompt',
-					role: payload.role as RoleId,
-					context,
-					...(payload.replay === true ? { replay: true } : {})
-				});
-				continue;
+			default: {
+				// A new engine payload kind without a branch here fails to compile.
+				const unhandled: never = payload;
+				console.error('[effectTranslator] unhandled effect', unhandled);
 			}
-
-			default:
-				// Not thrown: an unmapped future effect kind (e.g. a new payload
-				// added to engine.ts without updating this switch) should degrade
-				// to "silently not delivered" for that one effect, not take the
-				// whole action down for every player in the room.
-				console.error(`[effectTranslator] unhandled effect payload kind: ${payload.kind}`);
 		}
 	}
 }

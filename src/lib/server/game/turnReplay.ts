@@ -33,12 +33,9 @@ export async function replayTurnPromptIfAny(code: string, sessionId: string): Pr
 
 	const effects = notifyRoleHolders(state, stageRole)
 		.filter((e) => e.seat === player.seat)
-		.map((e) => {
-			const payload = e.payload as { kind?: string };
-			return payload.kind === 'YourTurnPrompt'
-				? { ...e, payload: { ...payload, replay: true } }
-				: e;
-		});
+		.map((e) =>
+			e.payload.kind === 'YourTurnPrompt' ? { ...e, payload: { ...e.payload, replay: true } } : e
+		);
 	if (effects.length === 0) return;
 	await translateEffects(code, effects);
 }
