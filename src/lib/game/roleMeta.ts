@@ -60,7 +60,16 @@ export interface RoleMeta {
 	 * role before it actually works.
 	 */
 	implemented: boolean;
+	/** The shape of this role's OWN night turn - what its holder does when
+	 * their role is called (null = no night turn of its own). In the pack's
+	 * shared WEREWOLF turn every pack member picks a seat regardless. */
+	nightTurn: NightTurn | null;
 }
+
+/** pick: choose a seat · potions: the witch's two potions · link: choose two
+ * seats · thief: choose a buried card · status: look at your 开枪状态 and
+ * confirm, nothing to submit. */
+export type NightTurn = 'pick' | 'potions' | 'link' | 'thief' | 'status';
 
 export const ROLE_META: Record<RoleId, RoleMeta> = {
 	VILLAGER: {
@@ -77,7 +86,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: null
 	},
 	SEER: {
 		id: 'SEER',
@@ -93,7 +103,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	WITCH: {
 		id: 'WITCH',
@@ -109,7 +120,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null, // tracked via witchAntidoteUsed/witchPoisonUsed on GameState instead
-		implemented: true
+		implemented: true,
+		nightTurn: 'potions'
 	},
 	HUNTER: {
 		id: 'HUNTER',
@@ -125,7 +137,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'status'
 	},
 	GUARD: {
 		id: 'GUARD',
@@ -141,7 +154,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	IDIOT: {
 		id: 'IDIOT',
@@ -157,7 +171,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: null
 	},
 	KNIGHT: {
 		id: 'KNIGHT',
@@ -173,7 +188,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: 1, // spec default knight.onceOnly = true
-		implemented: true
+		implemented: true,
+		nightTurn: null
 	},
 	DREAM_WEAVER: {
 		id: 'DREAM_WEAVER',
@@ -189,7 +205,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	CUPID: {
 		id: 'CUPID',
@@ -205,7 +222,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'link'
 	},
 	THIEF: {
 		id: 'THIEF',
@@ -221,7 +239,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'thief'
 	},
 	WILD_CHILD: {
 		id: 'WILD_CHILD',
@@ -237,7 +256,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: [],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	WEREWOLF: {
 		id: 'WEREWOLF',
@@ -253,7 +273,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	WOLF_KING: {
 		id: 'WOLF_KING',
@@ -277,7 +298,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	// 黑狼王: wakes with the pack and shares its one kill (actsInStage below).
 	// When he dies to the wolf kill, a vote, or a shot, he takes one player
@@ -299,7 +321,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'status'
 	},
 	WOLF_BEAUTY: {
 		id: 'WOLF_BEAUTY',
@@ -315,7 +338,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	},
 	NIGHTMARE: {
 		id: 'NIGHTMARE',
@@ -331,7 +355,8 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		canTargetDead: false,
 		visibleTeammates: ['WEREWOLF', 'WOLF_KING', 'BLACK_WOLF_KING', 'WOLF_BEAUTY', 'NIGHTMARE'],
 		maxUses: null,
-		implemented: true
+		implemented: true,
+		nightTurn: 'pick'
 	}
 };
 
@@ -370,8 +395,11 @@ export const PACK_KILL_ROLES: ReadonlySet<RoleId> = new Set([
 	'BLACK_WOLF_KING'
 ]);
 
-/** Status-only stages (确认开枪状态): nothing to submit, the host advances. */
-export const STATUS_STAGE_ROLES: ReadonlySet<RoleId> = new Set(['HUNTER', 'BLACK_WOLF_KING']);
+/** Status-only stages (确认开枪状态): nothing to submit; every holder taps
+ * 确认 and the night moves on. */
+export const STATUS_STAGE_ROLES: ReadonlySet<RoleId> = new Set(
+	ALL_ROLE_IDS.filter((id) => ROLE_META[id].nightTurn === 'status')
+);
 
 /** Every wolf who wakes in the WEREWOLF stage and helps choose its kill:
  * the wolf kings, plus 狼美人 and 恶灵骑士 - who also keep their own later

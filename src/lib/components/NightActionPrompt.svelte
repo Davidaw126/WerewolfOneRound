@@ -7,10 +7,15 @@
 	import type { AckResponse, ClientAction, NightActionSubmission } from '$lib/shared/events';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import PixelSprite from './PixelSprite.svelte';
+	import { promptFor, selectLabelFor, statusLabelFor } from '$lib/client/roleNight';
+	import { PACK_MEMBER_ROLES } from '$lib/game/roleMeta';
 
 	const t = $derived(strings(i18n.lang).nightPrompt);
 
 	const role = $derived(gameStore.myTurnRole);
+	// Which prompt this turn shows, and how it asks - see client/roleNight.ts.
+	const prompt = $derived(role ? promptFor(role, gameStore.turnRules.packTurn) : null);
+	const selectLabel = $derived(role ? selectLabelFor(role, gameStore.turnRules.packTurn) : null);
 	const seats = $derived(gameStore.state?.seats ?? []);
 	const livingSeats = $derived(seats.filter((s: SeatState) => s.sessionId !== null && !s.isDead));
 
@@ -127,7 +132,7 @@
 					</span>
 				</p>
 			{/if}
-		{:else if role === 'HUNTER' || (role === 'BLACK_WOLF_KING' && ctx?.hunter)}
+		{:else if prompt === 'status'}
 			<!-- The live thumbs up/down a physical host gives the hunter (and
 			     黑狼王, on his own 确认开枪状态 stage - his pack-kill turn has no
 			     `hunter` context) each night. Same verdict the server will
@@ -143,7 +148,7 @@
 				<p class="text-sm text-zinc-400">{strings(i18n.lang).room.stageConfirmedWait}</p>
 			{:else}
 				<p class="text-sm text-zinc-400">
-					{role === 'HUNTER' ? t.hunterNoActionNeeded : t.statusNoActionNeeded}
+					{t[statusLabelFor(role)]}
 				</p>
 				<!-- Everyone else - the host included - has their eyes shut, so
 				     the shooter moves the night on themselves. -->
@@ -154,8 +159,8 @@
 					{t.statusConfirm}
 				</button>
 			{/if}
-		{:else if role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING' || role === 'SEER' || role === 'GUARD' || role === 'WOLF_BEAUTY' || role === 'WILD_CHILD' || role === 'DREAM_WEAVER' || role === 'NIGHTMARE'}
-			{#if role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING' || role === 'WOLF_BEAUTY' || role === 'NIGHTMARE'}
+		{:else if prompt === 'pick'}
+			{#if PACK_MEMBER_ROLES.has(role)}
 				<p class="text-sm text-wolf">
 					{wolfTeammates.length > 0
 						? t.wolfTeammates(wolfTeammates.map((s) => seatLabel(s, i18n.lang)).join('、'))
@@ -168,19 +173,7 @@
 				</p>
 			{/if}
 			<p class="text-sm text-zinc-400">
-				{#if packTurn}
-					{t.selectWolfTarget}
-				{:else}
-					{role === 'WEREWOLF' || role === 'WOLF_KING' || role === 'BLACK_WOLF_KING'
-						? t.selectWolfTarget
-						: ''}
-					{role === 'SEER' ? t.selectSeerTarget : ''}
-					{role === 'GUARD' ? t.selectGuardTarget : ''}
-					{role === 'WOLF_BEAUTY' ? t.selectWolfBeautyTarget : ''}
-					{role === 'WILD_CHILD' ? t.selectWildChildTarget : ''}
-					{role === 'DREAM_WEAVER' ? t.selectDreamWeaverTarget : ''}
-					{role === 'NIGHTMARE' ? t.selectNightmareTarget : ''}
-				{/if}
+				{#if selectLabel}{t[selectLabel]}{/if}
 			</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats.filter((s) => !(noSelfPick && s.seatNumber === ctx?.seat)) as seat (seat.seatNumber)}
@@ -209,7 +202,10 @@
 				onclick={() =>
 					singleTarget !== null &&
 					submit(
-						{ kind: 'NightSubmitAction', action: { role, targetSeat: singleTarget } },
+						{
+							kind: 'NightSubmitAction',
+							action: { role, targetSeat: singleTarget } as NightActionSubmission
+						},
 						t.descSelectedSeat(singleTarget)
 					)}
 				disabled={singleTarget === null}
@@ -233,7 +229,7 @@
 					{t.emptyKill}
 				</button>
 			{/if}
-		{:else if role === 'WITCH'}
+		{:else if prompt === 'potions'}
 			<p class="text-sm">
 				<span class="text-zinc-400">{t.witchAntidoteLabel}</span>
 				<span class={witch?.antidoteAvailable ? 'text-village' : 'text-zinc-500'}>
@@ -328,7 +324,7 @@
 			>
 				{t.confirm}
 			</button>
-		{:else if role === 'CUPID'}
+		{:else if prompt === 'link'}
 			<p class="text-sm text-zinc-400">{t.cupidSelectTwo}</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats as seat (seat.seatNumber)}
@@ -365,7 +361,7 @@
 			>
 				{t.confirm}
 			</button>
-		{:else if role === 'THIEF'}
+		{:else if prompt === 'thief'}
 			{#if gameStore.thiefChoice}
 				<p class="text-sm text-zinc-400">
 					{t.thiefBuriedCards(
