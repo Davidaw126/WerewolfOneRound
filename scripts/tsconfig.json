@@ -1,0 +1,18 @@
+{
+	// Type-checks the scripts against the app's own types (the wire contract
+	// above all) - `npm run check` runs it. Node runs them as-is, stripping
+	// the types, so imports from src are type-only.
+	"compilerOptions": {
+		"target": "es2023",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+		"noEmit": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"types": ["node"]
+	},
+	"include": ["e2e.ts"]
+}

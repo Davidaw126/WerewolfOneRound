@@ -9,7 +9,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    # The Room module's tests run against a real Redis (Lua scripts included).
+    # The server tests and the end-to-end run use a real Redis (Lua scripts included).
     services:
       redis:
         image: redis:7
@@ -28,3 +28,18 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      # The end-to-end run plays both games against the production build,
+      # with real sessions and sockets. ORIGIN: the build checks a form's
+      # origin against it. The secret only signs this run's own sessions.
+      - name: End-to-end games
+        env:
+          ORIGIN: http://localhost:5173
+          PORT: '5173'
+          SESSION_SECRET: ci-e2e-only-not-a-real-secret
+        run: |
+          node build-server/index.js > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:5173/health && break; sleep 1; done
+          npm run e2e
+      - name: Server log
+        if: failure()
+        run: cat server.log || true
