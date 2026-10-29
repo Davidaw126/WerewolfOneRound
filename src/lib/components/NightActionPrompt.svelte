@@ -4,10 +4,10 @@
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
-	import type { ClientAction, NightActionSubmission } from '$lib/shared/events';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import PixelSprite from './PixelSprite.svelte';
-	import { line as logLine, renderLine, type LogLine } from '$lib/client/logLines';
+	import { renderLine } from '$lib/client/logLines';
+	import { NightDraft, PickDraft, type Submission } from '$lib/client/turnDraft.svelte';
 	import { promptFor, selectLabelFor, statusLabelFor } from '$lib/client/roleNight';
 	import { PACK_MEMBER_ROLES } from '$lib/game/roleMeta';
 
@@ -33,50 +33,22 @@
 	const noSelfPick = $derived(rules.noSelfPick);
 	const onePotionOnly = $derived(rules.onePotionOnly);
 
-	let submitted = $state(false);
-	// Single-target roles (wolf/seer/guard/wolf-beauty).
-	let singleTarget = $state<number | null>(null);
-	// Witch.
-	let poisonTarget = $state<number | null>(null);
-	let useAntidote = $state(false);
-	// Cupid.
-	let coupleFirst = $state<number | null>(null);
-	let coupleSecond = $state<number | null>(null);
-	// Thief.
-	let thiefPick = $state<'buried1' | 'buried2' | 'keep' | null>(null);
-
-	$effect(() => {
-		// Reset local draft state whenever a new turn begins.
+	// What's picked so far on this turn - a fresh draft per turn (see
+	// client/turnDraft.svelte.ts), so nothing carries over.
+	const draft = $derived.by(() => {
 		void role;
-		submitted = false;
-		singleTarget = null;
-		poisonTarget = null;
-		useAntidote = false;
-		coupleFirst = null;
-		coupleSecond = null;
-		thiefPick = null;
+		return new NightDraft(() => gameStore.turnRules);
 	});
 
-	function pickCupidSeat(seatNumber: number) {
-		if (coupleFirst === seatNumber) {
-			coupleFirst = null;
-		} else if (coupleSecond === seatNumber) {
-			coupleSecond = null;
-		} else if (coupleFirst === null) {
-			coupleFirst = seatNumber;
-		} else if (coupleSecond === null) {
-			coupleSecond = seatNumber;
-		}
-		// Both slots already filled with two other seats - ignore further taps
-		// until one is cleared, rather than silently replacing a choice.
-	}
-
-	async function submit(action: ClientAction, entry: LogLine) {
-		submitted = true;
+	async function submit(submission: Submission | null) {
+		if (!submission) return;
+		const { action, entry } = submission;
+		const turn = draft;
+		turn.sent = true;
 		const res = await sendAction(action);
 		if (!res.ok) {
 			// The reason pops up via sendAction's global error handler.
-			submitted = false;
+			turn.sent = false;
 			return;
 		}
 		gameStore.logActivity(entry);
@@ -94,9 +66,9 @@
 			<span>{t.yourTurn(roleName(role, i18n.lang))}</span>
 		</h3>
 
-		{#if submitted || gameStore.packKill || gameStore.roleDoneByOther}
+		{#if draft.sent || gameStore.packKill || gameStore.roleDoneByOther}
 			<p class="text-sm font-semibold text-village">
-				{submitted
+				{draft.sent
 					? t.submittedWaiting
 					: gameStore.packKill
 						? t.packKillChosen(gameStore.packKill.bySeat, gameStore.packKill.target)
@@ -118,11 +90,7 @@
 			     through the normal submit + auto-advance, so the pause before
 			     the next role is the same as for a real action. -->
 			<p class="text-sm text-wolf">{t.fearedTonight}</p>
-			<button
-				onclick={() =>
-					submit({ kind: 'NightPass' }, logLine('text', 'nightPrompt', 'descFearedPassed'))}
-				class="btn-primary w-full"
-			>
+			<button onclick={() => submit(NightDraft.pass())} class="btn-primary w-full">
 				{t.fearedPass}
 			</button>
 			{#if role === 'SEER' && gameStore.lastSeerResult}
@@ -182,15 +150,14 @@
 					{@const blocked = role === 'GUARD' && seat.seatNumber === guardLastSeat}
 					<button
 						disabled={blocked}
-						onclick={() =>
-							(singleTarget = singleTarget === seat.seatNumber ? null : seat.seatNumber)}
-						class="seat-btn relative {singleTarget === seat.seatNumber
+						onclick={() => draft.pick.tap(seat.seatNumber)}
+						class="seat-btn relative {draft.pick.target === seat.seatNumber
 							? 'border-ember bg-ember/20 text-ember'
 							: ''}"
 					>
 						{seatLabel(seat.seatNumber, i18n.lang)}
 						{seat.username}
-						{#if singleTarget === seat.seatNumber}
+						{#if draft.pick.target === seat.seatNumber}
 							<span
 								class="absolute -top-1.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-line bg-ember text-[9px] text-black"
 							>
@@ -201,16 +168,8 @@
 				{/each}
 			</div>
 			<button
-				onclick={() =>
-					singleTarget !== null &&
-					submit(
-						{
-							kind: 'NightSubmitAction',
-							action: { role, targetSeat: singleTarget } as NightActionSubmission
-						},
-						logLine('text', 'nightPrompt', 'descSelectedSeat', singleTarget)
-					)}
-				disabled={singleTarget === null}
+				onclick={() => submit(draft.pick.submission(role))}
+				disabled={draft.pick.target === null}
 				class="btn-primary w-full"
 			>
 				{t.confirm}
@@ -218,14 +177,7 @@
 			{#if packTurn && ctx?.wolf?.allowEmptyKill}
 				<!-- 空刀: only offered when the room's rules allow it. -->
 				<button
-					onclick={() =>
-						submit(
-							{
-								kind: 'NightSubmitAction',
-								action: { role, targetSeat: null } as NightActionSubmission
-							},
-							logLine('text', 'nightPrompt', 'descEmptyKill')
-						)}
+					onclick={() => submit(PickDraft.emptyKill(role))}
 					class="btn-ghost w-full py-2 text-sm"
 				>
 					{t.emptyKill}
@@ -251,22 +203,18 @@
 						: t.witchNoOneKilled}
 			</p>
 			{#if killedSeat !== null && witch?.antidoteAvailable}
-				{@const antidoteBlocked = isSelfKill || (onePotionOnly && poisonTarget !== null)}
 				<button
 					type="button"
-					disabled={antidoteBlocked}
-					onclick={() => {
-						// Mutual exclusion enforced in the handler too, so no tap
-						// order can build an invalid draft.
-						useAntidote = !useAntidote;
-						if (useAntidote && onePotionOnly) poisonTarget = null;
-					}}
-					class="flex w-full items-center gap-3 border-[3px] border-line p-2 text-left disabled:cursor-not-allowed disabled:opacity-50 {useAntidote
+					disabled={draft.potions.antidoteBlocked}
+					onclick={() => draft.potions.toggleAntidote()}
+					class="flex w-full items-center gap-3 border-[3px] border-line p-2 text-left disabled:cursor-not-allowed disabled:opacity-50 {draft
+						.potions.antidote
 						? 'bg-surface-2'
 						: 'bg-surface'}"
 				>
 					<span
-						class="flex h-6 w-6 flex-none items-center justify-center border-2 border-line text-sm {useAntidote
+						class="flex h-6 w-6 flex-none items-center justify-center border-2 border-line text-sm {draft
+							.potions.antidote
 							? 'bg-village text-black'
 							: 'bg-line text-transparent'}">✓</span
 					>
@@ -274,30 +222,27 @@
 				</button>
 				{#if isSelfKill}
 					<p class="text-sm text-wolf">{t.witchSelfSaveBlocked}</p>
-				{:else if onePotionOnly && poisonTarget !== null}
+				{:else if onePotionOnly && draft.potions.poison !== null}
 					<p class="text-sm text-zinc-400">{t.witchOnePotionPerNight}</p>
 				{/if}
 			{/if}
 			{#if witch?.poisonAvailable}
 				<p class="text-sm text-zinc-400">{t.witchSelectPoisonTarget}</p>
-				{#if onePotionOnly && useAntidote}
+				{#if draft.potions.poisonBlocked}
 					<p class="text-sm text-zinc-400">{t.witchAntidoteChosenAlready}</p>
 				{/if}
 				<div class="grid grid-cols-4 gap-2">
 					{#each livingSeats as seat (seat.seatNumber)}
 						<button
-							disabled={onePotionOnly && useAntidote}
-							onclick={() => {
-								poisonTarget = poisonTarget === seat.seatNumber ? null : seat.seatNumber;
-								if (poisonTarget !== null && onePotionOnly) useAntidote = false;
-							}}
-							class="seat-btn relative {poisonTarget === seat.seatNumber
+							disabled={draft.potions.poisonBlocked}
+							onclick={() => draft.potions.tapPoison(seat.seatNumber)}
+							class="seat-btn relative {draft.potions.poison === seat.seatNumber
 								? 'border-wolf bg-wolf/20 text-wolf'
 								: 'hover:border-wolf/60'}"
 						>
 							{seatLabel(seat.seatNumber, i18n.lang)}
 							{seat.username}
-							{#if poisonTarget === seat.seatNumber}
+							{#if draft.potions.poison === seat.seatNumber}
 								<span
 									class="absolute -top-1.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-line bg-wolf text-[9px] text-bone"
 								>
@@ -308,26 +253,16 @@
 					{/each}
 				</div>
 			{/if}
-			<button
-				onclick={() =>
-					submit(
-						{
-							kind: 'NightSubmitAction',
-							action: { role: 'WITCH', poisonTarget, useAntidote }
-						},
-						logLine('witchNight', useAntidote ? killedSeat : null, poisonTarget)
-					)}
-				class="btn-primary w-full"
-			>
+			<button onclick={() => submit(draft.potions.submission())} class="btn-primary w-full">
 				{t.confirm}
 			</button>
 		{:else if prompt === 'link'}
 			<p class="text-sm text-zinc-400">{t.cupidSelectTwo}</p>
 			<div class="grid grid-cols-4 gap-2">
 				{#each livingSeats as seat (seat.seatNumber)}
-					{@const picked = seat.seatNumber === coupleFirst || seat.seatNumber === coupleSecond}
+					{@const picked = draft.link.has(seat.seatNumber)}
 					<button
-						onclick={() => pickCupidSeat(seat.seatNumber)}
+						onclick={() => draft.link.tap(seat.seatNumber)}
 						class="seat-btn relative {picked ? 'border-ember bg-ember/20 text-ember' : ''}"
 					>
 						{seatLabel(seat.seatNumber, i18n.lang)}
@@ -343,17 +278,8 @@
 				{/each}
 			</div>
 			<button
-				onclick={() =>
-					coupleFirst !== null &&
-					coupleSecond !== null &&
-					submit(
-						{
-							kind: 'NightSubmitAction',
-							action: { role: 'CUPID', seatA: coupleFirst, seatB: coupleSecond }
-						},
-						logLine('text', 'nightPrompt', 'descCupidLinked', coupleFirst, coupleSecond)
-					)}
-				disabled={coupleFirst === null || coupleSecond === null}
+				onclick={() => submit(draft.link.submission())}
+				disabled={draft.link.second === null || draft.link.first === null}
 				class="btn-primary w-full"
 			>
 				{t.confirm}
@@ -368,16 +294,16 @@
 				</p>
 				<div class="flex gap-2">
 					<button
-						onclick={() => (thiefPick = thiefPick === 'buried1' ? null : 'buried1')}
-						class="seat-btn flex-1 px-3 {thiefPick === 'buried1'
+						onclick={() => draft.thief.choose('buried1')}
+						class="seat-btn flex-1 px-3 {draft.thief.pick === 'buried1'
 							? 'border-ember bg-ember/20 text-ember'
 							: ''}"
 					>
 						{t.thiefSwapFirst(roleName(gameStore.thiefChoice[0], i18n.lang))}
 					</button>
 					<button
-						onclick={() => (thiefPick = thiefPick === 'buried2' ? null : 'buried2')}
-						class="seat-btn flex-1 px-3 {thiefPick === 'buried2'
+						onclick={() => draft.thief.choose('buried2')}
+						class="seat-btn flex-1 px-3 {draft.thief.pick === 'buried2'
 							? 'border-ember bg-ember/20 text-ember'
 							: ''}"
 					>
@@ -385,25 +311,16 @@
 					</button>
 				</div>
 				<button
-					onclick={() => (thiefPick = thiefPick === 'keep' ? null : 'keep')}
-					class="btn-ghost w-full py-2 text-sm {thiefPick === 'keep'
+					onclick={() => draft.thief.choose('keep')}
+					class="btn-ghost w-full py-2 text-sm {draft.thief.pick === 'keep'
 						? 'border-ember text-ember'
 						: ''}"
 				>
 					{t.thiefKeepOriginal}
 				</button>
 				<button
-					onclick={() => {
-						if (thiefPick === null) return;
-						const swap = thiefPick === 'keep' ? null : thiefPick;
-						const taken =
-							thiefPick === 'keep' ? null : gameStore.thiefChoice![thiefPick === 'buried1' ? 0 : 1];
-						submit(
-							{ kind: 'NightSubmitAction', action: { role: 'THIEF', swap } },
-							logLine('thiefNight', taken)
-						);
-					}}
-					disabled={thiefPick === null}
+					onclick={() => submit(draft.thief.submission(gameStore.thiefChoice!))}
+					disabled={draft.thief.pick === null}
 					class="btn-primary w-full"
 				>
 					{t.confirm}

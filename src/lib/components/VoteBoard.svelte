@@ -4,7 +4,8 @@
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import { line as logLine, renderLine } from '$lib/client/logLines';
+	import { renderLine } from '$lib/client/logLines';
+	import { VoteDraft } from '$lib/client/turnDraft.svelte';
 
 	const t = $derived(strings(i18n.lang));
 
@@ -12,25 +13,15 @@
 	const view = $derived(gameStore.voteView);
 	const alreadyVoted = $derived(view.alreadyVoted);
 
-	// Client-local only (not server state) - purely so the button I picked
-	// stays highlighted for me after I vote. Resets whenever a fresh vote
-	// opens (mySeat no longer counted among votedSeats) so it can't bleed
-	// into the next round; lost on a page refresh mid-vote, which is fine -
-	// `alreadyVoted` above (server-authoritative) still correctly keeps the
-	// buttons disabled either way.
-	let myVoteTarget = $state<number | 'abstain' | null>(null);
-	$effect(() => {
-		if (!alreadyVoted) myVoteTarget = null;
-	});
+	// Which button this phone voted - lit only while the server still counts
+	// the vote, so a new round starts unlit (see client/turnDraft.svelte.ts).
+	const draft = new VoteDraft();
 
 	async function vote(target: number | 'abstain') {
-		const res = await sendAction({ kind: 'VoteCast', target });
+		const { action, entry } = draft.submission(target);
+		const res = await sendAction(action);
 		if (!res.ok) return;
-		myVoteTarget = target;
-		const entry =
-			target === 'abstain'
-				? logLine('text', 'vote', 'myVoteAbstain')
-				: logLine('text', 'vote', 'myVoteFor', target);
+		draft.accepted(target);
 		gameStore.logActivity(entry);
 		gameStore.showConfirm(`✓ ${renderLine(entry, i18n.lang)}`, 3000);
 	}
@@ -66,7 +57,7 @@
 				<button
 					onclick={() => vote(seat.seatNumber)}
 					disabled={!view.canVote}
-					class="seat-btn w-full {myVoteTarget === seat.seatNumber
+					class="seat-btn w-full {draft.lit(seat.seatNumber, alreadyVoted)
 						? 'border-ember bg-ember/20 text-ember'
 						: ''}"
 				>
@@ -79,7 +70,7 @@
 		<button
 			onclick={() => vote('abstain')}
 			disabled={!view.canVote}
-			class="btn-ghost w-full py-2 text-sm {myVoteTarget === 'abstain'
+			class="btn-ghost w-full py-2 text-sm {draft.lit('abstain', alreadyVoted)
 				? 'border-ember text-ember'
 				: ''}"
 		>

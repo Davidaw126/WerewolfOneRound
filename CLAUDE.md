@@ -66,7 +66,9 @@ src/
                  # of the Room: entering (one round trip), resyncing on reconnect /
                  # foreground, and `out` when the phone is no longer in the room
                  # (tested with a fake transport); hostVoice.ts + narrationCues.ts
-                 # are the Host phone's narration;
+                 # are the Host phone's narration; turnDraft.svelte.ts holds what a
+                 # player has picked on a night turn or in a vote (a fresh draft per
+                 # turn) and the submission it makes;
                  # diary/room-log lines are stored as data (logLines.ts) and
                  # rendered in the current language; roleNight.ts holds each
                  # role's night presentation
