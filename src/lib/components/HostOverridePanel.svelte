@@ -6,7 +6,6 @@
 	import { primeSpeech, narrate, speechSupported } from '$lib/client/sfx';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import type { RoleId } from '$lib/game/types';
 
 	/** `open` is owned by PhaseBanner, whose top-right button toggles it. */
@@ -39,7 +38,7 @@
 			SET_ROLE: t.hostOverride.setRoleTo(role ? roleName(role, i18n.lang) : '')
 		}[overrideKind];
 		if (!(await askConfirm(t.hostOverride.confirmPrompt(seat, label)))) return;
-		await sendAction<AckResponse>({
+		await sendAction({
 			kind: 'HostOverride',
 			overrideKind,
 			seat,

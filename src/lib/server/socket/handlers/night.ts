@@ -3,7 +3,7 @@ import { runGameAction } from '../../game/gameSync';
 import { stageOf } from '../../game/projection';
 import { currentStage, currentStageRole } from '../../../game/rules/stage';
 import { emitToRoom } from '../emit';
-import type { AckResponse, NightActionSubmission } from '../../../shared/events';
+import { refuse, type AckResponse, type NightActionSubmission } from '../../../shared/events';
 import type { NightActions, Player, RoleId } from '../../../game/types';
 import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
 
@@ -72,7 +72,7 @@ export async function handleNightSubmitAction(
 		const roleId = action.role;
 		const player = state.players[seat];
 		if (!player || player.role !== roleId) {
-			return { ok: false, error: 'not_your_role' };
+			return refuse('not_your_role');
 		}
 		// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
 		// 恶灵骑士 would otherwise be read as their own skill's target.
@@ -92,8 +92,8 @@ export async function handleNightPass(socket: GameSocket): Promise<AckResponse> 
 	const seat = await requireSeat(code, socket.data.sessionId);
 	return runGameAction(code, (state) => {
 		const player = state.players[seat];
-		if (!player) return { ok: false, error: 'not_your_role' };
-		if (state.fearedSeat !== seat) return { ok: false, error: 'not_feared' };
+		if (!player) return refuse('not_your_role');
+		if (state.fearedSeat !== seat) return refuse('not_feared');
 		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: player.role, action: {} };
 	});
 }
@@ -108,9 +108,7 @@ export async function handleNightConfirmStage(socket: GameSocket): Promise<AckRe
 			// 情侣相认 shows the same button on every phone, so a non-lover's tap
 			// must look exactly like a lover's - no error popup to give it away.
 			ignored: (state) =>
-				currentStage(state)?.kind === 'COUPLE_REVEAL'
-					? { ok: true }
-					: { ok: false, error: 'not_your_turn' }
+				currentStage(state)?.kind === 'COUPLE_REVEAL' ? { ok: true } : refuse('not_your_turn')
 		}
 	);
 }

@@ -6,7 +6,6 @@
 	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import LanguageToggle from '$lib/components/LanguageToggle.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -34,10 +33,7 @@
 	async function createRoom() {
 		error = null;
 		creating = true;
-		const res = await sendAction<AckResponse & { roomCode?: string }>(
-			{ kind: 'RoomCreate' },
-			{ quiet: true }
-		);
+		const res = await sendAction({ kind: 'RoomCreate' }, { quiet: true });
 		creating = false;
 		if (res.ok && res.roomCode) {
 			await goto(resolve('/room/[code]', { code: res.roomCode }));
@@ -55,10 +51,7 @@
 		}
 		error = null;
 		joining = true;
-		const res = await sendAction<AckResponse>(
-			{ kind: 'RoomJoin', roomCode: code },
-			{ quiet: true }
-		);
+		const res = await sendAction({ kind: 'RoomJoin', roomCode: code }, { quiet: true });
 		joining = false;
 		if (res.ok) {
 			await goto(resolve('/room/[code]', { code }));

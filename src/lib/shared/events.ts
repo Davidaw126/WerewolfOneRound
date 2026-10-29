@@ -2,13 +2,18 @@ import { z } from 'zod';
 import { ALL_ROLE_IDS } from '../game/roleMeta';
 import { RuleConfigOverridesSchema } from '../game/ruleSwitches';
 import type { RoleId } from '../game/types';
+import type { ValidationIssue } from '../game/rules/setup';
+import type { TurnContext } from '../game/rules/turnContext';
+import type { ActionErrorCode } from './actionErrors';
 import type { Phase, NightStage, PublicNightStage, RoomPublicState, Winner } from './gameTypes';
+
+export type { TurnContext };
 
 // ---------------------------------------------------------------------------
 // Client -> server. One socket event name ('client:action') carries all of
 // these as a discriminated union, validated server-side by the matching zod
-// schema before anything touches Redis. Every handler acks with {ok, error?}
-// instead of firing blind, so the UI can show inline validation errors.
+// schema before anything touches Redis. Every action is answered with its
+// ActionReply (below): what its success carries, or a Refusal with a code.
 // ---------------------------------------------------------------------------
 
 // Roles travel as the engine's RoleId everywhere on the wire; display names
@@ -115,7 +120,28 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 ]);
 export type ClientAction = z.infer<typeof ClientActionSchema>;
 
-export type AckResponse = { ok: true } | { ok: false; error: string };
+/** A refused action's reply. `issues`: the setup checks behind an E-code. */
+export type Refusal = { ok: false; error: ActionErrorCode; issues?: ValidationIssue[] };
+
+export const refuse = (error: ActionErrorCode, issues?: ValidationIssue[]): Refusal =>
+	issues ? { ok: false, error, issues } : { ok: false, error };
+
+/** What a successful reply carries, for the actions whose success carries
+ * anything; every other action answers a bare `{ ok: true }`. */
+interface ReplyData {
+	RoomCreate: { roomCode: string; state: RoomPublicState };
+	RoomJoin: { state: RoomPublicState };
+	ResyncRequest: { state: RoomPublicState };
+	/** Warnings (E09) that didn't stop the setup. */
+	RoomSubmitConfig: { issues?: ValidationIssue[] };
+}
+
+export type ActionKind = ClientAction['kind'];
+export type ActionOf<K extends ActionKind> = Extract<ClientAction, { kind: K }>;
+export type ActionReply<K extends ActionKind = ActionKind> =
+	({ ok: true } & (K extends keyof ReplyData ? ReplyData[K] : unknown)) | Refusal;
+/** The reply of an action whose success carries nothing. */
+export type AckResponse = { ok: true } | Refusal;
 
 // ---------------------------------------------------------------------------
 // Server -> client, broadcast to the room (or, for PrivateInfo, to one
@@ -219,49 +245,6 @@ export type ServerEvent =
 	// S4: no role field - see gameStore's revealTurn, which doesn't need one
 	// (pendingTurnRole is already unique to whoever's actual turn it is).
 	| { kind: 'StageNarrationStarted' };
-
-/**
- * Everything the acting player needs that only the server knows, delivered
- * privately alongside their turn prompt. In a physical game the host would say
- * these things aloud to that one player with everyone else's eyes closed.
- *
- * NEVER broadcast this. Several fields (the wolf teammate list above all, but
- * also the witch's kill readout and the hunter's poison status) would expose
- * hidden information if they ever reached the room channel - it must only
- * travel via emitToSession.
- */
-export interface TurnContext {
-	/** The recipient's own seat. The prompt component has no other way to know
-	 * it: `mySeat` is derived at the room-page level and isn't passed down. */
-	seat: number;
-	witch?: {
-		/** Tonight's 普通狼人 target, or null if nobody was attacked. */
-		killedSeat: number | null;
-		/** Still unspent for the whole game. Whether it's usable *right now*
-		 * additionally depends on the self-save and one-potion-per-night rules,
-		 * which the UI derives and the server re-checks on submit. */
-		antidoteAvailable: boolean;
-		poisonAvailable: boolean;
-		/** Tonight's verdicts for the room's house rules (RuleConfig.witch), so
-		 * the panel matches what the server will accept. Optional for wire
-		 * compatibility; absent = the old strict UI (no self-save, one potion). */
-		selfRescueAllowed?: boolean;
-		bothPotionsSameNight?: boolean;
-	};
-	/** Sent on every 猎人 turn: the same hunterCanShoot() verdict the server
-	 * will apply if they die tonight, shown live the way a physical host gives
-	 * the hunter a thumbs up or down. */
-	hunter?: { canShoot: boolean };
-	/** The pack's kill turn: a 狼美人/恶灵骑士 prompted now is choosing the
-	 * kill with the other wolves (their own skill comes in their own turn). */
-	packKill?: boolean;
-	/** 恶灵骑士 feared this seat tonight - its skill is blocked, and the
-	 * prompt only offers a pass (NightPass) so the turn can still end. */
-	feared?: boolean;
-	guard?: { lastProtectedSeat: number | null };
-	/** Living wolf-team seats other than the recipient's own. */
-	wolf?: { teammateSeats: number[]; allowEmptyKill?: boolean };
-}
 
 export type PrivateInfo =
 	| { kind: 'YourRole'; role: RoleId }

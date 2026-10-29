@@ -18,34 +18,33 @@ import { setSessionRoom } from '../../session';
 import { emitToRoom, emitToSession, roomChannel, removeSessionFromRoom } from '../emit';
 import { startGameAndBroadcast } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
-import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
+import { buildSetup, validateSetup } from '../../../game/rules/setup';
 import { defaultRuleConfig } from '../../../game/defaultRuleConfig';
 import { mergeRuleConfig, type RuleConfigOverrides } from '../../../game/ruleSwitches';
 import type { RoleId } from '../../../game/types';
 import type { DealResult as EngineDealResult } from '../../../game/rules/deal';
 import type { StartGameParams } from '../../../game/engine';
 import { deriveSeatCount } from '../../../game/rules/deal';
-import type { AckResponse } from '../../../shared/events';
+import { refuse, type AckResponse, type ActionReply, type Refusal } from '../../../shared/events';
 import type { RoomPublicState } from '../../../shared/gameTypes';
 import { requireRoomCode, type GameSocket } from './helpers';
 
-export async function handleRoomCreate(
-	socket: GameSocket
-): Promise<AckResponse & { roomCode?: string; state?: RoomPublicState }> {
+export async function handleRoomCreate(socket: GameSocket): Promise<ActionReply<'RoomCreate'>> {
 	const code = await createRoom(socket.data.sessionId);
 	await setSessionRoom(socket.data.sessionId, code);
 	socket.data.roomCode = code;
 	socket.join(roomChannel(code));
 
 	const state = await getPublicState(code, socket.data.sessionId);
-	return { ok: true, roomCode: code, state: state ?? undefined };
+	if (!state) return refuse('room_not_found');
+	return { ok: true, roomCode: code, state };
 }
 
 export async function handleRoomJoin(
 	socket: GameSocket,
 	roomCode: string
-): Promise<AckResponse & { state?: RoomPublicState }> {
-	if (!(await roomExists(roomCode))) return { ok: false, error: 'room_not_found' };
+): Promise<ActionReply<'RoomJoin'>> {
+	if (!(await roomExists(roomCode))) return refuse('room_not_found');
 
 	const room = await readRoomHash(roomCode);
 	const sessionId = socket.data.sessionId;
@@ -61,30 +60,44 @@ export async function handleRoomJoin(
 	// after a network drop is separate again, via ResyncRequest, and never
 	// reaches this check at all).
 	if (!alreadyInRoom && room && (room.lockStatus || !PRE_GAME_PHASES.includes(room.phase))) {
-		return { ok: false, error: 'room_locked' };
+		return refuse('room_locked');
 	}
 
 	await setSessionRoom(sessionId, roomCode);
 	socket.data.roomCode = roomCode;
 	socket.join(roomChannel(roomCode));
 
-	const state = await getPublicState(roomCode, socket.data.sessionId);
+	return catchUp(socket, roomCode);
+}
 
-	// If this session already tapped "reveal" before (e.g. a page refresh),
-	// replay it privately rather than leaving them stuck on the tap-to-reveal
-	// prompt for a role they've already seen.
-	const revealedRole = await getRevealedRoleIfAny(roomCode, socket.data.sessionId);
-	if (revealedRole) emitToSession(socket.data.sessionId, { kind: 'YourRole', role: revealedRole });
-	await replayTurnPromptIfAny(roomCode, socket.data.sessionId);
+/** A phone back from a dropped connection or the background: the room as it
+ * is now, plus anything private it's owed. */
+export async function handleResync(socket: GameSocket): Promise<ActionReply<'ResyncRequest'>> {
+	return catchUp(socket, await requireRoomCode(socket));
+}
 
-	return { ok: true, state: state ?? undefined };
+/** The room's state for this session, with its role (if already seen) and
+ * any turn prompt it's owed replayed privately. */
+async function catchUp(
+	socket: GameSocket,
+	code: string
+): Promise<{ ok: true; state: RoomPublicState } | Refusal> {
+	const sessionId = socket.data.sessionId;
+	const state = await getPublicState(code, sessionId);
+	if (!state) return refuse('room_not_found');
+	// Already tapped "reveal" before (a refresh, a reconnect): show it again
+	// rather than the tap-to-reveal prompt for a role they've seen.
+	const revealedRole = await getRevealedRoleIfAny(code, sessionId);
+	if (revealedRole) emitToSession(sessionId, { kind: 'YourRole', role: revealedRole });
+	await replayTurnPromptIfAny(code, sessionId);
+	return { ok: true, state };
 }
 
 export async function handleRoomSubmitConfig(
 	socket: GameSocket,
 	submitted: Partial<Record<RoleId, number>>,
 	ruleOverrides?: RuleConfigOverrides
-): Promise<AckResponse & { issues?: ValidationIssue[] }> {
+): Promise<ActionReply<'RoomSubmitConfig'>> {
 	const code = await requireRoomCode(socket);
 	// Only the Host may submit - checked atomically by submitRoomConfigAtomic.
 	// Only roles actually in play are kept (the picker sends zeros too).
@@ -93,7 +106,7 @@ export async function handleRoomSubmitConfig(
 		if (count > 0) roleConfig[role] = count;
 	}
 	const numberOfSeats = deriveSeatCount(roleConfig);
-	if (numberOfSeats <= 0) return { ok: false, error: 'empty_config' };
+	if (numberOfSeats <= 0) return refuse('empty_config');
 
 	// §5.2 E02-E09 - the composition checks that make sense before anyone's
 	// even seated. E01 (role total vs. actual player count) is deferred to
@@ -101,7 +114,7 @@ export async function handleRoomSubmitConfig(
 	// against numberOfSeats itself it would just trivially always pass here.
 	const validation = validateSetup(buildSetup(roleConfig), numberOfSeats);
 	if (!validation.ok) {
-		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
+		return refuse(validation.errors[0].code, validation.errors);
 	}
 
 	const result = await submitRoomConfigAtomic(code, socket.data.sessionId, {
@@ -163,12 +176,10 @@ function buildStartGameParams(
 	};
 }
 
-export async function handleRoomStartGame(
-	socket: GameSocket
-): Promise<AckResponse & { issues?: ValidationIssue[] }> {
+export async function handleRoomStartGame(socket: GameSocket): Promise<AckResponse> {
 	const code = await requireRoomCode(socket);
 	const seating = await seatingForGameStart(code);
-	if (!seating || !seating.room.lockStatus) return { ok: false, error: 'seats_not_locked' };
+	if (!seating || !seating.room.lockStatus) return refuse('seats_not_locked');
 
 	const params = buildStartGameParams(code, seating);
 
@@ -178,7 +189,7 @@ export async function handleRoomStartGame(
 	// rule again for defense in depth.
 	const validation = validateSetup(params.setup, params.players.length);
 	if (!validation.ok) {
-		return { ok: false, error: validation.errors[0].code, issues: validation.errors };
+		return refuse(validation.errors[0].code, validation.errors);
 	}
 
 	// The Host and the seat lock are checked again under the room lock.
@@ -202,7 +213,7 @@ export async function handleRoomRerollRoles(socket: GameSocket): Promise<AckResp
 	const code = await requireRoomCode(socket);
 	const done = await asHost(code, socket.data.sessionId, async () => {
 		const room = await readRoomHash(code);
-		if (!room || room.phase !== 'SEATING') return { ok: false as const, error: 'invalid_phase' };
+		if (!room || room.phase !== 'SEATING') return refuse('invalid_phase');
 		await redeal(code);
 		return null;
 	});
@@ -223,7 +234,7 @@ export async function handleRoomStopGame(socket: GameSocket): Promise<AckRespons
 	const code = await requireRoomCode(socket);
 	const done = await asHost(code, socket.data.sessionId, async () => {
 		const room = await readRoomHash(code);
-		if (!room || room.phase === 'LOBBY') return { ok: false as const, error: 'invalid_phase' };
+		if (!room || room.phase === 'LOBBY') return refuse('invalid_phase');
 		await resetToSeating(code);
 		return null;
 	});

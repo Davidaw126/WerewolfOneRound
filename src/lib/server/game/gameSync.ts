@@ -21,7 +21,8 @@ import { redis } from '../redis';
 import { recordGamePhase, isHost, readRoomHash } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
-import type { AckResponse } from '../../shared/events';
+import { refuse, type AckResponse } from '../../shared/events';
+import type { ActionErrorCode } from '../../shared/actionErrors';
 import { STATUS_STAGE_ROLES } from '../../game/roleMeta';
 import type { StartGameParams } from '../../game/engine';
 import {
@@ -150,7 +151,7 @@ async function syncAndBroadcast(
 const sameSeats = (a: number[], b: number[]) =>
 	a.length === b.length && a.every((s, i) => s === b[i]);
 
-const NOT_HOST: Refusal = { ok: false, error: 'not_host' };
+const NOT_HOST: Refusal = refuse('not_host');
 
 /** A Host check that runs under the room lock, together with the write. */
 function hostCheck(code: string, sessionId: string): () => Promise<Refusal | null> {
@@ -163,7 +164,7 @@ export interface RunOptions {
 	/** What to answer when the engine ignored the action (no effects at all:
 	 * wrong phase, a double tap, a seat it can't apply to). Without this an
 	 * ignored action still answers ok. */
-	ignored?: string | ((state: GameState) => AckResponse);
+	ignored?: ActionErrorCode | ((state: GameState) => AckResponse);
 }
 
 /** Runs one game action end to end and answers the caller's ack. */
@@ -180,10 +181,8 @@ export async function runGameAction(
 	// A night-rule violation comes back as a NightActionRejected PRIVATE
 	// effect for the submitter, and is the ONLY effect such a submission
 	// produces - it becomes the ack's error instead of anything sent.
-	const rejection = result.effects.find(
-		(e) => (e.payload as { kind?: string })?.kind === 'NightActionRejected'
-	);
-	if (rejection) return { ok: false, error: (rejection.payload as { error: string }).error };
+	for (const { payload } of result.effects)
+		if (payload.kind === 'NightActionRejected') return { ok: false, error: payload.error };
 
 	if (result.effects.length === 0 && options.ignored !== undefined) {
 		return typeof options.ignored === 'string'
@@ -210,7 +209,7 @@ export async function startGameAndBroadcast(
 			: async (): Promise<Refusal | null> => {
 					if (!(await isHost(code, host))) return NOT_HOST;
 					const room = await readRoomHash(code);
-					return room?.lockStatus ? null : { ok: false, error: 'seats_not_locked' };
+					return room?.lockStatus ? null : refuse('seats_not_locked');
 				};
 	const result = await startAndSaveGame(code, params, authorize);
 	if ('ok' in result) return result;

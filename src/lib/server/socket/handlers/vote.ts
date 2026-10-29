@@ -1,5 +1,5 @@
 import { runGameAction } from '../../game/gameSync';
-import type { AckResponse } from '../../../shared/events';
+import { refuse, type AckResponse } from '../../../shared/events';
 import type { GameState } from '../../../game/types';
 import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 
@@ -9,7 +9,7 @@ import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 // already no-ops outside phase VOTE for the same reason - this check exists
 // so the client gets a real ack error instead of a silent no-op ok:true.)
 const nightAnnounced = (state: GameState) => state.pendingNightDeaths === null;
-const NOT_ANNOUNCED = { ok: false as const, error: 'night_not_announced' };
+const NOT_ANNOUNCED = refuse('night_not_announced');
 
 export async function handleVoteCast(
 	socket: GameSocket,

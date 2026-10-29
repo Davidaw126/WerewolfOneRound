@@ -13,6 +13,9 @@ import { ROOM_TTL_SECONDS, gameStateKey, gameLockKey, gameActionsKey } from '../
 import { reduce, startGame, type StartGameParams } from '../../game/engine';
 import type { EngineAction, EngineResult, GameState } from '../../game/types';
 import { ActionError } from '../socket/actionError';
+import type { Refusal } from '../../shared/events';
+
+export type { Refusal };
 
 const LOCK_TTL_MS = 3000;
 const ACQUIRE_RETRY_DELAY_MS = 50;
@@ -105,7 +108,6 @@ export async function startAndSaveGame(
  * that decides it from the current state (inside the lock) - returning a
  * refusal instead when the action isn't allowed right now. */
 export type ActionInput = EngineAction | ((state: GameState) => EngineAction | Refusal);
-export type Refusal = { ok: false; error: string };
 
 export type ApplyResult =
 	| { refused: Refusal }

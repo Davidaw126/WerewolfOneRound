@@ -6,7 +6,6 @@
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import LeaveRoomButton from './LeaveRoomButton.svelte';
 	import AudioToggleButtons from './AudioToggleButtons.svelte';
 	import HostOverridePanel from './HostOverridePanel.svelte';
@@ -70,7 +69,7 @@
 
 	async function stopGame() {
 		if (!(await askConfirm(t.phaseBanner.stopGameConfirm))) return;
-		await sendAction<AckResponse>({ kind: 'RoomStopGame' });
+		await sendAction({ kind: 'RoomStopGame' });
 	}
 </script>
 

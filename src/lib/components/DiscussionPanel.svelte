@@ -4,7 +4,6 @@
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 
 	const isHost = $derived(gameStore.isHost);
 
@@ -45,7 +44,7 @@
 	 * global error handler, and `busy` stops a double tap sending it twice. */
 	async function run(action: Parameters<typeof sendAction>[0]): Promise<boolean> {
 		busy = true;
-		const res = await sendAction<AckResponse>(action);
+		const res = await sendAction(action);
 		busy = false;
 		if (res.ok) setMode('out');
 		return res.ok;

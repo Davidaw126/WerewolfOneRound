@@ -117,7 +117,13 @@ describe('the night', () => {
 	it('a witch attacked tonight can only save herself if the rules allow it', () => {
 		const store = phoneOf('s4', room({ phase: 'NIGHT' }));
 		store.myTurnRole = 'WITCH';
-		const witch = { killedSeat: 4, antidoteAvailable: true, poisonAvailable: true };
+		const witch = {
+			killedSeat: 4,
+			antidoteAvailable: true,
+			poisonAvailable: true,
+			selfRescueAllowed: false,
+			bothPotionsSameNight: false
+		};
 		store.turnContext = { seat: 4, witch };
 		expect(store.turnRules.isSelfKill).toBe(true);
 		store.turnContext = { seat: 4, witch: { ...witch, selfRescueAllowed: true } };

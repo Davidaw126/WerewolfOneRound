@@ -4,7 +4,6 @@
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import { line as logLine, renderLine } from '$lib/client/logLines';
 
 	const t = $derived(strings(i18n.lang));
@@ -25,7 +24,7 @@
 	});
 
 	async function vote(target: number | 'abstain') {
-		const res = await sendAction<AckResponse>({ kind: 'VoteCast', target });
+		const res = await sendAction({ kind: 'VoteCast', target });
 		if (!res.ok) return;
 		myVoteTarget = target;
 		const entry =
@@ -37,12 +36,12 @@
 	}
 
 	async function endVote() {
-		await sendAction<AckResponse>({ kind: 'VoteEnd' });
+		await sendAction({ kind: 'VoteEnd' });
 	}
 
 	async function enterNight() {
 		if (!(await askConfirm(t.discussion.confirmEnterNight))) return;
-		await sendAction<AckResponse>({ kind: 'DayEndDay' });
+		await sendAction({ kind: 'DayEndDay' });
 	}
 </script>
 

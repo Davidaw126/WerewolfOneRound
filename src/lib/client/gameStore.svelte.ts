@@ -16,7 +16,7 @@ import {
 	formatRolesReshuffledConfirm,
 	formatHunterDenied,
 	formatShotStatus,
-	formatActionError,
+	formatRefusal,
 	formatHunterAuthorized,
 	formatRoomClosedByHost,
 	formatPlayerLeftMidGame
@@ -401,7 +401,7 @@ export class GameStore {
 
 	connect(): void {
 		this.disconnect();
-		onActionError((code) => this.showInfoPopup(formatActionError(code, i18n.lang), 'bad', 4000));
+		onActionError((refusal) => this.showInfoPopup(formatRefusal(refusal, i18n.lang), 'bad', 4000));
 		this.unsubscribers.push(
 			onServerEvent((event) => this.applyServerEvent(event)),
 			onPrivateEvent((event) => this.applyPrivateEvent(event))

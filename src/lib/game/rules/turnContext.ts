@@ -10,23 +10,45 @@ import type { EngineEffect, GameState, RoleId, Seat } from '../types';
 import { predictCanShootTonight } from './nightResolution';
 import { actsInStage } from '../roleMeta';
 
+/**
+ * Everything the acting player needs that only the server knows, delivered
+ * privately with their turn prompt (YourTurnPrompt) - what a physical host
+ * would say to that one player with everyone else's eyes shut. The one
+ * definition: the engine builds it, the wire carries it, the phone reads it.
+ *
+ * NEVER broadcast. The wolf teammate list above all, but also the witch's
+ * kill readout and the hunter's verdict, would expose hidden information.
+ */
 export interface TurnContext {
+	/** The recipient's own seat. */
 	seat: Seat;
 	witch?: {
+		/** Tonight's pack target, or null if nobody was attacked - also null
+		 * once her antidote is spent (she no longer learns the kill). */
 		killedSeat: Seat | null;
+		/** Still unspent for the whole game. Whether it's usable right now
+		 * also depends on the two verdicts below, which the server re-checks
+		 * on submit. */
 		antidoteAvailable: boolean;
 		poisonAvailable: boolean;
+		/** Tonight's verdicts for the room's RuleConfig.witch switches, so the
+		 * panel offers what the server will accept. */
 		selfRescueAllowed: boolean;
 		bothPotionsSameNight: boolean;
 	};
+	/** 猎人 / 黑狼王 status turn: the same verdict the server will apply if
+	 * they die tonight - a physical host's thumbs up or down. */
 	hunter?: { canShoot: boolean };
 	guard?: { lastProtectedSeat: Seat | null };
-	/** allowEmptyKill: only on the pack's kill turn, when the room allows 空刀. */
+	/** Living wolf-team seats other than the recipient's own. allowEmptyKill:
+	 * only on the pack's kill turn, when the room allows 空刀. */
 	wolf?: { teammateSeats: Seat[]; allowEmptyKill?: boolean };
-	/** 恶灵骑士 feared this seat tonight: no skill, only a pass. */
+	/** 恶灵骑士 feared this seat tonight: no skill, the prompt only offers a
+	 * pass (NightPass) so the turn can still end. */
 	feared?: boolean;
-	/** This is the pack's kill turn - a 狼美人/恶灵骑士 prompted now picks the
-	 * kill, not their own skill (that comes in their own stage). */
+	/** The pack's kill turn - a 狼美人/恶灵骑士 prompted now picks the kill
+	 * with the other wolves, not their own skill (that comes in their own
+	 * stage). */
 	packKill?: boolean;
 }
 

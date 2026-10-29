@@ -5,7 +5,7 @@ import {
 	markRevealed
 } from '../../rooms/roomRepo';
 import { emitToRoom, emitToSession } from '../emit';
-import type { AckResponse } from '../../../shared/events';
+import { refuse, type AckResponse } from '../../../shared/events';
 import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 
 export async function handleSeatTake(socket: GameSocket, seatNumber: number): Promise<AckResponse> {
@@ -35,7 +35,7 @@ export async function handleRevealRole(socket: GameSocket): Promise<AckResponse>
 	const seat = await requireSeat(code, socket.data.sessionId);
 
 	const role = await currentRoleOfSeat(code, seat);
-	if (!role) return { ok: false, error: 'no_role_assigned' };
+	if (!role) return refuse('no_role_assigned');
 
 	await markRevealed(code, socket.data.sessionId);
 	emitToSession(socket.data.sessionId, { kind: 'YourRole', role });

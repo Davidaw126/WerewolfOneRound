@@ -3,7 +3,6 @@
 	import { sendAction } from '$lib/client/socket';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import { line as logLine, renderLine } from '$lib/client/logLines';
 
 	const t = $derived(strings(i18n.lang));
@@ -17,7 +16,7 @@
 
 	async function shoot(target: number | null) {
 		submitted = true;
-		const res = await sendAction<AckResponse>({ kind: 'HunterShoot', target });
+		const res = await sendAction({ kind: 'HunterShoot', target });
 		if (!res.ok) {
 			submitted = false;
 			return;

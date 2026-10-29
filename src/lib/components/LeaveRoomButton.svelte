@@ -7,7 +7,6 @@
 	import { isGameInProgress, leaveConfirmMessage } from '$lib/client/leaveRoom';
 	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 
 	const isHost = $derived(gameStore.isHost);
 
@@ -20,7 +19,7 @@
 		const { message, confirmLabel } = leaveConfirmMessage(isHost, gameInProgress, i18n.lang);
 		if (!(await askConfirm(message, { confirmLabel }))) return;
 		leaving = true;
-		await sendAction<AckResponse>({ kind: 'RoomLeave' });
+		await sendAction({ kind: 'RoomLeave' });
 		await goto(resolve('/lobby'));
 	}
 </script>

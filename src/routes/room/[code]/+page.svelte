@@ -13,8 +13,7 @@
 		formatDayResult,
 		formatRoomClosedByHost
 	} from '$lib/shared/i18n';
-	import type { AckResponse } from '$lib/shared/events';
-	import { phaseGroup, type RoomPublicState } from '$lib/shared/gameTypes';
+	import { phaseGroup } from '$lib/shared/gameTypes';
 	import type { PageData } from './$types';
 	import SeatCircle from '$lib/components/SeatCircle.svelte';
 	import RoleConfigPanel from '$lib/components/RoleConfigPanel.svelte';
@@ -44,10 +43,7 @@
 
 	function resync() {
 		if (!joined) return;
-		sendAction<AckResponse & { state?: RoomPublicState }>(
-			{ kind: 'ResyncRequest' },
-			{ quiet: true }
-		).then((res) => {
+		sendAction({ kind: 'ResyncRequest' }, { quiet: true }).then((res) => {
 			if (res.ok && res.state) gameStore.applyState(res.state);
 		});
 	}
@@ -78,10 +74,7 @@
 			window.removeEventListener('pageshow', onVisible);
 		};
 
-		sendAction<AckResponse & { state?: RoomPublicState }>(
-			{ kind: 'RoomJoin', roomCode: data.roomCode },
-			{ quiet: true }
-		).then((res) => {
+		sendAction({ kind: 'RoomJoin', roomCode: data.roomCode }, { quiet: true }).then((res) => {
 			if (!res.ok) {
 				// Room expired/gone between this page's SSR load and the socket
 				// actually joining it - there's nothing to recover into, so bounce
@@ -91,10 +84,7 @@
 			}
 			joined = true;
 			if (res.state) gameStore.applyState(res.state);
-			sendAction<AckResponse & { state?: RoomPublicState }>(
-				{ kind: 'ResyncRequest' },
-				{ quiet: true }
-			).then((r2) => {
+			sendAction({ kind: 'ResyncRequest' }, { quiet: true }).then((r2) => {
 				if (r2.ok && r2.state) gameStore.applyState(r2.state);
 			});
 		});
@@ -145,33 +135,32 @@
 
 	async function takeSeat(seatNumber: number) {
 		// A failure (seat taken, name clash) pops up via the global handler.
-		await sendAction<AckResponse>({ kind: 'SeatTake', seatNumber });
+		await sendAction({ kind: 'SeatTake', seatNumber });
 	}
 	async function startGame() {
-		await sendAction<AckResponse>({ kind: 'RoomLockSeats', locked: true });
-		const res = await sendAction<AckResponse>({ kind: 'RoomStartGame' });
+		await sendAction({ kind: 'RoomLockSeats', locked: true });
+		const res = await sendAction({ kind: 'RoomStartGame' });
 		// A refused start (an empty seat, a bad setup) must not leave the seats
 		// locked - there's no unlock button, so nobody could sit down again.
-		if (!res.ok)
-			await sendAction<AckResponse>({ kind: 'RoomLockSeats', locked: false }, { quiet: true });
+		if (!res.ok) await sendAction({ kind: 'RoomLockSeats', locked: false }, { quiet: true });
 	}
 	async function rerollRoles() {
-		await sendAction<AckResponse>({ kind: 'RoomRerollRoles' });
+		await sendAction({ kind: 'RoomRerollRoles' });
 	}
 	/** Fallback only - players act or confirm for themselves; this is for a
 	 * turn stuck on a phone that died or locked. The host's eyes are shut too. The closing cue is
 	 * JudgeAudioPlayer's, on the stage change, however it happens. */
 	async function advanceStage() {
 		if (!(await askConfirm(t.room.confirmForceContinue))) return;
-		await sendAction<AckResponse>({ kind: 'NightAdvanceStage' });
+		await sendAction({ kind: 'NightAdvanceStage' });
 	}
 
 	async function confirmCouple() {
-		const res = await sendAction<AckResponse>({ kind: 'NightConfirmStage' });
+		const res = await sendAction({ kind: 'NightConfirmStage' });
 		if (res.ok) gameStore.coupleConfirmed = true;
 	}
 	async function announceNightResults() {
-		await sendAction<AckResponse>({ kind: 'NightAnnounceResults' });
+		await sendAction({ kind: 'NightAnnounceResults' });
 	}
 
 	let leavingAfterGameOver = $state(false);
@@ -186,7 +175,7 @@
 		leavingAfterGameOver = true;
 		// The session still has roomCode set from this finished game - clear
 		// it first, or /lobby's own guard will just redirect straight back here.
-		await sendAction<AckResponse>({ kind: 'RoomLeave' });
+		await sendAction({ kind: 'RoomLeave' });
 		await goto(resolve('/lobby'));
 	}
 
@@ -196,7 +185,7 @@
 		// between games in the same room (only the phase changes), so a stale
 		// `true` left over from a SUCCESSFUL restart would make the button look
 		// permanently stuck the next time GAME_OVER is reached again.
-		await sendAction<AckResponse>({ kind: 'RoomStopGame' });
+		await sendAction({ kind: 'RoomStopGame' });
 		restarting = false;
 	}
 </script>

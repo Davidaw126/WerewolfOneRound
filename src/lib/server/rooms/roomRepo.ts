@@ -51,6 +51,7 @@ import {
 } from '../game/gameStateRepo';
 import { legacyToRoleId } from '../../game/roleBridge';
 import type { Role } from '../../shared/roles';
+import { refuse, type AckResponse } from '../../shared/events';
 import {
 	stageOf,
 	toPublicStage,
@@ -211,6 +212,8 @@ export async function isHost(code: string, sessionId: string): Promise<boolean> 
 	return (await hostSessionOf(code)) === sessionId;
 }
 
+const NOT_HOST: Refusal = refuse('not_host');
+
 /** Runs `fn` only if `sessionId` is the Host, with the check and `fn` both
  * under the room lock - so nothing (a later Hand over host, a Leave) can
  * change the Host in between. `fn` must not take the room lock itself. */
@@ -219,9 +222,7 @@ export async function asHost<T>(
 	sessionId: string,
 	fn: () => Promise<T>
 ): Promise<T | Refusal> {
-	return withRoomLock(code, async () =>
-		(await isHost(code, sessionId)) ? fn() : { ok: false as const, error: 'not_host' }
-	);
+	return withRoomLock(code, async () => ((await isHost(code, sessionId)) ? fn() : NOT_HOST));
 }
 
 export type LeaveOutcome =
@@ -313,7 +314,7 @@ export async function takeSeatAtomic(
 	sessionId: string,
 	seat: number,
 	username: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<AckResponse> {
 	const raw = await redis.takeSeat(
 		seatsKey(code),
 		playersKey(code),
@@ -383,7 +384,7 @@ export async function submitRoomConfigAtomic(
 		numberOfSeats: number;
 		ruleOverrides: RuleConfigOverrides;
 	}
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<AckResponse> {
 	const raw = await redis.submitRoomConfig(
 		roomKey(code),
 		identitiesKey(code),

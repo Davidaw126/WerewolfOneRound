@@ -9,6 +9,10 @@
 import type { Lang } from './types';
 import type { RoleId } from '../../game/types';
 import type { Winner } from '../gameTypes';
+import type { ValidationIssue } from '../../game/rules/setup';
+import type { NightRuleError } from '../../game/rules/nightRules';
+import type { Refusal } from '../events';
+import { isValidationCode, type RoomErrorCode } from '../actionErrors';
 import { roleName } from './roles';
 import { zh } from './zh';
 import { en } from './en';
@@ -187,12 +191,17 @@ export function formatRolesReshuffledConfirm(lang: Lang): string {
 	return lang === 'zh' ? '✓ 角色已重新分配' : '✓ Roles reshuffled';
 }
 
-/** The popup text for a failed action's ack error code - the night-rule
- * codes (nightPrompt.ruleMessages) first, then the general table. */
-export function formatActionError(code: string, lang: Lang): string {
+/** The popup text for a refused action. A setup refusal is told from its
+ * first issue, with that issue's own numbers. */
+export function formatRefusal(refusal: Refusal, lang: Lang): string {
 	const t = lang === 'zh' ? zh : en;
-	const rule = (t.nightPrompt.ruleMessages as unknown as Record<string, string>)[code];
-	return rule ?? t.errors[code] ?? t.errors.fallback;
+	const issue = refusal.issues?.[0];
+	if (issue) return formatSetupIssue(issue, lang);
+	const code = refusal.error;
+	if (isValidationCode(code)) return formatSetupIssue({ code }, lang);
+	if (code in t.nightPrompt.ruleMessages) return t.nightPrompt.ruleMessages[code as NightRuleError];
+	// `fallback`: a code from a newer server than this page.
+	return t.errors[code as RoomErrorCode] ?? t.errors.fallback;
 }
 
 export function formatHunterDenied(lang: Lang): string {
@@ -231,19 +240,10 @@ export function formatPlayerLeftMidGame(leavingSeat: number | null, lang: Lang):
 // client-only rendering concern, matching every other error-code mapping in
 // the app instead of being the one exception that could only ever speak
 // Chinese.
-export interface SetupIssueParams {
-	numberOfSeats?: number;
-	playerCount?: number;
-	roleLabel?: string;
-}
-
-export function formatSetupIssue(
-	code: string,
-	reason: 'negative' | 'unique_exceeded' | undefined,
-	params: SetupIssueParams,
-	lang: Lang
-): string {
-	const roleLabel = params.roleLabel ?? '';
+export function formatSetupIssue(issue: ValidationIssue, lang: Lang): string {
+	const { code, reason } = issue;
+	const params = issue.params ?? {};
+	const roleLabel = params.roleId ? roleName(params.roleId, lang) : '';
 	if (lang === 'zh') {
 		switch (code) {
 			case 'E01':

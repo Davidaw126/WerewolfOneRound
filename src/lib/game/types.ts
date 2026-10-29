@@ -6,6 +6,7 @@
 
 import type { NightStage } from './rules/nightOrder';
 import type { TurnContext } from './rules/turnContext';
+import type { NightRuleError } from './rules/nightRules';
 
 // ---------------------------------------------------------------------------
 // §4.1 Roles - the spec's 15-role roster, adopted exactly (a deliberate,
@@ -448,7 +449,7 @@ export type EnginePayload =
 	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number }
 	| { kind: 'NightAnnouncePending' }
 	// Becomes the submitter's ack error, never a sent event.
-	| { kind: 'NightActionRejected'; error: string }
+	| { kind: 'NightActionRejected'; error: NightRuleError }
 	| {
 			kind: 'HostOverrideApplied';
 			seat: Seat;

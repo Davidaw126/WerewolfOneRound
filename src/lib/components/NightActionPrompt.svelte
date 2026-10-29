@@ -4,7 +4,7 @@
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
-	import type { AckResponse, ClientAction, NightActionSubmission } from '$lib/shared/events';
+	import type { ClientAction, NightActionSubmission } from '$lib/shared/events';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import PixelSprite from './PixelSprite.svelte';
 	import { line as logLine, renderLine, type LogLine } from '$lib/client/logLines';
@@ -73,7 +73,7 @@
 
 	async function submit(action: ClientAction, entry: LogLine) {
 		submitted = true;
-		const res = await sendAction<AckResponse>(action);
+		const res = await sendAction(action);
 		if (!res.ok) {
 			// The reason pops up via sendAction's global error handler.
 			submitted = false;
@@ -155,7 +155,7 @@
 				<!-- Everyone else - the host included - has their eyes shut, so
 				     the shooter moves the night on themselves. -->
 				<button
-					onclick={() => sendAction<AckResponse>({ kind: 'NightConfirmStage' })}
+					onclick={() => sendAction({ kind: 'NightConfirmStage' })}
 					class="btn-primary w-full"
 				>
 					{t.statusConfirm}

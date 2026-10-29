@@ -1,14 +1,16 @@
-import type { ClientAction, AckResponse } from '../../shared/events';
-import type { RoomPublicState } from '../../shared/gameTypes';
-import type { ValidationIssue } from '../../game/rules/setup';
-import { getPublicState, getRevealedRoleIfAny } from '../rooms/roomRepo';
-import { emitToSession } from './emit';
-import { replayTurnPromptIfAny } from '../game/turnReplay';
+import {
+	refuse,
+	type ClientAction,
+	type ActionKind,
+	type ActionOf,
+	type ActionReply
+} from '../../shared/events';
 import { checkRateLimit } from './rateLimit';
-import { ActionError, requireRoomCode, type GameSocket } from './handlers/helpers';
+import { ActionError, type GameSocket } from './handlers/helpers';
 import {
 	handleRoomCreate,
 	handleRoomJoin,
+	handleResync,
 	handleRoomSubmitConfig,
 	handleRoomStartGame,
 	handleRoomLockSeats,
@@ -38,86 +40,56 @@ import {
 } from './handlers/discussion';
 import { handleHostOverride } from './handlers/hostOverride';
 
+type Handler<K extends ActionKind> = (
+	socket: GameSocket,
+	action: ActionOf<K>
+) => Promise<ActionReply<K>>;
+
+/** One handler per action, each typed to answer that action's own reply -
+ * a handler that answers the wrong shape fails to compile. */
+const HANDLERS: { [K in ActionKind]: Handler<K> } = {
+	RoomCreate: (s) => handleRoomCreate(s),
+	RoomJoin: (s, a) => handleRoomJoin(s, a.roomCode),
+	ResyncRequest: (s) => handleResync(s),
+	RoomSubmitConfig: (s, a) => handleRoomSubmitConfig(s, a.roleConfig, a.ruleOverrides),
+	RoomStartGame: (s) => handleRoomStartGame(s),
+	RoomLockSeats: (s, a) => handleRoomLockSeats(s, a.locked),
+	SeatTake: (s, a) => handleSeatTake(s, a.seatNumber),
+	RevealRole: (s) => handleRevealRole(s),
+	RoomRerollRoles: (s) => handleRoomRerollRoles(s),
+	RoomLeave: (s) => handleRoomLeave(s),
+	RoomStopGame: (s) => handleRoomStopGame(s),
+	NightSubmitAction: (s, a) => handleNightSubmitAction(s, a.action),
+	NightAdvanceStage: (s) => handleNightAdvanceStage(s),
+	NightAnnounceResults: (s) => handleNightAnnounceResults(s),
+	NightPass: (s) => handleNightPass(s),
+	NightConfirmStage: (s) => handleNightConfirmStage(s),
+	NightNarrationStarted: (s, a) => handleNightNarrationStarted(s, a.role),
+	DayNextSpeaker: (s) => handleNextSpeaker(s),
+	DayBeginVote: (s) => handleBeginVote(s),
+	DayEndDay: (s) => handleEndDay(s),
+	DayExile: (s, a) => handleExile(s, a.seat),
+	DayOut: (s, a) => handleDayOut(s, a.seats),
+	DaySelfExplode: (s, a) => handleSelfExplode(s, a.seat),
+	DayKnightDuel: (s, a) => handleKnightDuel(s, a.knightSeat, a.targetSeat),
+	VoteCast: (s, a) => handleVoteCast(s, a.target),
+	VoteEnd: (s) => handleVoteEnd(s),
+	HunterShoot: (s, a) => handleHunterShoot(s, a.target),
+	HostOverride: (s, a) => handleHostOverride(s, a.overrideKind, a.seat, a.role)
+};
+
 export async function dispatchAction(
 	socket: GameSocket,
 	action: ClientAction
-): Promise<
-	AckResponse & { roomCode?: string; state?: RoomPublicState; issues?: ValidationIssue[] }
-> {
+): Promise<ActionReply> {
 	if (!(await checkRateLimit(socket.data.sessionId))) {
-		return { ok: false, error: 'rate_limited' };
+		return refuse('rate_limited');
 	}
 	try {
-		switch (action.kind) {
-			case 'RoomCreate':
-				return await handleRoomCreate(socket);
-			case 'RoomJoin':
-				return await handleRoomJoin(socket, action.roomCode);
-			case 'RoomSubmitConfig':
-				return await handleRoomSubmitConfig(socket, action.roleConfig, action.ruleOverrides);
-			case 'RoomStartGame':
-				return await handleRoomStartGame(socket);
-			case 'RoomLockSeats':
-				return await handleRoomLockSeats(socket, action.locked);
-			case 'SeatTake':
-				return await handleSeatTake(socket, action.seatNumber);
-			case 'RevealRole':
-				return await handleRevealRole(socket);
-			case 'RoomRerollRoles':
-				return await handleRoomRerollRoles(socket);
-			case 'RoomLeave':
-				return await handleRoomLeave(socket);
-			case 'RoomStopGame':
-				return await handleRoomStopGame(socket);
-			case 'NightSubmitAction':
-				return await handleNightSubmitAction(socket, action.action);
-			case 'NightAdvanceStage':
-				return await handleNightAdvanceStage(socket);
-			case 'NightAnnounceResults':
-				return await handleNightAnnounceResults(socket);
-			case 'NightPass':
-				return await handleNightPass(socket);
-			case 'NightConfirmStage':
-				return await handleNightConfirmStage(socket);
-			case 'NightNarrationStarted':
-				return await handleNightNarrationStarted(socket, action.role);
-			case 'DayNextSpeaker':
-				return await handleNextSpeaker(socket);
-			case 'DayBeginVote':
-				return await handleBeginVote(socket);
-			case 'DayEndDay':
-				return await handleEndDay(socket);
-			case 'DayExile':
-				return await handleExile(socket, action.seat);
-			case 'DayOut':
-				return await handleDayOut(socket, action.seats);
-			case 'DaySelfExplode':
-				return await handleSelfExplode(socket, action.seat);
-			case 'DayKnightDuel':
-				return await handleKnightDuel(socket, action.knightSeat, action.targetSeat);
-			case 'VoteCast':
-				return await handleVoteCast(socket, action.target);
-			case 'VoteEnd':
-				return await handleVoteEnd(socket);
-			case 'HunterShoot':
-				return await handleHunterShoot(socket, action.target);
-			case 'HostOverride':
-				return await handleHostOverride(socket, action.overrideKind, action.seat, action.role);
-			case 'ResyncRequest': {
-				const code = await requireRoomCode(socket);
-				const state = await getPublicState(code, socket.data.sessionId);
-				const revealedRole = await getRevealedRoleIfAny(code, socket.data.sessionId);
-				if (revealedRole) {
-					emitToSession(socket.data.sessionId, { kind: 'YourRole', role: revealedRole });
-				}
-				await replayTurnPromptIfAny(code, socket.data.sessionId);
-				return { ok: true, state: state ?? undefined };
-			}
-		}
+		const handler = HANDLERS[action.kind] as Handler<ActionKind>;
+		return await handler(socket, action);
 	} catch (err) {
-		if (err instanceof ActionError) {
-			return { ok: false, error: err.message };
-		}
+		if (err instanceof ActionError) return { ok: false, error: err.code };
 		throw err;
 	}
 }

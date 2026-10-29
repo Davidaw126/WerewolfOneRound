@@ -10,15 +10,11 @@
 	import { strings, roleName, presetName, formatSetupIssue } from '$lib/shared/i18n';
 	import type { ValidationIssue } from '$lib/game/rules/setup';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse } from '$lib/shared/events';
 	import PixelSprite from './PixelSprite.svelte';
 
 	const t = $derived(strings(i18n.lang));
 
-	function issueText(i: ValidationIssue): string {
-		const roleLabel = i.params?.roleId ? roleName(i.params.roleId, i18n.lang) : undefined;
-		return formatSetupIssue(i.code, i.reason, { ...i.params, roleLabel }, i18n.lang);
-	}
+	const issueText = (i: ValidationIssue) => formatSetupIssue(i, i18n.lang);
 
 	const noRoles = () =>
 		Object.fromEntries(ALL_ROLE_IDS.map((r) => [r, 0])) as Record<RoleId, number>;
@@ -58,7 +54,7 @@
 			return;
 		}
 		submitting = true;
-		const res = await sendAction<AckResponse & { issues?: ValidationIssue[] }>(
+		const res = await sendAction(
 			{
 				kind: 'RoomSubmitConfig',
 				roleConfig: counts,

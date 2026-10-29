@@ -1,6 +1,6 @@
 import { runGameAction } from '../../game/gameSync';
 import { hunterSeatOf } from '../../game/projection';
-import type { AckResponse } from '../../../shared/events';
+import { refuse, type AckResponse } from '../../../shared/events';
 import { requireRoomCode, requireSeat, type GameSocket } from './helpers';
 
 export async function handleHunterShoot(
@@ -16,6 +16,6 @@ export async function handleHunterShoot(
 	return runGameAction(code, (state) =>
 		hunterSeatOf(state) === seat
 			? { type: 'HUNTER_SHOOT', shooterSeat: seat, targetSeat: target }
-			: { ok: false, error: 'not_authorized_shooter' }
+			: refuse('not_authorized_shooter')
 	);
 }

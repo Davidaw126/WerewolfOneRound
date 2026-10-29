@@ -7,6 +7,9 @@
 // types, which - since these are all just `string` here, not literals -
 // isn't actually a risk either way; declared explicitly for clarity).
 
+import type { RoomErrorCode } from '../actionErrors';
+import type { NightRuleError } from '../../game/rules/nightRules';
+
 export type Lang = 'zh' | 'en';
 
 export interface Strings {
@@ -84,8 +87,9 @@ export interface Strings {
 		stopGameConfirm: string;
 		stopGameAria: string;
 	};
-	/** Ack error codes -> popup text (formatActionError); `fallback` covers any code not listed. */
-	errors: Record<string, string> & { fallback: string };
+	/** Refusal codes -> popup text (formatRefusal). Every code needs a line;
+	 * `fallback` is for a reply from a newer server this phone doesn't know. */
+	errors: Record<RoomErrorCode, string> & { fallback: string };
 	nightPrompt: {
 		yourTurn: (role: string) => string;
 		submittedWaiting: string;
@@ -133,21 +137,7 @@ export interface Strings {
 		hunterNoActionNeeded: string;
 		statusNoActionNeeded: string;
 		statusConfirm: string;
-		ruleMessages: {
-			antidote_spent: string;
-			poison_spent: string;
-			witch_no_self_save: string;
-			witch_one_potion_per_night: string;
-			no_kill_to_save: string;
-			guard_repeat_target: string;
-			already_submitted: string;
-			invalid_target: string;
-			not_your_turn: string;
-			not_your_role: string;
-			feared: string;
-			thief_must_take_wolf: string;
-			fallback: string;
-		};
+		ruleMessages: Record<NightRuleError, string> & { fallback: string };
 		descSelectedSeat: (seat: number) => string;
 		descWitchSaved: (seat: number) => string;
 		descWitchPoisoned: (seat: number) => string;

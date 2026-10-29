@@ -1,5 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
-import type { ClientAction, AckResponse, ServerEvent, PrivateInfo } from '$lib/shared/events';
+import type {
+	ClientAction,
+	ActionReply,
+	Refusal,
+	ServerEvent,
+	PrivateInfo
+} from '$lib/shared/events';
 
 let socket: Socket | null = null;
 
@@ -32,24 +38,26 @@ export function disconnectSocket(): void {
  * connection doesn't leave a button that silently does nothing. */
 const ACK_TIMEOUT_MS = 10_000;
 
-let actionErrorHandler: ((error: string) => void) | null = null;
+let actionErrorHandler: ((refusal: Refusal) => void) | null = null;
 
 /** Registered once by the game store: every failed action (unless sent with
  * `quiet`) is reported here so the player always sees why nothing happened,
  * instead of a tap that silently does nothing. */
-export function onActionError(handler: (error: string) => void): void {
+export function onActionError(handler: (refusal: Refusal) => void): void {
 	actionErrorHandler = handler;
 }
 
-/** `quiet`: the caller shows its own error UI (e.g. the lobby's inline
- * messages), or the action is background plumbing nobody tapped. */
-export function sendAction<T extends AckResponse = AckResponse>(
-	action: ClientAction,
+/** Sends one action and answers its reply - typed per action (see
+ * ActionReply). `quiet`: the caller shows its own error UI (e.g. the lobby's
+ * inline messages), or the action is background plumbing nobody tapped. */
+export function sendAction<A extends ClientAction>(
+	action: A,
 	opts: { quiet?: boolean } = {}
-): Promise<T> {
+): Promise<ActionReply<A['kind']>> {
+	type T = ActionReply<A['kind']>;
 	return new Promise((resolve) => {
 		const finish = (res: T) => {
-			if (!res.ok && !opts.quiet) actionErrorHandler?.(res.error);
+			if (!res.ok && !opts.quiet) actionErrorHandler?.(res);
 			resolve(res);
 		};
 		const sock = getSocket();
@@ -57,7 +65,7 @@ export function sendAction<T extends AckResponse = AckResponse>(
 			sock
 				.timeout(ACK_TIMEOUT_MS)
 				.emit('client:action', action, (err: Error | null, res: T) =>
-					finish(err ? ({ ok: false, error: 'timeout' } as T) : res)
+					finish(err ? { ok: false, error: 'timeout' } : res)
 				);
 		if (sock.connected) return send();
 		// Not connected yet (first load) or mid-reconnect: wait for it rather
@@ -66,7 +74,7 @@ export function sendAction<T extends AckResponse = AckResponse>(
 		// retry tap could apply the action twice.
 		const timer = setTimeout(() => {
 			sock.off('connect', onConnect);
-			finish({ ok: false, error: 'disconnected' } as T);
+			finish({ ok: false, error: 'disconnected' });
 		}, ACK_TIMEOUT_MS);
 		const onConnect = () => {
 			clearTimeout(timer);

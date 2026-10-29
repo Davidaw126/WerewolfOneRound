@@ -99,7 +99,11 @@ describe('delivery', () => {
 
 	it('a rule rejection and the phase are not sent from here', async () => {
 		await translateEffects(code, [
-			{ kind: 'PRIVATE', seat: 1, payload: { kind: 'NightActionRejected', error: 'x' } },
+			{
+				kind: 'PRIVATE',
+				seat: 1,
+				payload: { kind: 'NightActionRejected', error: 'already_submitted' }
+			},
 			{ kind: 'BROADCAST', payload: { kind: 'PhaseChanged', phase: 'DAWN', nightNumber: 1 } }
 		]);
 		expect(sent).toEqual([]);

@@ -2,7 +2,6 @@
 	import { fade, scale } from 'svelte/transition';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
-	import type { AckResponse } from '$lib/shared/events';
 	import { line as logLine } from '$lib/client/logLines';
 	import RoleFace from './RoleFace.svelte';
 	import { strings } from '$lib/shared/i18n';
@@ -27,7 +26,7 @@
 			// Always reset, not just on failure: myRole can later be cleared by a
 			// host reroll, which re-renders the unrevealed state - a stale
 			// `revealing = true` would otherwise stick as "翻开中…".
-			await sendAction<AckResponse>({ kind: 'RevealRole' });
+			await sendAction({ kind: 'RevealRole' });
 			revealing = false;
 			gameStore.logActivity(logLine('text', 'activityLog', 'youCheckedIdentity'));
 		}
