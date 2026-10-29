@@ -42,8 +42,6 @@ export interface Strings {
 		joinRoom: string;
 		joining: string;
 		errorCreateFailed: string;
-		errorRoomNotFound: string;
-		errorJoinFailed: string;
 		errorInvalidCode: string;
 	};
 	room: {

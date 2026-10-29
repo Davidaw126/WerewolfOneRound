@@ -61,7 +61,11 @@ src/
       socket/        # dispatch.ts's switch -> handlers/*.ts, session/auth middleware,
                      # rate limiting
     client/      # thin socket.io-client wrapper + the reactive game store
-                 # ($state-based, gameStore.svelte.ts) that drives the room UI;
+                 # ($state-based, gameStore.svelte.ts, no socket of its own) that
+                 # drives the room UI; roomSession.svelte.ts is the phone's side
+                 # of the Room: entering (one round trip), resyncing on reconnect /
+                 # foreground, and `out` when the phone is no longer in the room
+                 # (tested with a fake transport);
                  # diary/room-log lines are stored as data (logLines.ts) and
                  # rendered in the current language; roleNight.ts holds each
                  # role's night presentation

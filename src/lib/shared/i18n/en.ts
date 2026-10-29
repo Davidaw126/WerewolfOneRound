@@ -30,8 +30,6 @@ export const en: Strings = {
 		joinRoom: 'Join Room',
 		joining: 'Joining…',
 		errorCreateFailed: 'Failed to create room, please try again',
-		errorRoomNotFound: 'Room not found',
-		errorJoinFailed: 'Failed to join room',
 		errorInvalidCode: 'Enter a 6-digit room code'
 	},
 	room: {

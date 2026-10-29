@@ -3,16 +3,12 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { gameStore } from '$lib/client/gameStore.svelte';
-	import { getSocket, sendAction } from '$lib/client/socket';
+	import { sendAction } from '$lib/client/socket';
+	import { roomSession } from '$lib/client/roomSession.svelte';
 	import { askConfirm, showAlert } from '$lib/client/confirmDialog.svelte';
 	import { leaveConfirmMessage } from '$lib/client/leaveRoom';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import {
-		strings,
-		formatNightDeaths,
-		formatDayResult,
-		formatRoomClosedByHost
-	} from '$lib/shared/i18n';
+	import { strings, formatNightDeaths, formatDayResult, outMessage } from '$lib/shared/i18n';
 	import { phaseGroup } from '$lib/shared/gameTypes';
 	import type { PageData } from './$types';
 	import SeatCircle from '$lib/components/SeatCircle.svelte';
@@ -35,86 +31,29 @@
 
 	const t = $derived(strings(i18n.lang));
 
-	// Guards the reconnect-resync handler below from firing on the socket's
-	// very first connection, before RoomJoin has told the server which room
-	// this session belongs to (that first ResyncRequest would just fail with
-	// 'not_in_room' - harmless, but pointless).
-	let joined = false;
-
-	function resync() {
-		if (!joined) return;
-		sendAction({ kind: 'ResyncRequest' }, { quiet: true }).then((res) => {
-			if (res.ok && res.state) gameStore.applyState(res.state);
-		});
-	}
-
 	onMount(() => {
-		gameStore.resetForRoomVisit();
-		gameStore.viewerSessionId = data.sessionId;
-		gameStore.connect();
 		releaseWakeLock = keepScreenAwake();
-		const socket = getSocket();
-		// Socket.IO auto-reconnects the transport after any drop (mobile
-		// backgrounding, screen lock, a wifi/cellular handoff), and the room
-		// channel is silently rejoined server-side on the new connection - but
-		// without this, whatever happened during the gap (a vote, a phase
-		// change, a death) would just be missing until a full page reload.
-		socket.on('connect', resync);
-		// iOS Safari often leaves a socket that still reports "connected" after
-		// the screen was locked, but missed everything sent meanwhile (most
-		// importantly a one-shot YourTurnPrompt). Resync whenever the page comes
-		// back to the foreground; the server replays any turn we're owed.
-		const onVisible = () => {
-			if (!document.hidden) resync();
-		};
-		document.addEventListener('visibilitychange', onVisible);
-		window.addEventListener('pageshow', onVisible);
-		removeVisibilityResync = () => {
-			document.removeEventListener('visibilitychange', onVisible);
-			window.removeEventListener('pageshow', onVisible);
-		};
-
-		sendAction({ kind: 'RoomJoin', roomCode: data.roomCode }, { quiet: true }).then((res) => {
-			if (!res.ok) {
-				// Room expired/gone between this page's SSR load and the socket
-				// actually joining it - there's nothing to recover into, so bounce
-				// back to the lobby instead of leaving the user stuck on "加载中…".
-				goto(resolve('/lobby'));
-				return;
-			}
-			joined = true;
-			if (res.state) gameStore.applyState(res.state);
-			sendAction({ kind: 'ResyncRequest' }, { quiet: true }).then((r2) => {
-				if (r2.ok && r2.state) gameStore.applyState(r2.state);
-			});
+		// The lobby usually entered the room already; a reload or a shared
+		// link enters here. A room that's gone by now: back to the lobby.
+		roomSession.open(data.roomCode, data.sessionId).then((inRoom) => {
+			if (!inRoom) goto(resolve('/lobby'));
 		});
 	});
-	let removeVisibilityResync: (() => void) | null = null;
 	let releaseWakeLock: (() => void) | null = null;
 	onDestroy(() => {
-		removeVisibilityResync?.();
 		releaseWakeLock?.();
-		getSocket().off('connect', resync);
-		gameStore.disconnect();
+		roomSession.close();
 	});
 
-	// The host leaving destroys the room server-side - nothing left here to
-	// keep rendering, so bounce everyone still on this page back to /lobby.
-	// Shows a blocking alert first (not just the transient toast, which would
-	// barely be visible for an instant before the navigation below unmounts
-	// this page anyway) so players actually see and register why they were
-	// suddenly moved, rather than landing on /lobby with no explanation.
-	let roomClosedHandled = false;
+	// Out of the room (it closed, this player left on another phone, or the
+	// server no longer has them in it): a blocking alert first, so the move
+	// back to the lobby never comes without a reason.
 	$effect(() => {
-		if (gameStore.roomClosed && !roomClosedHandled) {
-			roomClosedHandled = true;
-			showAlert(
-				gameStore.roomClosedMessage ?? formatRoomClosedByHost(i18n.lang),
-				t.room.backToLobby
-			).then(() => {
-				goto(resolve('/lobby'));
-			});
-		}
+		const reason = roomSession.out;
+		if (!reason) return;
+		showAlert(outMessage(reason, i18n.lang), t.room.backToLobby).then(() =>
+			goto(resolve('/lobby'))
+		);
 	});
 
 	const roomState = $derived(gameStore.state);
@@ -173,7 +112,7 @@
 		leavingAfterGameOver = true;
 		// The session still has roomCode set from this finished game - clear
 		// it first, or /lobby's own guard will just redirect straight back here.
-		await sendAction({ kind: 'RoomLeave' });
+		await roomSession.leave();
 		await goto(resolve('/lobby'));
 	}
 

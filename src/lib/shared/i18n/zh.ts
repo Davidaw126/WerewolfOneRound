@@ -33,8 +33,6 @@ export const zh: Strings = {
 		joinRoom: '加入房间',
 		joining: '加入中…',
 		errorCreateFailed: '创建房间失败，请重试',
-		errorRoomNotFound: '房间不存在',
-		errorJoinFailed: '加入房间失败',
 		errorInvalidCode: '请输入 6 位房间号'
 	},
 	room: {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { sendAction } from '$lib/client/socket';
+	import { roomSession } from '$lib/client/roomSession.svelte';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { isGameInProgress, leaveConfirmMessage } from '$lib/client/leaveRoom';
@@ -19,7 +19,7 @@
 		const { message, confirmLabel } = leaveConfirmMessage(isHost, gameInProgress, i18n.lang);
 		if (!(await askConfirm(message, { confirmLabel }))) return;
 		leaving = true;
-		await sendAction({ kind: 'RoomLeave' });
+		await roomSession.leave();
 		await goto(resolve('/lobby'));
 	}
 </script>

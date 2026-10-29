@@ -7,7 +7,6 @@ import {
 } from '$lib/shared/gameTypes';
 import type { RoleId } from '$lib/game/types';
 import type { ServerEvent, PrivateInfo, TurnContext } from '$lib/shared/events';
-import { onServerEvent, onPrivateEvent, onActionError } from './socket';
 import { i18n } from './i18n.svelte';
 import { line as logLine, isLogLine, type LogLine, type Round } from './logLines';
 import {
@@ -16,9 +15,7 @@ import {
 	formatRolesReshuffledConfirm,
 	formatHunterDenied,
 	formatShotStatus,
-	formatRefusal,
 	formatHunterAuthorized,
-	formatRoomClosedByHost,
 	formatPlayerLeftMidGame
 } from '$lib/shared/i18n';
 
@@ -177,15 +174,6 @@ export class GameStore {
 	toast = $state<string | null>(null);
 	private toastToken = 0;
 
-	/** Set when the host leaves and the server destroys the room out from
-	 * under everyone still connected - the room page watches this and
-	 * navigates away, since there's no state left here to keep rendering. */
-	roomClosed = $state(false);
-	/** The RoomClosed message, captured separately from the auto-expiring
-	 * `toast` (which could clear itself, or be overwritten by something else,
-	 * before the room page gets around to showing the blocking alert). */
-	roomClosedMessage = $state<string | null>(null);
-
 	/** Positive "you did X" confirmation, separate from `toast` (which is
 	 * red/error-styled) - rendered at the room-page level rather than inside
 	 * NightActionPrompt/VoteBoard/HunterShotPrompt, so it stays visible for its
@@ -269,8 +257,6 @@ export class GameStore {
 
 	/** Bumped per turn prompt and per stage change - see YourTurnPrompt. */
 	private turnToken = 0;
-
-	private unsubscribers: (() => void)[] = [];
 
 	private currentRound(): Round {
 		const phase = this.state?.phase;
@@ -387,30 +373,11 @@ export class GameStore {
 		if (s?.gameId) saveDiary(s.roomCode, s.gameId, this.activityLog);
 	}
 
-	/** Called synchronously at the very top of the room page's onMount, before
-	 * anything (including the room-closed effect) can read stale data left
-	 * over from whatever room was visited last - SPA navigation between rooms
-	 * never tears this singleton down, and the async RoomJoin/applyState
-	 * reset runs too late to stop an effect from firing on the stale value
-	 * first (e.g. a room-closed alert reappearing for a brand new room). */
+	/** Forgets the last room visited - before entering another, so nothing
+	 * (an old phase, an old state) shows on the new room's page while its
+	 * own state is on the way. */
 	resetForRoomVisit(): void {
 		this.state = null;
-		this.roomClosed = false;
-		this.roomClosedMessage = null;
-	}
-
-	connect(): void {
-		this.disconnect();
-		onActionError((refusal) => this.showInfoPopup(formatRefusal(refusal, i18n.lang), 'bad', 4000));
-		this.unsubscribers.push(
-			onServerEvent((event) => this.applyServerEvent(event)),
-			onPrivateEvent((event) => this.applyPrivateEvent(event))
-		);
-	}
-
-	disconnect(): void {
-		for (const unsub of this.unsubscribers) unsub();
-		this.unsubscribers = [];
 	}
 
 	/** Applies a full state snapshot - shared by the `StateSnapshot` broadcast
@@ -469,8 +436,6 @@ export class GameStore {
 		this.toast = null;
 		this.confirmToast = null;
 		this.activityLog = [];
-		this.roomClosed = false;
-		this.roomClosedMessage = null;
 	}
 
 	/** Applies one room-wide event (also the socket subscription target). */
@@ -649,14 +614,10 @@ export class GameStore {
 				this.showToast(formatPlayerLeftMidGame(event.seat, i18n.lang));
 				break;
 			}
-			case 'RoomClosed': {
-				const text = formatRoomClosedByHost(i18n.lang);
+			case 'RoomClosed':
+				// The room page shows why and leaves (see roomSession).
 				this.logRoom(logLine('roomClosedByHost'));
-				this.showToast(text);
-				this.roomClosedMessage = text;
-				this.roomClosed = true;
 				break;
-			}
 			case 'StageNarrationStarted':
 				this.revealTurn();
 				break;

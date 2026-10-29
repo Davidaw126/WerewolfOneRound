@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { sendAction, disconnectSocket } from '$lib/client/socket';
+	import { disconnectSocket } from '$lib/client/socket';
+	import { roomSession } from '$lib/client/roomSession.svelte';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
-	import { strings } from '$lib/shared/i18n';
+	import { strings, formatRefusal } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import LanguageToggle from '$lib/components/LanguageToggle.svelte';
 	import type { PageData } from './$types';
@@ -33,9 +34,9 @@
 	async function createRoom() {
 		error = null;
 		creating = true;
-		const res = await sendAction({ kind: 'RoomCreate' }, { quiet: true });
+		const res = await roomSession.create();
 		creating = false;
-		if (res.ok && res.roomCode) {
+		if (res.ok) {
 			await goto(resolve('/room/[code]', { code: res.roomCode }));
 		} else {
 			error = t.lobby.errorCreateFailed;
@@ -51,16 +52,14 @@
 		}
 		error = null;
 		joining = true;
-		const res = await sendAction({ kind: 'RoomJoin', roomCode: code }, { quiet: true });
+		// Entered here, once: the room page finds this phone already in.
+		const res = await roomSession.enter(code);
 		joining = false;
 		if (res.ok) {
 			await goto(resolve('/room/[code]', { code }));
 		} else {
-			error = res.ok
-				? null
-				: res.error === 'room_not_found'
-					? t.lobby.errorRoomNotFound
-					: t.lobby.errorJoinFailed;
+			// Not found, locked, ... - the refusal says which.
+			error = formatRefusal(res, i18n.lang);
 		}
 	}
 </script>

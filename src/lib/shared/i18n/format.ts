@@ -224,6 +224,25 @@ export function formatRoomClosedByHost(lang: Lang): string {
 	return lang === 'zh' ? '房主已离开，房间已关闭' : 'The host left — the room has been closed';
 }
 
+/** Why this phone was sent back to the lobby (see client/roomSession). */
+export function outMessage(
+	reason: 'host_left' | 'room_gone' | 'left_elsewhere' | 'removed',
+	lang: Lang
+): string {
+	if (reason === 'host_left') return formatRoomClosedByHost(lang);
+	const zh = {
+		room_gone: '这个房间已经不存在了',
+		left_elsewhere: '你已在其他设备上离开了这个房间',
+		removed: '你已不在这个房间里'
+	};
+	const en = {
+		room_gone: 'This room no longer exists',
+		left_elsewhere: 'You left this room on another device',
+		removed: "You're no longer in this room"
+	};
+	return (lang === 'zh' ? zh : en)[reason];
+}
+
 export function formatPlayerLeftMidGame(leavingSeat: number | null, lang: Lang): string {
 	if (lang === 'zh') {
 		return leavingSeat !== null
