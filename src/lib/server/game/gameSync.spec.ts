@@ -51,14 +51,14 @@ async function startedGame(): Promise<string> {
 	});
 	for (const seat of [1, 2, 3, 4]) await room.takeSeatAtomic(code, `s${seat}`, seat, `P${seat}`);
 	await room.setSeatsLocked(code, true);
-	await startGameAndBroadcast(code, {
+	await startGameAndBroadcast(code, async () => ({
 		roomCode: code,
 		ruleConfig: defaultRuleConfig(),
 		setup: buildSetup({ WEREWOLF: 1, SEER: 1, VILLAGER: 1, WITCH: 1 }),
 		deal: { identities: { ...ROLES }, buried: null },
 		players: [1, 2, 3, 4].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
 		now: 1000
-	});
+	}));
 	return code;
 }
 

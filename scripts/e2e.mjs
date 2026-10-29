@@ -119,7 +119,6 @@ async function setupGame(label, seats, roles) {
 		if (!r.ok) console.log('seat', i + 1, r);
 		await p.act({ kind: 'RevealRole' });
 	}
-	await host.act({ kind: 'RoomLockSeats', locked: true });
 	const started = await host.act({ kind: 'RoomStartGame' });
 	check(
 		started.ok,

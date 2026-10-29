@@ -85,19 +85,17 @@ export async function clearGameActions(code: string): Promise<void> {
 }
 
 /** Deals the opening GameState (via the engine's own `startGame`) and
- * persists it - the one-time entry point `RoomStartGame` calls instead of
- * every later `applyGameAction`. Locked for consistency with every other
- * write to this room's state, even though only the host can trigger it.
- * Returns the full EngineResult (not just effects) - callers need the final
- * `state` too, to sync the room's phase and broadcast it. */
+ * persists it - the one-time counterpart of `applyGameAction`. `prepare`
+ * runs under the room lock first: it checks who is asking and builds the
+ * params from the room as it is at that moment, or refuses. Returns the
+ * full EngineResult - callers need the `state` too, to broadcast it. */
 export async function startAndSaveGame(
 	code: string,
-	params: StartGameParams,
-	authorize?: () => Promise<Refusal | null>
+	prepare: () => Promise<StartGameParams | Refusal>
 ): Promise<EngineResult | Refusal> {
 	return withRoomLock(code, async () => {
-		const refusal = authorize ? await authorize() : null;
-		if (refusal) return refusal;
+		const params = await prepare();
+		if ('ok' in params) return params;
 		const result = startGame(params);
 		await saveGameState(code, result.state);
 		return result;

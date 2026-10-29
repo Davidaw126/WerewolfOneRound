@@ -68,7 +68,6 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 		ruleOverrides: RuleConfigOverridesSchema.optional()
 	}),
 	z.object({ kind: z.literal('RoomStartGame') }),
-	z.object({ kind: z.literal('RoomLockSeats'), locked: z.boolean() }),
 	z.object({ kind: z.literal('SeatTake'), seatNumber: z.number().int().positive() }),
 	z.object({ kind: z.literal('RevealRole') }),
 	z.object({ kind: z.literal('RoomRerollRoles') }),
@@ -274,4 +273,7 @@ export type PrivateInfo =
 	| { kind: 'NightActionAck'; role: RoleId }
 	/** Host-only counterpart to the room-wide (redacted) StageChanged - the
 	 * real stage, role included, so JudgeAudioPlayer knows what to narrate. */
-	| { kind: 'HostStageChanged'; stage: NightStage | null };
+	| { kind: 'HostStageChanged'; stage: NightStage | null }
+	/** This session is no longer in the room - sent to every phone of it, so
+	 * a second tab or device finds out too. */
+	| { kind: 'RemovedFromRoom'; reason: 'left' };

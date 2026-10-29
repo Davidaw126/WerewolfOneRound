@@ -138,11 +138,9 @@
 		await sendAction({ kind: 'SeatTake', seatNumber });
 	}
 	async function startGame() {
-		await sendAction({ kind: 'RoomLockSeats', locked: true });
-		const res = await sendAction({ kind: 'RoomStartGame' });
-		// A refused start (an empty seat, a bad setup) must not leave the seats
-		// locked - there's no unlock button, so nobody could sit down again.
-		if (!res.ok) await sendAction({ kind: 'RoomLockSeats', locked: false }, { quiet: true });
+		// One step on the server: locks the seats, checks the setup against
+		// who sat down, and deals - or refuses with the seats left open.
+		await sendAction({ kind: 'RoomStartGame' });
 	}
 	async function rerollRoles() {
 		await sendAction({ kind: 'RoomRerollRoles' });

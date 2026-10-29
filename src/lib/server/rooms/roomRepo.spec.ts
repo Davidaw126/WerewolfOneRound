@@ -54,14 +54,14 @@ async function seatedRoom(): Promise<string> {
  * tell which store answered. */
 async function startGameWithRoles(code: string) {
 	await room.setSeatsLocked(code, true);
-	const result = await startAndSaveGame(code, {
+	const result = await startAndSaveGame(code, async () => ({
 		roomCode: code,
 		ruleConfig: defaultRuleConfig(),
 		setup: buildSetup({ WEREWOLF: 1, SEER: 1, VILLAGER: 1 }),
 		deal: { identities: { '1': 'SEER', '2': 'VILLAGER', '3': 'WEREWOLF' }, buried: null },
 		players: [1, 2, 3].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
 		now: 1000
-	});
+	}));
 	if ('ok' in result) throw new Error(result.error);
 	await recordGamePhase(code, result.state.phase, result.state.round);
 }

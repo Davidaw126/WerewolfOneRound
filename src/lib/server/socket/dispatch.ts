@@ -13,7 +13,6 @@ import {
 	handleResync,
 	handleRoomSubmitConfig,
 	handleRoomStartGame,
-	handleRoomLockSeats,
 	handleRoomRerollRoles,
 	handleRoomLeave,
 	handleRoomStopGame
@@ -53,7 +52,6 @@ const HANDLERS: { [K in ActionKind]: Handler<K> } = {
 	ResyncRequest: (s) => handleResync(s),
 	RoomSubmitConfig: (s, a) => handleRoomSubmitConfig(s, a.roleConfig, a.ruleOverrides),
 	RoomStartGame: (s) => handleRoomStartGame(s),
-	RoomLockSeats: (s, a) => handleRoomLockSeats(s, a.locked),
 	SeatTake: (s, a) => handleSeatTake(s, a.seatNumber),
 	RevealRole: (s) => handleRevealRole(s),
 	RoomRerollRoles: (s) => handleRoomRerollRoles(s),

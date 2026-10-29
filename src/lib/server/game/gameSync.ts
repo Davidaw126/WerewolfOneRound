@@ -18,7 +18,7 @@
 // this module with a fake io and fake timers.
 
 import { redis } from '../redis';
-import { recordGamePhase, isHost, readRoomHash } from '../rooms/roomRepo';
+import { recordGamePhase, isHost } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import { refuse, type AckResponse } from '../../shared/events';
@@ -194,24 +194,14 @@ export async function runGameAction(
 	return { ok: true };
 }
 
-/** Deals the opening GameState from what seating produced and tells the
- * room - the one-time counterpart of runGameAction for RoomStartGame. With
- * `host`, only that Host may start, and only with the seats still locked,
- * both checked under the room lock. */
+/** Deals the opening GameState and tells the room - the one-time
+ * counterpart of runGameAction. `prepare` runs under the room lock: it
+ * checks who is asking and builds the params, or refuses. */
 export async function startGameAndBroadcast(
 	code: string,
-	params: StartGameParams,
-	host?: string
+	prepare: () => Promise<StartGameParams | Refusal>
 ): Promise<AckResponse> {
-	const authorize =
-		host === undefined
-			? undefined
-			: async (): Promise<Refusal | null> => {
-					if (!(await isHost(code, host))) return NOT_HOST;
-					const room = await readRoomHash(code);
-					return room?.lockStatus ? null : refuse('seats_not_locked');
-				};
-	const result = await startAndSaveGame(code, params, authorize);
+	const result = await startAndSaveGame(code, prepare);
 	if ('ok' in result) return result;
 	await syncAndBroadcast(code, null, result);
 	return { ok: true };
