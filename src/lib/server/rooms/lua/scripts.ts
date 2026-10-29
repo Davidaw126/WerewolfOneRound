@@ -121,8 +121,7 @@ return cjson.encode({ ok = true, vacated = true })
 // ARGV[1] = sessionId, ARGV[2] = roleConfigJson, ARGV[3] = numberOfSeats,
 // ARGV[4] = identitiesJson (precomputed by dealCards() in TS - shuffling
 // itself is pure TS logic, this script only needs to write it atomically),
-// ARGV[5] = ttlSeconds, ARGV[6] = cupidPoisonBlocksHunter ('0'/'1'),
-// ARGV[7] = ruleOverridesJson
+// ARGV[5] = ttlSeconds, ARGV[6] = ruleOverridesJson
 //
 // Only the room's Host (set at creation) may submit, and only from LOBBY -
 // checked here, in the same atomic step as the write, rather than by a
@@ -138,8 +137,7 @@ local roleConfigJson = ARGV[2]
 local numberOfSeats = ARGV[3]
 local identitiesJson = ARGV[4]
 local ttl = tonumber(ARGV[5])
-local cupidPoisonBlocksHunter = ARGV[6]
-local ruleOverridesJson = ARGV[7]
+local ruleOverridesJson = ARGV[6]
 
 if redis.call('HGET', roomKey, 'hostSessionId') ~= sessionId then
 	return cjson.encode({ ok = false, error = 'not_host' })
@@ -163,8 +161,6 @@ redis.call(
 	'0',
 	'nightNumber',
 	'0',
-	'cupidPoisonBlocksHunter',
-	cupidPoisonBlocksHunter,
 	'ruleOverrides',
 	ruleOverridesJson
 )

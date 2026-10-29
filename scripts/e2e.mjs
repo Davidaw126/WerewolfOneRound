@@ -110,8 +110,7 @@ async function setupGame(label, seats, roles) {
 	check(created.ok && /^\d{6}$/.test(code), `[${label}] room created ${code}`);
 	const cfg = await host.act({
 		kind: 'RoomSubmitConfig',
-		roleConfig: { ...Object.fromEntries(ALL_ROLES.map((r) => [r, 0])), ...roles },
-		cupidPoisonBlocksHunter: false
+		roleConfig: { ...Object.fromEntries(ALL_ROLES.map((r) => [r, 0])), ...roles }
 	});
 	check(cfg.ok, `[${label}] config submitted ${JSON.stringify(cfg.error ?? cfg.issues ?? '')}`);
 	for (const p of players.slice(1)) await p.act({ kind: 'RoomJoin', roomCode: code });

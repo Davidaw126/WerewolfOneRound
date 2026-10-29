@@ -29,7 +29,6 @@ beforeEach(async () => {
 	await room.submitRoomConfigAtomic(code, HOST, {
 		roleConfig: { WEREWOLF: 1, SEER: 1, VILLAGER: 1 },
 		numberOfSeats: 3,
-		cupidPoisonBlocksHunter: false,
 		ruleOverrides: {}
 	});
 	for (const seat of [1, 2, 3]) await room.takeSeatAtomic(code, `s${seat}`, seat, `P${seat}`);

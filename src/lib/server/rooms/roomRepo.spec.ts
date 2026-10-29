@@ -18,7 +18,6 @@ const HOST = 'host-session';
 const config = {
 	roleConfig: { WEREWOLF: 1, SEER: 1, VILLAGER: 1 },
 	numberOfSeats: 3,
-	cupidPoisonBlocksHunter: false,
 	ruleOverrides: {}
 };
 
@@ -81,16 +80,26 @@ describe('creating and setting up a room', () => {
 		const code = await room.createRoom(HOST);
 		await room.submitRoomConfigAtomic(code, HOST, {
 			...config,
-			cupidPoisonBlocksHunter: true,
-			ruleOverrides: { witch: { canPoisonSelf: true } }
+			ruleOverrides: { cupidPoisonBlocksHunter: true, witch: { canPoisonSelf: true } }
 		});
 		const hash = await room.readRoomHash(code);
 		expect(hash?.phase).toBe('SEATING');
 		expect(hash?.numberOfSeats).toBe(3);
-		expect(hash?.cupidPoisonBlocksHunter).toBe(true);
-		expect(hash?.ruleOverrides).toEqual({ witch: { canPoisonSelf: true } });
+		expect(hash?.ruleOverrides).toEqual({
+			cupidPoisonBlocksHunter: true,
+			witch: { canPoisonSelf: true }
+		});
 		const roles = await Promise.all([1, 2, 3].map((s) => room.currentRoleOfSeat(code, s)));
 		expect(roles.sort()).toEqual(['SEER', 'VILLAGER', 'WEREWOLF']);
+	});
+
+	it('reads the 丘比特 poison rule a room stored as its own field before', async () => {
+		const code = await room.createRoom(HOST);
+		await room.submitRoomConfigAtomic(code, HOST, config);
+		await redis.hset(`wolf:room:${code}`, { cupidPoisonBlocksHunter: '1' });
+		expect((await room.readRoomHash(code))?.ruleOverrides).toEqual({
+			cupidPoisonBlocksHunter: true
+		});
 	});
 
 	it('still reads a room saved with Chinese role names before roles were stored as ids', async () => {

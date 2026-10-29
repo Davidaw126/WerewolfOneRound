@@ -4,12 +4,13 @@
 	import { ALL_ROLE_IDS } from '$lib/game/roleMeta';
 	import { PRESET_BOARDS } from '$lib/game/rules/presets';
 	import { defaultRuleConfig } from '$lib/game/defaultRuleConfig';
+	import { switchesOf } from '$lib/game/ruleSwitches';
 	import type { RoleId } from '$lib/game/types';
 	import { sendAction } from '$lib/client/socket';
 	import { strings, roleName, presetName, formatSetupIssue } from '$lib/shared/i18n';
 	import type { ValidationIssue } from '$lib/game/rules/setup';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import type { AckResponse, RuleConfigOverrides } from '$lib/shared/events';
+	import type { AckResponse } from '$lib/shared/events';
 	import PixelSprite from './PixelSprite.svelte';
 
 	const t = $derived(strings(i18n.lang));
@@ -22,7 +23,6 @@
 	const noRoles = () =>
 		Object.fromEntries(ALL_ROLE_IDS.map((r) => [r, 0])) as Record<RoleId, number>;
 	let counts = $state<Record<RoleId, number>>(noRoles());
-	let cupidPoisonBlocksHunter = $state(false);
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
 	let issues = $state<string[]>([]);
@@ -46,59 +46,9 @@
 		counts = next;
 	}
 
-	// §6 RuleConfig switches exposed on this screen (M2) - seeded from the
-	// engine's own defaults so an untouched toggle reflects the real default,
-	// not just whatever value happened to be written here first.
-	const defaults = defaultRuleConfig();
-	let winCondition = $state<'SIDE_KILL' | 'TOTAL_KILL'>(defaults.winCondition);
-	let wolfAllowEmptyKill = $state(defaults.wolf.allowEmptyKill);
-	let blackWolfKingCanShootWhenLoverSuicide = $state(
-		defaults.wolf.blackWolfKingCanShootWhenLoverSuicide
-	);
-	let guardSameGuardSameSave = $state(defaults.guard.sameGuardSameSave);
-	let witchSelfRescue = $state(defaults.witch.selfRescue);
-	let witchCanPoisonSelf = $state(defaults.witch.canPoisonSelf);
-	let witchBothPotionsSameNight = $state(defaults.witch.bothPotionsSameNight);
-	let hunterCanShootWhenPoisoned = $state(defaults.hunter.canShootWhenPoisoned);
-	let hunterCanShootWhenExiled = $state(defaults.hunter.canShootWhenExiled);
-	let hunterCanShootWhenWolfKilled = $state(defaults.hunter.canShootWhenWolfKilled);
-	let hunterCanShootWhenLoverSuicide = $state(defaults.hunter.canShootWhenLoverSuicide);
-	let idiotRevealOnExile = $state(defaults.idiot.revealOnExile);
-	let idiotKeepsSpeechRight = $state(defaults.idiot.keepsSpeechRight);
-	let idiotLosesVoteRight = $state(defaults.idiot.losesVoteRight);
-	let idiotCanRunForSheriffAfterReveal = $state(defaults.idiot.canRunForSheriffAfterReveal);
-	let idiotTearsBadgeIfSheriff = $state(defaults.idiot.tearsBadgeIfSheriff);
-	let idiotDiesNormallyAtNight = $state(defaults.idiot.diesNormallyAtNight);
-
-	function buildRuleOverrides(): RuleConfigOverrides {
-		return {
-			winCondition,
-			wolf: {
-				allowEmptyKill: wolfAllowEmptyKill,
-				blackWolfKingCanShootWhenLoverSuicide
-			},
-			guard: { sameGuardSameSave: guardSameGuardSameSave },
-			witch: {
-				selfRescue: witchSelfRescue,
-				canPoisonSelf: witchCanPoisonSelf,
-				bothPotionsSameNight: witchBothPotionsSameNight
-			},
-			hunter: {
-				canShootWhenPoisoned: hunterCanShootWhenPoisoned,
-				canShootWhenExiled: hunterCanShootWhenExiled,
-				canShootWhenWolfKilled: hunterCanShootWhenWolfKilled,
-				canShootWhenLoverSuicide: hunterCanShootWhenLoverSuicide
-			},
-			idiot: {
-				revealOnExile: idiotRevealOnExile,
-				keepsSpeechRight: idiotKeepsSpeechRight,
-				losesVoteRight: idiotLosesVoteRight,
-				canRunForSheriffAfterReveal: idiotCanRunForSheriffAfterReveal,
-				tearsBadgeIfSheriff: idiotTearsBadgeIfSheriff,
-				diesNormallyAtNight: idiotDiesNormallyAtNight
-			}
-		};
-	}
+	// The Host's rule switches, starting from the engine's own defaults so an
+	// untouched toggle shows the real default.
+	const rules = $state(switchesOf(defaultRuleConfig()));
 
 	async function submit() {
 		error = null;
@@ -112,8 +62,7 @@
 			{
 				kind: 'RoomSubmitConfig',
 				roleConfig: counts,
-				cupidPoisonBlocksHunter,
-				ruleOverrides: buildRuleOverrides()
+				ruleOverrides: rules
 			},
 			{ quiet: true } // validation issues are listed inline below
 		);
@@ -231,15 +180,15 @@
 
 			{@render toggle(
 				t.roleConfig.cupidPoisonBlocksHunter,
-				cupidPoisonBlocksHunter,
-				() => (cupidPoisonBlocksHunter = !cupidPoisonBlocksHunter)
+				rules.cupidPoisonBlocksHunter,
+				() => (rules.cupidPoisonBlocksHunter = !rules.cupidPoisonBlocksHunter)
 			)}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
 					<span>{t.roleConfig.winConditionLabel}</span>
 					<select
-						bind:value={winCondition}
+						bind:value={rules.winCondition}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
 						<option value="SIDE_KILL">{t.roleConfig.winConditionSideKill}</option>
@@ -250,15 +199,15 @@
 
 			{@render toggle(
 				t.roleConfig.wolfAllowEmptyKill,
-				wolfAllowEmptyKill,
-				() => (wolfAllowEmptyKill = !wolfAllowEmptyKill)
+				rules.wolf.allowEmptyKill,
+				() => (rules.wolf.allowEmptyKill = !rules.wolf.allowEmptyKill)
 			)}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
 					<span>{t.roleConfig.sameGuardSameSaveLabel}</span>
 					<select
-						bind:value={guardSameGuardSameSave}
+						bind:value={rules.guard.sameGuardSameSave}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
 						<option value="TARGET_DIES">{t.roleConfig.sameGuardSameSaveDies}</option>
@@ -274,7 +223,7 @@
 				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
 					<span>{t.roleConfig.witchSelfRescueLabel}</span>
 					<select
-						bind:value={witchSelfRescue}
+						bind:value={rules.witch.selfRescue}
 						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
 					>
 						<option value="FIRST_NIGHT_ONLY">{t.roleConfig.witchSelfRescueFirstNightOnly}</option>
@@ -284,13 +233,13 @@
 				</label>
 				{@render toggle(
 					t.roleConfig.witchCanPoisonSelf,
-					witchCanPoisonSelf,
-					() => (witchCanPoisonSelf = !witchCanPoisonSelf)
+					rules.witch.canPoisonSelf,
+					() => (rules.witch.canPoisonSelf = !rules.witch.canPoisonSelf)
 				)}
 				{@render toggle(
 					t.roleConfig.witchBothPotionsSameNight,
-					witchBothPotionsSameNight,
-					() => (witchBothPotionsSameNight = !witchBothPotionsSameNight)
+					rules.witch.bothPotionsSameNight,
+					() => (rules.witch.bothPotionsSameNight = !rules.witch.bothPotionsSameNight)
 				)}
 			</div>
 
@@ -300,23 +249,23 @@
 				</div>
 				{@render toggle(
 					t.roleConfig.hunterCanShootWhenPoisoned,
-					hunterCanShootWhenPoisoned,
-					() => (hunterCanShootWhenPoisoned = !hunterCanShootWhenPoisoned)
+					rules.hunter.canShootWhenPoisoned,
+					() => (rules.hunter.canShootWhenPoisoned = !rules.hunter.canShootWhenPoisoned)
 				)}
 				{@render toggle(
 					t.roleConfig.hunterCanShootWhenExiled,
-					hunterCanShootWhenExiled,
-					() => (hunterCanShootWhenExiled = !hunterCanShootWhenExiled)
+					rules.hunter.canShootWhenExiled,
+					() => (rules.hunter.canShootWhenExiled = !rules.hunter.canShootWhenExiled)
 				)}
 				{@render toggle(
 					t.roleConfig.hunterCanShootWhenWolfKilled,
-					hunterCanShootWhenWolfKilled,
-					() => (hunterCanShootWhenWolfKilled = !hunterCanShootWhenWolfKilled)
+					rules.hunter.canShootWhenWolfKilled,
+					() => (rules.hunter.canShootWhenWolfKilled = !rules.hunter.canShootWhenWolfKilled)
 				)}
 				{@render toggle(
 					t.roleConfig.hunterCanShootWhenLoverSuicide,
-					hunterCanShootWhenLoverSuicide,
-					() => (hunterCanShootWhenLoverSuicide = !hunterCanShootWhenLoverSuicide)
+					rules.hunter.canShootWhenLoverSuicide,
+					() => (rules.hunter.canShootWhenLoverSuicide = !rules.hunter.canShootWhenLoverSuicide)
 				)}
 			</div>
 
@@ -327,8 +276,10 @@
 					</div>
 					{@render toggle(
 						t.roleConfig.blackWolfKingCanShootWhenLoverSuicide,
-						blackWolfKingCanShootWhenLoverSuicide,
-						() => (blackWolfKingCanShootWhenLoverSuicide = !blackWolfKingCanShootWhenLoverSuicide)
+						rules.wolf.blackWolfKingCanShootWhenLoverSuicide,
+						() =>
+							(rules.wolf.blackWolfKingCanShootWhenLoverSuicide =
+								!rules.wolf.blackWolfKingCanShootWhenLoverSuicide)
 					)}
 				</div>
 			{/if}
@@ -339,33 +290,33 @@
 				</div>
 				{@render toggle(
 					t.roleConfig.idiotRevealOnExile,
-					idiotRevealOnExile,
-					() => (idiotRevealOnExile = !idiotRevealOnExile)
+					rules.idiot.revealOnExile,
+					() => (rules.idiot.revealOnExile = !rules.idiot.revealOnExile)
 				)}
 				{@render toggle(
 					t.roleConfig.idiotKeepsSpeechRight,
-					idiotKeepsSpeechRight,
-					() => (idiotKeepsSpeechRight = !idiotKeepsSpeechRight)
+					rules.idiot.keepsSpeechRight,
+					() => (rules.idiot.keepsSpeechRight = !rules.idiot.keepsSpeechRight)
 				)}
 				{@render toggle(
 					t.roleConfig.idiotLosesVoteRight,
-					idiotLosesVoteRight,
-					() => (idiotLosesVoteRight = !idiotLosesVoteRight)
+					rules.idiot.losesVoteRight,
+					() => (rules.idiot.losesVoteRight = !rules.idiot.losesVoteRight)
 				)}
 				{@render toggle(
 					t.roleConfig.idiotCanRunForSheriffAfterReveal,
-					idiotCanRunForSheriffAfterReveal,
-					() => (idiotCanRunForSheriffAfterReveal = !idiotCanRunForSheriffAfterReveal)
+					rules.idiot.canRunForSheriffAfterReveal,
+					() => (rules.idiot.canRunForSheriffAfterReveal = !rules.idiot.canRunForSheriffAfterReveal)
 				)}
 				{@render toggle(
 					t.roleConfig.idiotTearsBadgeIfSheriff,
-					idiotTearsBadgeIfSheriff,
-					() => (idiotTearsBadgeIfSheriff = !idiotTearsBadgeIfSheriff)
+					rules.idiot.tearsBadgeIfSheriff,
+					() => (rules.idiot.tearsBadgeIfSheriff = !rules.idiot.tearsBadgeIfSheriff)
 				)}
 				{@render toggle(
 					t.roleConfig.idiotDiesNormallyAtNight,
-					idiotDiesNormallyAtNight,
-					() => (idiotDiesNormallyAtNight = !idiotDiesNormallyAtNight)
+					rules.idiot.diesNormallyAtNight,
+					() => (rules.idiot.diesNormallyAtNight = !rules.idiot.diesNormallyAtNight)
 				)}
 			</div>
 		</div>

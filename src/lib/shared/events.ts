@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ALL_ROLE_IDS } from '../game/roleMeta';
+import { RuleConfigOverridesSchema } from '../game/ruleSwitches';
 import type { RoleId } from '../game/types';
 import type { Phase, NightStage, PublicNightStage, RoomPublicState, Winner } from './gameTypes';
 
@@ -14,50 +15,8 @@ import type { Phase, NightStage, PublicNightStage, RoomPublicState, Winner } fro
 // are a client-only concern (shared/i18n/roles.ts).
 const roleEnum = z.enum(ALL_ROLE_IDS as unknown as [RoleId, ...RoleId[]]);
 
-// M2's RuleConfig switches (§6) exposed on the room-config screen - only the
-// subset called for by the M2 milestone (winCondition + the wolf/guard/witch/
-// hunter/idiot groups); the rest (sheriff/day-phase, timeouts, seer/cupid/
-// thief/wildChild) stay at their engine defaults until the milestone that
-// actually uses them (M5, mostly) adds a UI for them. Every field optional -
-// an absent field just means "use the default".
-export const RuleConfigOverridesSchema = z
-	.object({
-		winCondition: z.enum(['SIDE_KILL', 'TOTAL_KILL']),
-		wolf: z
-			.object({
-				allowEmptyKill: z.boolean(),
-				blackWolfKingCanShootWhenLoverSuicide: z.boolean()
-			})
-			.partial(),
-		guard: z.object({ sameGuardSameSave: z.enum(['TARGET_DIES', 'TARGET_LIVES']) }).partial(),
-		witch: z
-			.object({
-				selfRescue: z.enum(['FIRST_NIGHT_ONLY', 'NEVER', 'ALWAYS']),
-				canPoisonSelf: z.boolean(),
-				bothPotionsSameNight: z.boolean()
-			})
-			.partial(),
-		hunter: z
-			.object({
-				canShootWhenPoisoned: z.boolean(),
-				canShootWhenExiled: z.boolean(),
-				canShootWhenWolfKilled: z.boolean(),
-				canShootWhenLoverSuicide: z.boolean()
-			})
-			.partial(),
-		idiot: z
-			.object({
-				revealOnExile: z.boolean(),
-				keepsSpeechRight: z.boolean(),
-				losesVoteRight: z.boolean(),
-				canRunForSheriffAfterReveal: z.boolean(),
-				tearsBadgeIfSheriff: z.boolean(),
-				diesNormallyAtNight: z.boolean()
-			})
-			.partial()
-	})
-	.partial();
-export type RuleConfigOverrides = z.infer<typeof RuleConfigOverridesSchema>;
+// The Host's rule switches are defined once, in the engine (ruleSwitches.ts).
+export { RuleConfigOverridesSchema, type RuleConfigOverrides } from '../game/ruleSwitches';
 
 export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 	// nullable (空刀/empty kill) - the engine's own wolf.allowEmptyKill switch
@@ -101,7 +60,6 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 	z.object({
 		kind: z.literal('RoomSubmitConfig'),
 		roleConfig: z.partialRecord(roleEnum, z.number().int().min(0)),
-		cupidPoisonBlocksHunter: z.boolean(),
 		ruleOverrides: RuleConfigOverridesSchema.optional()
 	}),
 	z.object({ kind: z.literal('RoomStartGame') }),

@@ -19,11 +19,8 @@ import { emitToRoom, emitToSession, roomChannel, removeSessionFromRoom } from '.
 import { startGameAndBroadcast } from '../../game/gameSync';
 import { replayTurnPromptIfAny } from '../../game/turnReplay';
 import { buildSetup, validateSetup, type ValidationIssue } from '../../../game/rules/setup';
-import {
-	defaultRuleConfig,
-	mergeRuleConfig,
-	type RuleConfigOverrides
-} from '../../../game/defaultRuleConfig';
+import { defaultRuleConfig } from '../../../game/defaultRuleConfig';
+import { mergeRuleConfig, type RuleConfigOverrides } from '../../../game/ruleSwitches';
 import type { RoleId } from '../../../game/types';
 import type { DealResult as EngineDealResult } from '../../../game/rules/deal';
 import type { StartGameParams } from '../../../game/engine';
@@ -86,7 +83,6 @@ export async function handleRoomJoin(
 export async function handleRoomSubmitConfig(
 	socket: GameSocket,
 	submitted: Partial<Record<RoleId, number>>,
-	cupidPoisonBlocksHunter: boolean,
 	ruleOverrides?: RuleConfigOverrides
 ): Promise<AckResponse & { issues?: ValidationIssue[] }> {
 	const code = await requireRoomCode(socket);
@@ -111,7 +107,6 @@ export async function handleRoomSubmitConfig(
 	const result = await submitRoomConfigAtomic(code, socket.data.sessionId, {
 		roleConfig,
 		numberOfSeats,
-		cupidPoisonBlocksHunter,
 		ruleOverrides: ruleOverrides ?? {}
 	});
 	if (!result.ok) return result;
@@ -160,13 +155,7 @@ function buildStartGameParams(
 	const deal: EngineDealResult = { identities: roleIdIdentities, buried };
 	return {
 		roomCode: code,
-		ruleConfig: mergeRuleConfig(
-			{
-				...defaultRuleConfig(),
-				cupidPoisonBlocksHunter: room.cupidPoisonBlocksHunter
-			},
-			room.ruleOverrides
-		),
+		ruleConfig: mergeRuleConfig(defaultRuleConfig(), room.ruleOverrides),
 		setup: buildSetup(roleIdConfig),
 		deal,
 		players,

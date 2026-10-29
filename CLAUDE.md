@@ -97,7 +97,7 @@ The `game` / `shared` / `server` / `client` split is load-bearing: `game` never 
 - Night resolution (`src/lib/game/rules/nightResolution.ts`) is a unit-tested port of the original algorithm, including the order-dependent "同守同救" quirk (guard-protects-same-seat-witch-saves still dies), 摄梦人's two-nights-running death, and 野孩子's idol-death conversion (which recounts the win condition immediately, since a converted seat's camp changes for both purposes on the spot).
 - All 15 spec roles are implemented (`ROLE_META[id].implemented`, `roleMeta.ts`) — the 8 original P0 roles, IDIOT/KNIGHT/WOLF_KING (reveal-on-exile, duel, self-explode+shot), and WILD_CHILD/DREAM_WEAVER/NIGHTMARE. 盗贼 is forced to take a wolf card if both buried cards are wolf-team roles (`thief.mustTakeWolfIfBothWolf`).
 - The exact rules for night resolution / win condition / dealing / day-phase transitions are easy to get subtly wrong — that's why they're unit-tested directly (`*.spec.ts` next to the modules in `src/lib/game/`, plus `engine.spec.ts` for full-flow integration) rather than only exercised through the UI.
-- `RuleConfig` (`game/types.ts`, defaults in `game/defaultRuleConfig.ts`) is the ~60-switch, spec-§6-shaped rule set snapshotted per game; the host only ever configures a small overridable subset (`RuleConfigOverridesSchema` in `shared/events.ts`).
+- `RuleConfig` (`game/types.ts`, defaults in `game/defaultRuleConfig.ts`) is the ~60-switch, spec-§6-shaped rule set snapshotted per game; the host only ever configures a small overridable subset, the rule switches, defined once as a schema in `game/ruleSwitches.ts` (the wire contract, the room and the config panel all use it; a type check in its spec fails if a switch drifts from `RuleConfig`).
 
 ## Deployment
 

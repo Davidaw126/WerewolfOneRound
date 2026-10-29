@@ -39,7 +39,7 @@ import {
 	type SeatState
 } from '../../shared/gameTypes';
 import { dealCards, type DealResult } from '../../game/rules/deal';
-import type { RuleConfigOverrides } from '../../game/defaultRuleConfig';
+import type { RuleConfigOverrides } from '../../game/ruleSwitches';
 import type { GameState, RoleId } from '../../game/types';
 import { ALL_ROLE_IDS } from '../../game/roleMeta';
 import {
@@ -89,7 +89,6 @@ declare module 'ioredis' {
 			numberOfSeats: string,
 			identitiesJson: string,
 			ttl: number,
-			cupidPoisonBlocksHunter: string,
 			ruleOverridesJson: string
 		): Promise<string>;
 	}
@@ -110,14 +109,9 @@ export interface RoomHashData {
 	numberOfSeats: number;
 	lockStatus: boolean;
 	nightNumber: number;
-	/** House rule captured at RoomSubmitConfig time (before seating even
-	 * starts) and folded into the engine's RuleConfig at RoomStartGame time -
-	 * one of two pieces of pre-game config that aren't themselves a role
-	 * count (the other being ruleOverrides, below). */
-	cupidPoisonBlocksHunter: boolean;
-	/** M2's host-facing RuleConfig switches (§6), captured at RoomSubmitConfig
-	 * time the same way roleConfig is, and merged onto defaultRuleConfig() at
-	 * RoomStartGame time - see game/defaultRuleConfig.ts's mergeRuleConfig. */
+	/** The Host's rule switches (game/ruleSwitches.ts), captured at
+	 * RoomSubmitConfig time the same way roleConfig is, and merged onto
+	 * defaultRuleConfig() at RoomStartGame time. */
 	ruleOverrides: RuleConfigOverrides;
 }
 
@@ -150,6 +144,15 @@ function toRoleIdKeys(config: Record<string, number>): Partial<Record<RoleId, nu
 	return out;
 }
 
+/** A room set up before the 丘比特 poison rule joined the other switches
+ * stored it as its own field - fold that in. */
+function readRuleOverrides(data: Record<string, string>): RuleConfigOverrides {
+	const overrides: RuleConfigOverrides = data.ruleOverrides ? JSON.parse(data.ruleOverrides) : {};
+	if (data.cupidPoisonBlocksHunter === '1' && overrides.cupidPoisonBlocksHunter === undefined)
+		overrides.cupidPoisonBlocksHunter = true;
+	return overrides;
+}
+
 export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 	const data = await redis.hgetall(roomKey(code));
 	if (!data.phase) return null;
@@ -160,8 +163,7 @@ export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 		numberOfSeats: Number(data.numberOfSeats || 0),
 		lockStatus: data.lockStatus === '1',
 		nightNumber: Number(data.nightNumber || 0),
-		cupidPoisonBlocksHunter: data.cupidPoisonBlocksHunter === '1',
-		ruleOverrides: data.ruleOverrides ? JSON.parse(data.ruleOverrides) : {}
+		ruleOverrides: readRuleOverrides(data)
 	};
 }
 
@@ -379,7 +381,6 @@ export async function submitRoomConfigAtomic(
 	config: {
 		roleConfig: Partial<Record<RoleId, number>>;
 		numberOfSeats: number;
-		cupidPoisonBlocksHunter: boolean;
 		ruleOverrides: RuleConfigOverrides;
 	}
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -393,7 +394,6 @@ export async function submitRoomConfigAtomic(
 		String(config.numberOfSeats),
 		JSON.stringify(flattenDeal(dealCards(config.roleConfig))),
 		ROOM_TTL_SECONDS,
-		config.cupidPoisonBlocksHunter ? '1' : '0',
 		JSON.stringify(config.ruleOverrides)
 	);
 	return JSON.parse(raw);

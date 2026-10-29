@@ -54,12 +54,7 @@ export async function dispatchAction(
 			case 'RoomJoin':
 				return await handleRoomJoin(socket, action.roomCode);
 			case 'RoomSubmitConfig':
-				return await handleRoomSubmitConfig(
-					socket,
-					action.roleConfig,
-					action.cupidPoisonBlocksHunter,
-					action.ruleOverrides
-				);
+				return await handleRoomSubmitConfig(socket, action.roleConfig, action.ruleOverrides);
 			case 'RoomStartGame':
 				return await handleRoomStartGame(socket);
 			case 'RoomLockSeats':

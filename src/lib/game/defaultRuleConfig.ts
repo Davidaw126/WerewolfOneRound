@@ -1,42 +1,10 @@
 // The production default RuleConfig (§6) - every field at the value
 // documented inline on RuleConfig itself in types.ts, which is the source of
 // truth for *why* each default was chosen. Every game starts from exactly
-// this snapshot, then M2's host-facing overrides (mergeRuleConfig below) lay
-// on top of it.
+// this snapshot, then the Host's rule switches (ruleSwitches.ts) lay on top
+// of it.
 
 import type { RuleConfig } from './types';
-
-/** The M2-exposed subset of RuleConfig a host can override on the room-config
- * screen (winCondition + wolf/guard/witch/hunter/idiot groups) - independently
- * declared here rather than imported from shared/events.ts's Zod schema, so
- * the dependency runs shared -> game (the wire protocol describes engine
- * data), never the other way. Every field optional: absent = keep the
- * default. */
-export interface RuleConfigOverrides {
-	winCondition?: RuleConfig['winCondition'];
-	wolf?: Partial<
-		Pick<RuleConfig['wolf'], 'allowEmptyKill' | 'blackWolfKingCanShootWhenLoverSuicide'>
-	>;
-	guard?: Partial<Pick<RuleConfig['guard'], 'sameGuardSameSave'>>;
-	witch?: Partial<
-		Pick<RuleConfig['witch'], 'selfRescue' | 'canPoisonSelf' | 'bothPotionsSameNight'>
-	>;
-	hunter?: Partial<RuleConfig['hunter']>;
-	idiot?: Partial<RuleConfig['idiot']>;
-}
-
-export function mergeRuleConfig(base: RuleConfig, overrides?: RuleConfigOverrides): RuleConfig {
-	if (!overrides) return base;
-	return {
-		...base,
-		winCondition: overrides.winCondition ?? base.winCondition,
-		wolf: { ...base.wolf, ...overrides.wolf },
-		guard: { ...base.guard, ...overrides.guard },
-		witch: { ...base.witch, ...overrides.witch },
-		hunter: { ...base.hunter, ...overrides.hunter },
-		idiot: { ...base.idiot, ...overrides.idiot }
-	};
-}
 
 export function defaultRuleConfig(): RuleConfig {
 	return {
