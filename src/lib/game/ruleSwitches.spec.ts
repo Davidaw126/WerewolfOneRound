@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { defaultRuleConfig } from './defaultRuleConfig';
+import { switchesOf } from './ruleSwitchValues';
 import {
-	switchesOf,
+	RuleSwitchesSchema,
 	mergeRuleConfig,
 	RuleConfigOverridesSchema,
 	type RuleSwitches,
@@ -15,6 +16,11 @@ describe('rule switches', () => {
 		// Fails `npm run check` if a switch drifts from RuleConfig.
 		const typed: MatchesRuleConfig<RuleSwitches, RuleConfig> = switches;
 		expect(typed).toBe(switches);
+	});
+
+	it('the phone’s zod-free read gives exactly what the schema keeps', () => {
+		const base = defaultRuleConfig();
+		expect(switchesOf(base)).toEqual(RuleSwitchesSchema.parse(base));
 	});
 
 	it('reads exactly the switches out of a full RuleConfig', () => {

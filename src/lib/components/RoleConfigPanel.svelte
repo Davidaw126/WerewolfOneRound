@@ -4,7 +4,7 @@
 	import { ALL_ROLE_IDS } from '$lib/game/roleMeta';
 	import { PRESET_BOARDS } from '$lib/game/rules/presets';
 	import { defaultRuleConfig } from '$lib/game/defaultRuleConfig';
-	import { switchesOf } from '$lib/game/ruleSwitches';
+	import { switchesOf } from '$lib/game/ruleSwitchValues';
 	import type { RoleId } from '$lib/game/types';
 	import { sendAction } from '$lib/client/socket';
 	import { strings, roleName, presetName, formatSetupIssue } from '$lib/shared/i18n';

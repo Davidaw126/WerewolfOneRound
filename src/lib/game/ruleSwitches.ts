@@ -2,9 +2,12 @@
 // screen lets the Host change. Defined once, here, as a schema - the wire
 // contract validates against it, the types come from it, the panel's state
 // is one RuleSwitches value, and the room stores the overrides as-is. A new
-// switch is one line in this file plus its toggle on the panel.
+// switch is one line here, its key in ruleSwitchValues.ts (a compile error
+// until added) and its toggle on the panel.
 //
-// zod is plain data validation, nothing IO-bound, so the engine may own it.
+// zod is plain data validation, nothing IO-bound, so the engine may own it -
+// but the phone must not ship it: the panel reads the switches' values with
+// ruleSwitchValues.ts, which only imports this file's types.
 
 import { z } from 'zod';
 import type { RuleConfig } from './types';
@@ -60,12 +63,6 @@ export const RuleConfigOverridesSchema = z
 	})
 	.partial();
 export type RuleConfigOverrides = z.infer<typeof RuleConfigOverridesSchema>;
-
-/** The switches' current values in a full RuleConfig (the schema keeps its
- * own keys and drops the rest) - the panel starts from the defaults' ones. */
-export function switchesOf(config: RuleConfig): RuleSwitches {
-	return RuleSwitchesSchema.parse(config);
-}
 
 /** Lays the Host's overrides onto `base`, group by group. */
 export function mergeRuleConfig(base: RuleConfig, overrides?: RuleConfigOverrides): RuleConfig {
