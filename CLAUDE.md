@@ -65,7 +65,8 @@ src/
                  # drives the room UI; roomSession.svelte.ts is the phone's side
                  # of the Room: entering (one round trip), resyncing on reconnect /
                  # foreground, and `out` when the phone is no longer in the room
-                 # (tested with a fake transport);
+                 # (tested with a fake transport); hostVoice.ts + narrationCues.ts
+                 # are the Host phone's narration;
                  # diary/room-log lines are stored as data (logLines.ts) and
                  # rendered in the current language; roleNight.ts holds each
                  # role's night presentation
@@ -121,4 +122,4 @@ Response security headers (CSP via SvelteKit's own `csp` Vite-plugin option, plu
 - **Secrecy invariants**: deaths stay out of every projection until 公布 (`deadSeatsOf` excludes `pendingNightDeaths`); 上帝之手 改变身份 goes only to the host and that player; the host's real stage (`hostStage`) only to the host; a dead role's turn still runs as a 假环节 with realistic timing (`fakeStageDurationMs` in `gameSync.ts`).
 - **Before calling a change done**: `npm test`, `npm run check`, `npm run lint`. For server/socket changes also run the real-server e2e: start Redis and `npm run dev -- --port 5173 --strictPort`, then `npm run e2e` (both games), `npm run e2e -- basic` or `npm run e2e -- special` (丘比特/盗贼/守卫/猎人). `-- halt` then restart the server then `-- resume` checks that night timers survive a restart. If registration hits the rate limit locally: `redis-cli del 'wolf:ratelimit:register:::1'`.
 - **Prove bugs before fixing**: write the test first and check it fails on the old code.
-- The user plays on iPhones: no Web Audio alongside `speechSynthesis` (it breaks the voice on iOS — see `client/sfx.ts`); check layouts at phone width.
+- The user plays on iPhones: no Web Audio alongside `speechSynthesis` (it breaks the voice on iOS). The Host's voice is `client/hostVoice.ts` (one unlock state for the page's life, the line queue, the start relay and blocked-voice detection, behind a `SpeechEngine` adapter; `hostVoice.spec.ts` plays the iPhone failure modes with a fake engine and fake timers); what it says is `client/narrationCues.ts` (pure). Browser runs can't prove iPhone behaviour — ask the user to check a real iPhone after voice changes. Check layouts at phone width.

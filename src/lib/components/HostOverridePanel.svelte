@@ -3,7 +3,7 @@
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { PICKABLE_ROLES } from '$lib/shared/roles';
-	import { primeSpeech, narrate, speechSupported } from '$lib/client/sfx';
+	import { hostVoice } from '$lib/client/hostVoice';
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { RoleId } from '$lib/game/types';
@@ -21,12 +21,12 @@
 	// player holding a card the night never calls.
 	const boardRoles = $derived(PICKABLE_ROLES.filter((r) => (roomState?.roleConfig?.[r] ?? 0) > 0));
 
-	const voiceSupported = speechSupported();
+	const voiceSupported = hostVoice.supported;
 	/** Manual voice check/unlock - a tap here is itself the gesture iOS wants
 	 * before speech may play (normally any tap on the page does it). */
 	function testVoice() {
-		primeSpeech();
-		narrate(t.hostOverride.voiceTestLine, i18n.lang);
+		hostVoice.prime();
+		hostVoice.say({ text: t.hostOverride.voiceTestLine, lang: i18n.lang });
 	}
 
 	async function override(overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE') {

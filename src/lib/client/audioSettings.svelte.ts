@@ -2,7 +2,7 @@
 // confirmDialog store's shape: a rune-backed class, one singleton, and thin
 // function wrappers, initialised once from the root layout.
 
-import { setEffectsEnabled } from './sfx';
+import { hostVoice } from './hostVoice';
 
 const LS_EFFECTS = 'wolf.audio.effects';
 
@@ -34,8 +34,9 @@ class AudioSettings {
 	effects = $state(true);
 
 	/**
-	 * Loads the stored preference and pushes it into sfx.ts. Must be called from
-	 * onMount rather than the constructor - this module is imported during SSR,
+	 * Loads the stored preference and pushes it into the voice (hostVoice.ts).
+	 * Must be called from onMount rather than the constructor - this module is
+	 * imported during SSR,
 	 * where the singleton is constructed but localStorage doesn't exist.
 	 *
 	 * Defaults to on, so the pre-hydration render matches the app's
@@ -45,13 +46,13 @@ class AudioSettings {
 	init(): void {
 		const effects = readStored(LS_EFFECTS);
 		if (effects !== null) this.effects = effects;
-		setEffectsEnabled(this.effects);
+		hostVoice.setMuted(!this.effects);
 	}
 
 	setEffects(on: boolean): void {
 		this.effects = on;
 		persist(LS_EFFECTS, on);
-		setEffectsEnabled(on);
+		hostVoice.setMuted(!on);
 	}
 
 	toggleEffects(): void {
