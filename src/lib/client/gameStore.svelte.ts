@@ -19,6 +19,12 @@ import {
 	formatPlayerLeftMidGame
 } from '$lib/shared/i18n';
 
+export interface GameOverView {
+	winner: Winner;
+	identities: Record<number, RoleId>;
+	coupleSeats: [number, number] | null;
+}
+
 export type TimeOfDay = 'neutral' | 'night' | 'day' | Winner;
 
 export interface VoteView {
@@ -118,11 +124,7 @@ export class GameStore {
 		shotSeat: number | null;
 		followDeathSeat: number | null;
 	} | null>(null);
-	gameOverResult = $state<{
-		winner: Winner;
-		identities: Record<number, RoleId>;
-		coupleSeats: [number, number] | null;
-	} | null>(null);
+	gameOverResult = $state<GameOverView | null>(null);
 
 	/** Whose phone this is - the room page sets it from its own session. */
 	viewerSessionId = $state<string | null>(null);
@@ -334,6 +336,16 @@ export class GameStore {
 		};
 	}
 
+	/** What the game-over screen draws: the live event or, after a reload,
+	 * the snapshot. Separate from gameOverResult, which the Host's voice
+	 * announces - a reload mustn't say the winner again. */
+	get gameOverView(): GameOverView | null {
+		const s = this.state;
+		if (this.gameOverResult) return this.gameOverResult;
+		if (s?.phase !== 'GAME_OVER' || !s.winner || !s.identities) return null;
+		return { winner: s.winner, identities: s.identities, coupleSeats: s.coupleSeats ?? null };
+	}
+
 	/** The rules of this phone's current night turn, from its private
 	 * TurnContext. UX only - the server enforces every one of them too. */
 	get turnRules(): TurnRules {
@@ -364,20 +376,34 @@ export class GameStore {
 		this.logRoom(line);
 	}
 
-	logActivity(line: LogLine, opts?: { public?: boolean }): void {
+	logActivity(line: LogLine, opts?: { public?: boolean; round?: Round }): void {
 		this.activityLog = [
 			...this.activityLog,
-			{ round: this.currentRound(), line, public: opts?.public ?? false }
+			{ round: opts?.round ?? this.currentRound(), line, public: opts?.public ?? false }
 		];
 		const s = this.state;
 		if (s?.gameId) saveDiary(s.roomCode, s.gameId, this.activityLog);
 	}
 
+	/** The diary already has this line (for that night, if one is given) - a
+	 * catch-up re-sends what this phone may well have. */
+	private inDiary(line: LogLine, night?: number): boolean {
+		const wanted = JSON.stringify(line);
+		return this.activityLog.some(
+			(e) => JSON.stringify(e.line) === wanted && (night === undefined || e.round.n === night)
+		);
+	}
+
 	/** Forgets the last room visited - before entering another, so nothing
-	 * (an old phase, an old state) shows on the new room's page while its
-	 * own state is on the way. */
+	 * (an old phase, an old state, an old role) shows on the new room's page
+	 * while its own state is on the way. Done here, before the join is sent,
+	 * because the server's catch-up for this phone (its role, a turn prompt
+	 * it's owed) arrives ahead of the join's reply - clearing on the reply
+	 * would wipe that catch-up (a reload mid-turn lost the turn). */
 	resetForRoomVisit(): void {
 		this.state = null;
+		this.resetPrivateState();
+		this.roomLog = [];
 	}
 
 	/** Applies a full state snapshot - shared by the `StateSnapshot` broadcast
@@ -392,16 +418,22 @@ export class GameStore {
 	 * getRevealedRoleIfAny), since that private event can arrive just before
 	 * this snapshot does. */
 	applyState(state: RoomPublicState): void {
-		const isNewRoom = this.state?.roomCode !== state.roomCode;
+		const previousRoom = this.state?.roomCode;
+		const isNewRoom = previousRoom !== state.roomCode;
 		this.state = state;
 		if (isNewRoom) {
-			// Everything resetPrivateState clears (lastNightDeaths/lastDayResult/
-			// myRole/etc.) is exactly as stale as it would be on a same-room
-			// GameReset - see that method's own comment. roomLog is the one
-			// thing it deliberately leaves alone, since a genuinely different
-			// room has no relationship to the old one's log at all.
-			this.resetPrivateState();
-			this.roomLog = [];
+			// Straight from another room's state, with no resetForRoomVisit in
+			// between: everything resetPrivateState clears (lastNightDeaths/
+			// myRole/etc.) is exactly as stale as on a same-room GameReset - see
+			// that method's own comment. roomLog is the one thing it
+			// deliberately leaves alone, since a genuinely different room has
+			// no relationship to the old one's log at all. With no state before
+			// (entering), resetForRoomVisit already cleared it all, and
+			// whatever arrived since is this room's own catch-up - kept.
+			if (previousRoom !== undefined) {
+				this.resetPrivateState();
+				this.roomLog = [];
+			}
 			// A reload mid-game: bring back this phone's diary for this game.
 			if (state.gameId) this.activityLog = loadDiary(state.roomCode, state.gameId);
 		}
@@ -411,6 +443,48 @@ export class GameStore {
 		// Set after the reset above, which would otherwise wipe it on the
 		// first snapshot of a room (every page load).
 		this.hostStage = state.hostStage ?? null;
+	}
+
+	/** The answer to a catch-up: the room as it is now, and everything private
+	 * the server says this phone is owed. What the server didn't re-send is
+	 * over - the turn ended, the cards were re-dealt - whatever this phone
+	 * still shows from before the gap. (Comparing stages can't tell: the shared
+	 * stage doesn't say whose turn it is.) */
+	applyCatchUp(state: RoomPublicState, owed: PrivateInfo[]): void {
+		const before = this.state;
+		if (before?.roomCode === state.roomCode) {
+			// Stopped and restarted while this phone was away.
+			if (before.gameId && before.gameId !== state.gameId) this.resetPrivateState();
+			const prompt = owed.find((e) => e.kind === 'YourTurnPrompt');
+			const current = this.myTurnRole ?? this.pendingTurnRole;
+			const currentContext = this.turnContext ?? this.pendingTurnContext;
+			// The very same turn stays mounted, so what's been picked isn't lost.
+			// Same role isn't enough: the same role tomorrow night, or 黑狼王's
+			// status stage right after the pack's kill, is a new turn.
+			const sameTurn =
+				prompt !== undefined &&
+				prompt.role === current &&
+				state.nightNumber === before.nightNumber &&
+				!!prompt.context.packKill === !!currentContext?.packKill;
+			if (!sameTurn) this.endTurn();
+			this.stageConfirmed = false;
+			if (state.stage?.kind !== 'COUPLE_REVEAL') this.coupleConfirmed = false;
+			if (!owed.some((e) => e.kind === 'YourRole')) this.myRole = null;
+			if (state.nightNumber !== before.nightNumber || phaseGroup(state.phase) !== 'night')
+				this.lastSeerResult = null;
+		}
+		this.applyState(state);
+		for (const event of owed) this.applyPrivateEvent(event);
+	}
+
+	private endTurn(): void {
+		this.turnToken++;
+		this.packKill = null;
+		this.roleDoneByOther = false;
+		this.myTurnRole = null;
+		this.turnContext = null;
+		this.pendingTurnRole = null;
+		this.pendingTurnContext = null;
 	}
 
 	/** Wipes every transient per-round field. Used both when a host
@@ -423,13 +497,12 @@ export class GameStore {
 		this.lastHunterResult = null;
 		this.gameOverResult = null;
 		this.myRole = null;
-		this.myTurnRole = null;
-		this.turnContext = null;
+		this.endTurn();
+		this.stageConfirmed = false;
+		this.coupleConfirmed = false;
 		this.hostStage = null;
 		this.lastSeerResult = null;
 		this.myPartnerSeat = null;
-		this.pendingTurnRole = null;
-		this.pendingTurnContext = null;
 		this.hunterAuthorized = false;
 		this.infoPopup = null;
 		this.thiefChoice = null;
@@ -472,22 +545,26 @@ export class GameStore {
 				break;
 			case 'GameReset':
 				this.resetPrivateState();
+				this.state = { ...this.state, lastNightDeaths: null, lastDayResult: null };
 				break;
 			case 'PhaseChanged':
-				// Deliberately does NOT clear lastNightDeaths/lastDayResult/lastHunterResult
-				// here - those events fire immediately before this one as part of the same
-				// server-side transition, so clearing on PhaseChanged would make the result
-				// banner flash and vanish before anyone could read it. They persist as "last
-				// known result" until overwritten by the next occurrence of that event.
+				// The news banners stay up through the day - their events fire just
+				// before a PhaseChanged, so clearing on every one would make them flash
+				// and vanish. A new night takes them down: by the next dawn "昨晚" would
+				// read as tonight's news, before the Host has announced anything. The
+				// voice fields (this.lastNightDeaths etc) stay, see narrationCues.
 				this.state = {
 					...this.state,
 					phase: event.phase,
 					nightNumber: event.nightNumber,
+					gameId: event.gameId ?? this.state.gameId,
 					currentSpeaker: null,
 					speechOrder: [],
 					// A new night clears it; a day-time hunter shot returning to the
 					// day must not.
-					dayDecided: phaseGroup(event.phase) === 'night' ? false : this.state.dayDecided
+					dayDecided: phaseGroup(event.phase) === 'night' ? false : this.state.dayDecided,
+					lastNightDeaths: event.phase === 'NIGHT' ? null : this.state.lastNightDeaths,
+					lastDayResult: event.phase === 'NIGHT' ? null : this.state.lastDayResult
 				};
 				this.myTurnRole = null;
 				this.turnContext = null;
@@ -498,19 +575,14 @@ export class GameStore {
 				this.pendingTurnContext = null;
 				break;
 			case 'StageChanged':
-				this.turnToken++;
 				this.state = { ...this.state, stage: event.stage };
 				this.stageConfirmed = false;
 				this.coupleConfirmed = false;
-				this.packKill = null;
-				this.roleDoneByOther = false;
-				this.myTurnRole = null;
-				this.turnContext = null;
-				this.pendingTurnRole = null;
-				this.pendingTurnContext = null;
+				this.endTurn();
 				break;
 			case 'NightResolved':
 				this.lastNightDeaths = event.deaths;
+				this.state = { ...this.state, lastNightDeaths: event.deaths };
 				this.logPublic(logLine('nightDeaths', event.deaths));
 				break;
 			case 'DeathsUpdated': {
@@ -544,7 +616,11 @@ export class GameStore {
 					followDeathIdentity: event.followDeathIdentity,
 					idiotRevealed: event.idiotRevealed === true
 				};
-				this.state = { ...this.state, pkCandidates: event.pkCandidates ?? [] };
+				this.state = {
+					...this.state,
+					pkCandidates: event.pkCandidates ?? [],
+					lastDayResult: this.lastDayResult
+				};
 				this.logPublic(
 					logLine('dayResult', {
 						tie: event.tie,
@@ -605,7 +681,8 @@ export class GameStore {
 					...this.state,
 					phase: 'GAME_OVER',
 					winner: event.winner,
-					identities: event.identities
+					identities: event.identities,
+					coupleSeats: event.coupleSeats
 				};
 				this.logPublic(logLine('gameOver', event.winner));
 				break;
@@ -673,11 +750,25 @@ export class GameStore {
 				break;
 			}
 			case 'SeerResult':
-				this.lastSeerResult = { targetSeat: event.targetSeat, isWolf: event.isWolf };
+				// A replay of an earlier night is for the diary, not tonight's prompt.
+				if (
+					!event.replay ||
+					(event.nightNumber === this.state?.nightNumber &&
+						this.state?.phase !== undefined &&
+						phaseGroup(this.state.phase) === 'night')
+				)
+					this.lastSeerResult = { targetSeat: event.targetSeat, isWolf: event.isWolf };
 				// '坏人'/'好人', not the specific role - the seer only ever learns
 				// good/bad (isWolf is the only thing the server ever sends), so the
 				// wording shouldn't imply anything more specific than that either.
-				this.logActivity(logLine('seerResult', event.targetSeat, event.isWolf));
+				{
+					const seen = logLine('seerResult', event.targetSeat, event.isWolf);
+					if (event.replay && this.inDiary(seen, event.nightNumber)) break;
+					this.logActivity(
+						seen,
+						event.replay ? { round: { group: 'night', n: event.nightNumber ?? 0 } } : undefined
+					);
+				}
 				// lastSeerResult above is the lasting record (shown inline in the
 				// prompt/activity log) - the popup is just the "here's the answer"
 				// moment, same treatment as the role-reveal card.
@@ -687,7 +778,8 @@ export class GameStore {
 				);
 				break;
 			case 'CoupleRevealed':
-				this.logActivity(logLine('coupleRevealed', event.partnerSeat));
+				if (!event.replay || !this.inDiary(logLine('coupleRevealed', event.partnerSeat)))
+					this.logActivity(logLine('coupleRevealed', event.partnerSeat));
 				// Held for the COUPLE_REVEAL stage's own reveal button, not shown
 				// right away - see myPartnerSeat's own comment.
 				this.myPartnerSeat = event.partnerSeat;
@@ -722,7 +814,9 @@ export class GameStore {
 				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good');
 				break;
 			case 'ShotStatus': {
-				this.logActivity(logLine('shotStatus', event.canShoot));
+				const told = logLine('shotStatus', event.canShoot);
+				if (event.replay && this.inDiary(told)) break;
+				this.logActivity(told);
 				this.showInfoPopup(
 					formatShotStatus(event.canShoot, i18n.lang),
 					event.canShoot ? 'good' : 'bad',

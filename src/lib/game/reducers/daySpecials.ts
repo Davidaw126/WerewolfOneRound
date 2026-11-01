@@ -1,7 +1,15 @@
 // Day events outside the vote: the hunter's shot, a wolf's self-explosion
 // and the knight's duel. Part of the engine (see engine.ts) - pure, no IO.
 
-import type { Death, DeathCause, EngineAction, EngineResult, GameState, Seat } from '../types';
+import type {
+	Death,
+	DeathCause,
+	EngineAction,
+	EngineEffect,
+	EngineResult,
+	GameState,
+	Seat
+} from '../types';
 import { cascadeDeaths } from '../rules/nightResolution';
 import { checkWinCondition, baseCamp } from '../rules/winCondition';
 import { withEffects, endGame } from './core';
@@ -63,6 +71,7 @@ export function handleSelfExplode(
 	action: Extract<EngineAction, { type: 'SELF_EXPLODE' }>
 ): EngineResult {
 	return withEffects(state, (draft, effects) => {
+		if (draft.phase === 'DAWN') return selfExplodeAtDawn(draft, effects, action.seat);
 		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
 		const player = draft.players[action.seat];
 		if (!player || player.isDead) return;
@@ -91,6 +100,43 @@ export function handleSelfExplode(
 		}
 		enterHunterShootOrContinue(draft, effects, lastWordsSeats, 'DISCUSSION');
 	});
+}
+
+/** A wolf explodes while the table is electing its 警长, before the Host has
+ * told the night's news. It happens at the table, so the app only records it:
+ * no wolf check (a refusal would tell the Host this seat isn't a wolf), and a
+ * seat that died last night counts too (a refusal would give that away; the
+ * seat just moves out of the news). The news stays secret and the game can't
+ * end until 公布, which then leaves only 进入下一夜. */
+function selfExplodeAtDawn(draft: GameState, effects: EngineEffect[], seat: Seat): void {
+	const player = draft.players[seat];
+	const pending = draft.pendingNightDeaths ?? [];
+	const diedLastNight = pending.some((d) => d.seat === seat);
+	if (!player || draft.dayDecided || (player.isDead && !diedLastNight)) return;
+
+	let deaths: Death[] = [];
+	if (diedLastNight) {
+		draft.pendingNightDeaths = pending.filter((d) => d.seat !== seat);
+	} else {
+		deaths = cascadeDeaths(draft, [{ seat, cause: 'SELF_EXPLODE' }], {
+			ruleConfig: draft.ruleConfig
+		});
+		// Like DAY_OUT: the exploding seat knows how they left; a lover dragged
+		// along doesn't.
+		if (draft.ruleConfig.shotsAtTable) {
+			pushShotStatus(
+				draft,
+				effects,
+				deaths.filter((d) => d.seat !== seat)
+			);
+		}
+	}
+	effects.push({ kind: 'BROADCAST', payload: { kind: 'SelfExploded', seat } });
+	draft.pendingLastWords = lastWordsFrom(deaths, draft.ruleConfig.wolf.selfExplodeHasLastWords);
+	if (draft.ruleConfig.wolf.selfExplodeEndsDay) {
+		draft.dayDecided = true;
+		effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
+	}
 }
 
 export function handleKnightDuel(

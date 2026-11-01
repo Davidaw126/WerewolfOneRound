@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { produce } from 'immer';
 import { startGame, reduce } from './engine';
+import { pushShotStatus } from './reducers/day';
 import { notifyRoleHolders } from './rules/turnContext';
 import { buildSetup } from './rules/setup';
 import { defaultRuleConfig, makeState, kill } from './testFixtures';
@@ -619,6 +621,27 @@ describe('SELF_EXPLODE (§9.6)', () => {
 		const night = reduce(after, { type: 'END_DAY' }).state;
 		expect(night.phase).toBe('NIGHT');
 		expect(night.round).toBe(2);
+	});
+
+	it("a new night forgets the last round's news, so a reload cannot bring it back", () => {
+		const state = makeState(
+			{ 1: 'WEREWOLF', 2: 'VILLAGER' },
+			{
+				phase: 'DISCUSSION',
+				announcedNightDeaths: [2],
+				announcedDayResult: {
+					eliminatedSeat: 2,
+					identity: null,
+					tie: false,
+					followDeathSeat: null,
+					followDeathIdentity: null,
+					idiotRevealed: false
+				}
+			}
+		);
+		const night = reduce(state, { type: 'END_DAY' }).state;
+		expect(night.announcedNightDeaths).toBeUndefined();
+		expect(night.announcedDayResult).toBeUndefined();
 	});
 
 	it('rejects a non-wolf seat trying to self-explode (server-side camp check)', () => {
@@ -1351,5 +1374,154 @@ describe('空刀 and self-picks', () => {
 		expect(payload(effectsOfKind(r.effects, 'NightActionRejected')[0])).toMatchObject({
 			error: 'invalid_target'
 		});
+	});
+});
+
+describe('空守 (guard.allowEmptyGuard)', () => {
+	const board = { 1: 'WEREWOLF', 2: 'GUARD', 3: 'SEER', 4: 'VILLAGER', 5: 'VILLAGER' } as const;
+	const guardNobody = (state: GameState) =>
+		reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 2,
+			role: 'GUARD',
+			action: { guardTarget: null }
+		});
+	const allowing = (state: GameState): GameState => ({
+		...state,
+		ruleConfig: { ...state.ruleConfig, guard: { ...state.ruleConfig.guard, allowEmptyGuard: true } }
+	});
+
+	it('is refused by default - the guard must pick someone', () => {
+		const { state } = start(board);
+		const { state: after, effects } = guardNobody(state);
+		const rejection = effectsOfKind(effects, 'NightActionRejected')[0];
+		expect(payload(rejection).error).toBe('guard_empty_not_allowed');
+		expect(after.nightActions.guardTarget).toBeUndefined();
+	});
+
+	it('when allowed, protects nobody and is offered on the turn prompt', () => {
+		const { state } = start(board);
+		const prompt = notifyRoleHolders(allowing(state), 'GUARD')[0];
+		expect(payload<{ context: { guard: unknown } }>(prompt).context.guard).toEqual({
+			lastProtectedSeat: null,
+			allowEmptyGuard: true
+		});
+		const { state: after, effects } = guardNobody(allowing(state));
+		expect(effectsOfKind(effects, 'NightActionRejected')).toHaveLength(0);
+		expect(after.nightActions.guardTarget).toBeNull();
+		expect(after.submittedRoles).toContain('GUARD');
+	});
+
+	it('a night of 空守 lets the guard protect last-guarded seat again', () => {
+		const { state } = start(board);
+		const s = { ...allowing(state), lastGuardTarget: 4 };
+		const { state: after } = guardNobody(s);
+		expect(after.lastGuardTarget).toBeNull();
+	});
+});
+
+describe('what a phone that missed the moment can be told later', () => {
+	it('a seer check is kept with its verdict, for the seat that made it', () => {
+		const state = makeState(
+			{ 1: 'WEREWOLF', 2: 'SEER', 3: 'VILLAGER' },
+			{ phase: 'NIGHT', round: 2, currentStepKey: 'role:SEER' }
+		);
+		const { state: after } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 2,
+			role: 'SEER',
+			action: { seerCheckTarget: 1 }
+		});
+		expect(after.seerChecks).toEqual([{ round: 2, seat: 2, targetSeat: 1, isBad: true }]);
+	});
+
+	it('the last announcements are kept with the game', () => {
+		const dawn = makeState(
+			{ 1: 'WEREWOLF', 2: 'SEER', 3: 'VILLAGER', 4: 'VILLAGER', 5: 'WEREWOLF', 6: 'WITCH' },
+			{ phase: 'DAWN', round: 1, pendingNightDeaths: [{ seat: 3, cause: 'WOLF_KILL' }] as never }
+		);
+		const { state: day } = reduce(dawn, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		expect(day.announcedNightDeaths).toEqual([3]);
+	});
+
+	it('a fallen 猎人 is remembered with what they were told', () => {
+		const state = makeState({ 1: 'HUNTER', 2: 'VILLAGER' });
+		const effects: EngineEffect[] = [];
+		const after = produce(state, (draft) => {
+			pushShotStatus(draft, effects, [{ seat: 1, cause: 'WOLF_KILL' }] as never);
+		});
+		expect(after.shotStatuses).toEqual({ 1: false });
+	});
+});
+
+describe('自爆 at dawn, before the night news (the table is electing a 警长)', () => {
+	const dawn = (overrides: Partial<GameState> = {}) => {
+		const state = makeState(
+			{ 1: 'WEREWOLF', 2: 'WEREWOLF', 3: 'SEER', 4: 'VILLAGER', 5: 'VILLAGER', 6: 'WITCH' },
+			{
+				phase: 'DAWN',
+				round: 1,
+				pendingNightDeaths: [{ seat: 4, cause: 'WOLF_KILL' }],
+				...overrides
+			}
+		);
+		state.players[4].isDead = true;
+		return state;
+	};
+	const told = (effects: EngineEffect[]) => JSON.stringify(effects.map((e) => e.payload));
+
+	it('records the explosion and keeps the night news secret until 公布', () => {
+		const { state, effects } = reduce(dawn(), { type: 'SELF_EXPLODE', seat: 1 });
+		expect(state.phase).toBe('DAWN');
+		expect(state.players[1].isDead).toBe(true);
+		expect(state.dayDecided).toBe(true);
+		expect(state.pendingNightDeaths).toEqual([{ seat: 4, cause: 'WOLF_KILL' }]);
+		expect(effectsOfKind(effects, 'SelfExploded')).toHaveLength(1);
+		expect(effectsOfKind(effects, 'NightResultsAnnounced')).toHaveLength(0);
+		expect(told(effects)).not.toContain('"seat":4');
+	});
+
+	it('公布 then tells the news, and the day has only 进入下一夜 left', () => {
+		const exploded = reduce(dawn(), { type: 'SELF_EXPLODE', seat: 1 }).state;
+		const { state, effects } = reduce(exploded, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		expect(
+			payload<{ deaths: unknown }>(effectsOfKind(effects, 'NightResultsAnnounced')[0]).deaths
+		).toEqual([{ seat: 4, cause: 'WOLF_KILL' }]);
+		expect(state.phase).toBe('DISCUSSION');
+		expect(state.dayDecided).toBe(true);
+		expect(reduce(state, { type: 'BEGIN_VOTE' }).effects).toHaveLength(0);
+		expect(reduce(state, { type: 'END_DAY' }).state.phase).toBe('NIGHT');
+	});
+
+	it('the last wolf exploding doesn’t end the game before the news is told', () => {
+		const state = makeState(
+			{ 1: 'WEREWOLF', 2: 'SEER', 3: 'VILLAGER', 4: 'VILLAGER' },
+			{ phase: 'DAWN', round: 1, pendingNightDeaths: [] }
+		);
+		const exploded = reduce(state, { type: 'SELF_EXPLODE', seat: 1 });
+		expect(exploded.state.phase).toBe('DAWN');
+		expect(effectsOfKind(exploded.effects, 'GameOver')).toHaveLength(0);
+		expect(reduce(exploded.state, { type: 'ANNOUNCE_NIGHT_RESULTS' }).state.phase).toBe(
+			'GAME_OVER'
+		);
+	});
+
+	it('a wolf killed last night can still explode, without giving that away', () => {
+		const start = dawn({ pendingNightDeaths: [{ seat: 1, cause: 'WOLF_KILL' }] });
+		start.players[4].isDead = false;
+		start.players[1].isDead = true;
+		const { state, effects } = reduce(start, { type: 'SELF_EXPLODE', seat: 1 });
+		expect(effectsOfKind(effects, 'SelfExploded')).toHaveLength(1);
+		expect(state.pendingNightDeaths).toEqual([]);
+	});
+
+	it('any seat the Host picks is accepted: a refusal would tell the Host it isn’t a wolf', () => {
+		const { effects } = reduce(dawn(), { type: 'SELF_EXPLODE', seat: 3 });
+		expect(effectsOfKind(effects, 'SelfExploded')).toHaveLength(1);
+	});
+
+	it('a second explosion the same dawn is ignored', () => {
+		const exploded = reduce(dawn(), { type: 'SELF_EXPLODE', seat: 1 }).state;
+		expect(reduce(exploded, { type: 'SELF_EXPLODE', seat: 2 }).effects).toHaveLength(0);
 	});
 });

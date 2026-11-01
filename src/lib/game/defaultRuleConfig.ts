@@ -60,6 +60,7 @@ export function defaultRuleConfig(): RuleConfig {
 		guard: {
 			canGuardSameTargetConsecutively: false,
 			canGuardSelf: true,
+			allowEmptyGuard: false,
 			sameGuardSameSave: 'TARGET_DIES',
 			protectsAgainstPoison: false
 		},

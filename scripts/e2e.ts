@@ -258,7 +258,8 @@ async function basicGame() {
 		'target was told privately'
 	);
 	check(
-		host.priv.some((e) => e.kind === 'RoleChangedByHost' && !e.forYou),
+		// A Host who was dealt the target seat got the forYou line above instead.
+		target === host || host.priv.some((e) => e.kind === 'RoleChangedByHost' && !e.forYou),
 		'host got the private log line'
 	);
 	const others = players.filter((p) => p !== host && p !== target);

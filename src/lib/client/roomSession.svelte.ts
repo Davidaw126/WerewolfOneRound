@@ -34,6 +34,8 @@ export interface RoomTransport {
 	onReconnect(handler: () => void): () => void;
 	/** The page came back to the foreground. */
 	onForeground(handler: () => void): () => void;
+	/** Drops the connection and opens a fresh one; resolves once connected. */
+	restart(): Promise<void>;
 }
 
 /** Why this phone is out of the room. */
@@ -55,6 +57,10 @@ export class RoomSession {
 	out = $state<OutReason | null>(null);
 
 	private leaving = false;
+	/** Private events arriving while a catch-up is on its way: held until its
+	 * answer has been applied, so that answer can tell what's still owed. */
+	private held: PrivateInfo[] | null = null;
+	private catchingUp: Promise<void> | null = null;
 	private listeners: (() => void)[] = [];
 	private watchers: (() => void)[] = [];
 
@@ -76,8 +82,14 @@ export class RoomSession {
 	async enter(code: string): Promise<ActionReply<'RoomJoin'>> {
 		this.reset();
 		this.listen();
+		this.held = [];
 		const reply = await this.transport.send({ kind: 'RoomJoin', roomCode: code }, { quiet: true });
-		if (reply.ok) this.entered(code, reply.state);
+		const owed = this.held ?? [];
+		this.held = null;
+		if (reply.ok) {
+			this.code = code;
+			this.store.applyCatchUp(reply.state, owed);
+		}
 		return reply;
 	}
 
@@ -110,16 +122,42 @@ export class RoomSession {
 
 	/** Catches up after a gap: the room as it is now, and anything private
 	 * this phone is owed (its role, a turn prompt it missed). */
-	async resync(): Promise<void> {
+	resync(): Promise<void> {
+		// One at a time: a reconnect and coming back to the foreground usually
+		// land together.
+		this.catchingUp ??= this.catchUp().finally(() => (this.catchingUp = null));
+		return this.catchingUp;
+	}
+
+	private async catchUp(): Promise<void> {
 		if (!this.code || this.out) return;
-		const reply = await this.transport.send({ kind: 'ResyncRequest' }, { quiet: true });
-		if (reply.ok) this.store.applyState(reply.state);
-		else if (reply.error === 'not_in_room') this.goOut('removed');
-		else if (reply.error === 'room_not_found') this.goOut('room_gone');
+		const code = this.code;
+		this.held = [];
+		let reply = await this.transport.send({ kind: 'ResyncRequest' }, { quiet: true });
+		// No answer at all: after the screen was locked, iOS can leave a
+		// socket that still says "connected" but is dead, and socket.io only
+		// notices on its next missed ping (up to ~45s) - long enough to sit
+		// out a whole night turn. Start a fresh connection and ask again.
+		if (!reply.ok && reply.error === 'timeout') {
+			await this.transport.restart();
+			if (this.code !== code || this.out) return;
+			reply = await this.transport.send({ kind: 'ResyncRequest' }, { quiet: true });
+		}
+		// Left or moved on while waiting: the answer is for a page that's gone.
+		if (this.code !== code) return;
+		const owed = this.held ?? [];
+		this.held = null;
+		if (reply.ok) this.store.applyCatchUp(reply.state, owed);
+		else {
+			for (const event of owed) this.store.applyPrivateEvent(event);
+			if (reply.error === 'not_in_room') this.goOut('removed');
+			else if (reply.error === 'room_not_found') this.goOut('room_gone');
+		}
 	}
 
 	private reset(): void {
 		this.close();
+		this.held = null;
 		this.out = null;
 		this.leaving = false;
 		this.store.resetForRoomVisit();
@@ -141,14 +179,29 @@ export class RoomSession {
 		if (this.listeners.length > 0) return;
 		this.listeners.push(
 			this.transport.onServerEvent((event) => {
+				this.dropOutdatedHeld(event);
 				this.store.applyServerEvent(event);
 				if (event.kind === 'RoomClosed') this.goOut('host_left');
 			}),
 			this.transport.onPrivateEvent((event) => {
 				if (event.kind === 'RemovedFromRoom') this.goOut('left_elsewhere');
+				else if (this.held) this.held.push(event);
 				else this.store.applyPrivateEvent(event);
 			})
 		);
+	}
+
+	/** What a catch-up sent before this news arrived mustn't be applied after
+	 * it: the card just re-dealt, the turn just ended, the game just stopped. */
+	private dropOutdatedHeld(event: ServerEvent): void {
+		if (!this.held) return;
+		if (event.kind === 'GameReset') this.held = [];
+		if (event.kind === 'RolesRerolled') this.held = this.held.filter((e) => e.kind !== 'YourRole');
+		if (event.kind === 'StageChanged' || event.kind === 'PhaseChanged') {
+			this.held = this.held.filter(
+				(e) => e.kind !== 'StageConfirmed' && !(e.kind === 'YourTurnPrompt' && e.replay)
+			);
+		}
 	}
 
 	/** Resync whenever this phone may have missed something. */
@@ -160,12 +213,27 @@ export class RoomSession {
 	}
 }
 
+const RESTART_WAIT_MS = 10_000;
+
 /** The real transport: the app's one socket.io connection and the page's
  * visibility. */
 const socketTransport: RoomTransport = {
 	send: sendAction,
 	onServerEvent,
 	onPrivateEvent,
+	restart() {
+		const socket = getSocket();
+		return new Promise((resolve) => {
+			// A connect we ask for ourselves isn't a socket.io 'reconnect', so
+			// onReconnect's resync doesn't run a second time.
+			socket.once('connect', () => resolve());
+			// No network yet: stop waiting, so the catch-up can report it and
+			// release the private events it's holding. The next reconnect
+			// catches up again.
+			setTimeout(resolve, RESTART_WAIT_MS);
+			socket.disconnect().connect();
+		});
+	},
 	onReconnect(handler) {
 		const socket = getSocket();
 		// socket.io fires 'connect' again on every reconnect; the first
@@ -194,4 +262,9 @@ export const roomSession = new RoomSession(gameStore, socketTransport);
 
 // A refused action someone tapped pops up with the reason, wherever it was
 // sent from - never a tap that silently does nothing.
-onActionError((refusal) => gameStore.showInfoPopup(formatRefusal(refusal, i18n.lang), 'bad', 4000));
+onActionError((refusal) => {
+	// The tap's answer got lost and it went through the first time: the
+	// prompt just closes (see NightActionPrompt), there's nothing to report.
+	if (refusal.error === 'already_submitted') return;
+	gameStore.showInfoPopup(formatRefusal(refusal, i18n.lang), 'bad', 4000);
+});

@@ -158,6 +158,12 @@ describe('validateGuardAction', () => {
 		expect(validateGuardAction(houseCfg, 3, 7, 3)).toBeNull();
 	});
 
+	it('空守 (no target) is refused by default and accepted when the room allows it', () => {
+		expect(validateGuardAction(cfg, null, 7, 3)).toBe('guard_empty_not_allowed');
+		const houseCfg: RuleConfig = { ...cfg, guard: { ...cfg.guard, allowEmptyGuard: true } };
+		expect(validateGuardAction(houseCfg, null, 7, 3)).toBeNull();
+	});
+
 	it("today's default (canGuardSelf = true): guarding yourself is allowed", () => {
 		expect(validateGuardAction(cfg, 7, 7, null)).toBeNull();
 	});

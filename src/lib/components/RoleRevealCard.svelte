@@ -26,9 +26,9 @@
 			// Always reset, not just on failure: myRole can later be cleared by a
 			// host reroll, which re-renders the unrevealed state - a stale
 			// `revealing = true` would otherwise stick as "翻开中…".
-			await sendAction({ kind: 'RevealRole' });
+			const res = await sendAction({ kind: 'RevealRole' });
 			revealing = false;
-			gameStore.logActivity(logLine('text', 'activityLog', 'youCheckedIdentity'));
+			if (res.ok) gameStore.logActivity(logLine('text', 'activityLog', 'youCheckedIdentity'));
 		}
 	}
 

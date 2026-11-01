@@ -9,7 +9,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { redis } from '../redis';
-import { ROOM_TTL_SECONDS, gameStateKey, gameLockKey, gameActionsKey } from '../rooms/keys';
+import {
+	ROOM_TTL_SECONDS,
+	gameStateKey,
+	gameLockKey,
+	gameActionsKey,
+	roomKey
+} from '../rooms/keys';
 import { reduce, startGame, type StartGameParams } from '../../game/engine';
 import type { EngineAction, EngineResult, GameState } from '../../game/types';
 import { ActionError } from '../socket/actionError';
@@ -67,8 +73,16 @@ export async function loadGameState(code: string): Promise<GameState | null> {
 	return raw ? (JSON.parse(raw) as GameState) : null;
 }
 
+/** Saves the game and, in the same step, mirrors its phase into the room.
+ * Mirroring any later left a gap where the room still said SEATING with a
+ * game running: a second Start or a Re-deal got through it, and a late mirror
+ * could put a just-stopped room back into a phase with no game. */
 async function saveGameState(code: string, state: GameState): Promise<void> {
-	await redis.set(gameStateKey(code), JSON.stringify(state), 'EX', ROOM_TTL_SECONDS);
+	await redis
+		.multi()
+		.set(gameStateKey(code), JSON.stringify(state), 'EX', ROOM_TTL_SECONDS)
+		.hset(roomKey(code), { phase: state.phase, nightNumber: String(state.round) })
+		.exec();
 }
 
 export async function deleteGameState(code: string): Promise<void> {

@@ -43,6 +43,14 @@ export class PickDraft {
 			entry: line('text', 'nightPrompt', 'descEmptyKill')
 		};
 	}
+
+	/** 空守: the guard protects nobody tonight. */
+	static emptyGuard(): Submission {
+		return {
+			action: nightAction({ role: 'GUARD', targetSeat: null }),
+			entry: line('text', 'nightPrompt', 'descEmptyGuard')
+		};
+	}
 }
 
 /** The rules the witch's panel follows tonight (the store's turnRules). */

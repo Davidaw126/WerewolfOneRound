@@ -190,6 +190,9 @@ export interface RuleConfig {
 	guard: {
 		canGuardSameTargetConsecutively: boolean; // default false, matches today
 		canGuardSelf: boolean; // default true
+		/** 空守: the guard may protect nobody tonight. That night also ends
+		 * the no-repeat rule's memory (see canGuardSameTargetConsecutively). */
+		allowEmptyGuard: boolean; // default false, matches today
 		sameGuardSameSave: 'TARGET_DIES' | 'TARGET_LIVES'; // default 'TARGET_DIES', matches today
 		protectsAgainstPoison: boolean; // default false, matches today
 	};
@@ -286,7 +289,7 @@ export interface Player {
 }
 
 export interface NightActions {
-	guardTarget?: Seat;
+	guardTarget?: Seat | null; // null = 空守
 	wolfKillTarget?: Seat | null; // null = 空刀
 	wolfBeautyCharmTarget?: Seat;
 	nightmareFearTarget?: Seat;
@@ -308,6 +311,26 @@ export interface TimelineEvent {
 	forSeat?: Seat;
 	text: string;
 	at: number; // epoch ms
+}
+
+/** One 预言家 check, with the verdict given at the time - a phone that missed
+ * the one-shot SeerResult gets this same answer back, whatever has happened
+ * to the target's card since. */
+export interface SeerCheck {
+	round: number;
+	seat: Seat;
+	targetSeat: Seat;
+	isBad: boolean;
+}
+
+/** The latest day's outcome as told to the table. */
+export interface DayResultRecord {
+	eliminatedSeat: Seat | null;
+	identity: RoleId | null;
+	tie: boolean;
+	followDeathSeat: Seat | null;
+	followDeathIdentity: RoleId | null;
+	idiotRevealed: boolean;
 }
 
 export interface GameState {
@@ -364,6 +387,10 @@ export interface GameState {
 	 * announces it (ANNOUNCE_NIGHT_RESULTS), instead of the spec's automatic
 	 * DAWN announcement. null once there's nothing pending. */
 	pendingNightDeaths: Death[] | null;
+	/** The last announcements, for a phone that reloads after them. Optional
+	 * so a game saved before these fields existed still loads. */
+	announcedNightDeaths?: Seat[];
+	announcedDayResult?: DayResultRecord;
 
 	// --- Records ---
 	witchAntidoteUsed: boolean;
@@ -379,6 +406,10 @@ export interface GameState {
 	stageConfirms?: Seat[];
 	hostOverrideCount: number;
 	timeline: TimelineEvent[];
+	/** Every check this game. Optional like stageConfirms. */
+	seerChecks?: SeerCheck[];
+	/** What each fallen 猎人/黑狼王 was told about their shot. */
+	shotStatuses?: Record<Seat, boolean>;
 
 	winner: Camp | null;
 }

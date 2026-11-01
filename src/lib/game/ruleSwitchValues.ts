@@ -14,7 +14,7 @@ const SWITCH_KEYS: KeysOf<RuleSwitches> = {
 	winCondition: true,
 	cupidPoisonBlocksHunter: true,
 	wolf: { allowEmptyKill: true, blackWolfKingCanShootWhenLoverSuicide: true },
-	guard: { sameGuardSameSave: true },
+	guard: { sameGuardSameSave: true, allowEmptyGuard: true },
 	witch: { selfRescue: true, canPoisonSelf: true, bothPotionsSameNight: true },
 	hunter: {
 		canShootWhenPoisoned: true,

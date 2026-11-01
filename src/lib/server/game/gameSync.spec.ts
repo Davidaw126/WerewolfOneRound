@@ -90,6 +90,32 @@ afterAll(async () => {
 	await closeRedisConnections();
 });
 
+describe('a stopped game leaves nothing behind', () => {
+	it('its pacing timer can’t skip a turn of the next game', async () => {
+		const code = await startedGame();
+		const wolfStage = await step(code);
+		await runGameAction(code, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 3 }
+		});
+		// Stopped during the pause before the next role, and straight into a new game.
+		await room.resetToSeating(code);
+		await startGameAndBroadcast(code, async () => ({
+			roomCode: code,
+			ruleConfig: defaultRuleConfig(),
+			setup: buildSetup({ WEREWOLF: 1, SEER: 1, VILLAGER: 1, WITCH: 1 }),
+			deal: { identities: { ...ROLES }, buried: null },
+			players: [1, 2, 3, 4].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
+			now: 2000
+		}));
+		expect(await step(code)).toBe(wolfStage);
+		await elapse(6000);
+		expect(await step(code)).toBe(wolfStage);
+	});
+});
+
 describe('starting a game', () => {
 	it('tells the room the phase and mirrors it into the room', async () => {
 		const code = await startedGame();

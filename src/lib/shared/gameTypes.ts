@@ -1,4 +1,4 @@
-import type { Phase as EnginePhase, RoleId } from '../game/types';
+import type { DayResultRecord, Phase as EnginePhase, RoleId } from '../game/types';
 
 /** The phase on the wire is the engine's own - DAWN (night resolved, the
  * Host hasn't announced yet), VOTE_PK and the rest included. Screens that
@@ -127,6 +127,11 @@ export interface RoomPublicState {
 	/** Identifies the game in progress (its start time), so a phone can tell
 	 * whether a diary it saved before a reload belongs to this game. */
 	gameId?: string;
+	/** The last announced night's deaths and day's outcome - public already,
+	 * here so the banners come back after a reload. */
+	lastNightDeaths: number[] | null;
+	lastDayResult: DayResultRecord | null;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
 	identities?: Record<number, RoleId>;
+	coupleSeats?: [number, number] | null;
 }

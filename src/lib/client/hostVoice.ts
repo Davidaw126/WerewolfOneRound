@@ -62,6 +62,9 @@ export const BLOCKED_AFTER_MS = 5000;
 /** No line runs this long; past it the queue moves on whatever the engine
  * claims (mobile engines can drop onend when backgrounded). */
 export const MAX_LINE_MS = 15000;
+/** How often a speaking line checks the engine hasn't gone quiet: iOS loses
+ * onend now and then, which held every line behind it until MAX_LINE_MS. */
+const QUIET_CHECK_MS = 1000;
 /** A refused unlock may fire nothing at all - let the next tap retry. */
 const PRIME_RETRY_MS = 1500;
 
@@ -237,6 +240,16 @@ export class HostVoice {
 			}
 		);
 		this.later(relayStart, START_GRACE_MS);
+		// Only an engine seen speaking counts as having stopped: 'not busy' right
+		// after speak() can just mean it hasn't begun yet.
+		let heardBusy = false;
+		const checkQuiet = () => {
+			if (this.current !== token) return;
+			if (heardBusy && !this.engine.busy) return finish(GAP_MS);
+			heardBusy ||= this.engine.busy;
+			this.later(checkQuiet, QUIET_CHECK_MS);
+		};
+		this.later(checkQuiet, QUIET_CHECK_MS);
 		this.later(() => {
 			if (this.current !== token || this.currentStarted || this.muted) return;
 			// Never started: drop the line, forget the unlock so the next tap
@@ -276,6 +289,9 @@ export function browserSpeech(): SpeechEngine {
 	// Chrome and Safari can garbage-collect an utterance nothing references
 	// while it's still speaking - its onstart/onend then never fire.
 	const keepAlive = new Set<SpeechSynthesisUtterance>();
+	// Safari fills its voice list on first ask; asking now rather than at the
+	// first line means that line doesn't start late, or in the default voice.
+	synth?.getVoices();
 	return {
 		supported: !!synth,
 		speak(text, opts, events) {

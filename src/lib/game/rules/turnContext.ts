@@ -39,7 +39,8 @@ export interface TurnContext {
 	/** 猎人 / 黑狼王 status turn: the same verdict the server will apply if
 	 * they die tonight - a physical host's thumbs up or down. */
 	hunter?: { canShoot: boolean };
-	guard?: { lastProtectedSeat: Seat | null };
+	/** allowEmptyGuard: only when the room allows 空守. */
+	guard?: { lastProtectedSeat: Seat | null; allowEmptyGuard?: boolean };
 	/** Living wolf-team seats other than the recipient's own. allowEmptyKill:
 	 * only on the pack's kill turn, when the room allows 空刀. */
 	wolf?: { teammateSeats: Seat[]; allowEmptyKill?: boolean };
@@ -130,6 +131,7 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		}
 		if (role === 'GUARD') {
 			context.guard = { lastProtectedSeat: state.lastGuardTarget };
+			if (state.ruleConfig.guard.allowEmptyGuard) context.guard.allowEmptyGuard = true;
 		}
 		if (WOLF_TEAM_TURN_ROLES.has(role) && role !== 'BLACK_WOLF_KING') {
 			context.wolf = { teammateSeats: wolfSeats.filter((s) => s !== player.seat) };

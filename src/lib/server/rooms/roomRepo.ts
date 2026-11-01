@@ -556,11 +556,14 @@ export async function getPublicState(
 		winner: gameState ? winnerOf(gameState) : null,
 		dayDecided: gameState?.dayDecided ?? false,
 		knightUsed: gameState?.knightUsed ?? false,
-		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {})
+		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {}),
+		lastNightDeaths: gameState?.announcedNightDeaths ?? null,
+		lastDayResult: gameState?.announcedDayResult ?? null
 	};
 
-	if (room.phase === 'GAME_OVER' && gameState) {
+	if (gameState?.phase === 'GAME_OVER') {
 		state.identities = identitiesOf(gameState);
+		state.coupleSeats = gameState.lovers;
 	}
 
 	if (gameState && forSessionId && forSessionId === room.hostSessionId) {

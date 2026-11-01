@@ -43,7 +43,8 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 		poisonTarget: z.number().int().positive().nullable(),
 		useAntidote: z.boolean()
 	}),
-	z.object({ role: z.literal('GUARD'), targetSeat: z.number().int().positive() }),
+	// nullable (空守) - accepted only when the room's guard.allowEmptyGuard is on.
+	z.object({ role: z.literal('GUARD'), targetSeat: z.number().int().positive().nullable() }),
 	// Nullable only for the pack's 空刀 - they join the pack's kill turn too.
 	z.object({ role: z.literal('WOLF_BEAUTY'), targetSeat: z.number().int().positive().nullable() }),
 	z.object({
@@ -155,7 +156,7 @@ export type ServerEvent =
 	// player who had looked at their role left during seating.
 	| { kind: 'RolesRerolled'; reason?: 'seen_role_left' }
 	| { kind: 'GameReset' }
-	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number }
+	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number; gameId?: string }
 	// S4: room-wide - never carries which role is acting, see PublicNightStage.
 	| { kind: 'StageChanged'; stage: PublicNightStage | null }
 	| { kind: 'NightResolved'; nightNumber: number; deaths: number[] }
@@ -247,8 +248,16 @@ export type ServerEvent =
 
 export type PrivateInfo =
 	| { kind: 'YourRole'; role: RoleId }
-	| { kind: 'SeerResult'; targetSeat: number; isWolf: boolean }
-	| { kind: 'CoupleRevealed'; partnerSeat: number }
+	// `replay`: re-sent by a catch-up (see turnReplay.ts) - the phone may
+	// already have it, so it mustn't announce or log it twice.
+	| {
+			kind: 'SeerResult';
+			targetSeat: number;
+			isWolf: boolean;
+			replay?: boolean;
+			nightNumber?: number;
+	  }
+	| { kind: 'CoupleRevealed'; partnerSeat: number; replay?: boolean }
 	| { kind: 'ThiefChoice'; buried: [RoleId, RoleId] }
 	// `replay`: re-sent after a reconnect/reload (see turnReplay.ts) - the
 	// stage's narration already played, so the client shows it immediately
@@ -257,7 +266,7 @@ export type PrivateInfo =
 	| { kind: 'HunterAuthorized' }
 	| { kind: 'HunterDenied'; reason: 'poison' }
 	/** You (猎人/狼王/黑狼王) just died - may you shoot, at the table? */
-	| { kind: 'ShotStatus'; canShoot: boolean }
+	| { kind: 'ShotStatus'; canShoot: boolean; replay?: boolean }
 	/** Your 确认 on an eyes-open-only stage (开枪状态/情侣相认) landed. */
 	| { kind: 'StageConfirmed' }
 	/** Another holder of your role already used tonight's turn. */

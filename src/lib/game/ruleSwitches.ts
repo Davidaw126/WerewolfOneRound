@@ -17,7 +17,10 @@ const GROUPS = {
 		allowEmptyKill: z.boolean(),
 		blackWolfKingCanShootWhenLoverSuicide: z.boolean()
 	}),
-	guard: z.object({ sameGuardSameSave: z.enum(['TARGET_DIES', 'TARGET_LIVES']) }),
+	guard: z.object({
+		sameGuardSameSave: z.enum(['TARGET_DIES', 'TARGET_LIVES']),
+		allowEmptyGuard: z.boolean()
+	}),
 	witch: z.object({
 		selfRescue: z.enum(['FIRST_NIGHT_ONLY', 'NEVER', 'ALWAYS']),
 		canPoisonSelf: z.boolean(),

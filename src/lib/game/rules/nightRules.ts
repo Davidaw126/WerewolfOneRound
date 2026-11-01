@@ -20,6 +20,7 @@ export type NightRuleError =
 	| 'guard_no_self_guard'
 	| 'seer_no_self_check'
 	| 'wolf_empty_kill_not_allowed'
+	| 'guard_empty_not_allowed'
 	| 'already_submitted'
 	/** A named seat isn't a living player (or a 丘比特 linked one seat twice). */
 	| 'invalid_target'
@@ -79,10 +80,11 @@ export function validateWitchAction(
  * house rule allows it), and may only self-guard if configured to. */
 export function validateGuardAction(
 	cfg: RuleConfig,
-	targetSeat: Seat,
+	targetSeat: Seat | null,
 	guardSeat: Seat,
 	lastProtectedSeat: Seat | null
 ): NightRuleError | null {
+	if (targetSeat === null) return cfg.guard.allowEmptyGuard ? null : 'guard_empty_not_allowed';
 	if (!cfg.guard.canGuardSelf && targetSeat === guardSeat) return 'guard_no_self_guard';
 	if (
 		!cfg.guard.canGuardSameTargetConsecutively &&

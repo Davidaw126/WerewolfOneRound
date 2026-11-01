@@ -34,9 +34,16 @@ export const en: Strings = {
 	},
 	room: {
 		loading: 'Loading…',
+		scrollMore: 'Scroll for more',
 		shareCode: 'Share this code to invite friends',
 		waitingHostConfig: (hostUsername) => `Waiting for host ${hostUsername} to set up the room…`,
 		announceButton: "Announce Last Night's Results",
+		dawnExplodeButton: 'A player self-exploded',
+		dawnExplodePick: "Pick who self-exploded (last night's news stays hidden)",
+		dawnExplodeConfirm: (seat) =>
+			`Confirm seat ${seat} self-exploded? No vote today: announce last night's results, then go straight to the next night.`,
+		dawnExploded:
+			"Self-explosion recorded. Announce last night's results, then enter the next night.",
 		seatingWaitingHost: 'Waiting for host to start the game…',
 		playAgain: 'Play Again',
 		restarting: 'Restarting…',
@@ -130,6 +137,8 @@ export const en: Strings = {
 		selectWolfTarget: 'Choose tonight’s target:',
 		emptyKill: 'No kill tonight',
 		descEmptyKill: 'You chose no kill tonight',
+		emptyGuard: 'Protect nobody tonight',
+		descEmptyGuard: 'You chose to protect nobody tonight',
 		selectSeerTarget: 'Choose a player to check:',
 		selectGuardTarget: 'Choose a player to protect:',
 		selectWolfBeautyTarget: 'Choose a player to charm:',
@@ -177,6 +186,7 @@ export const en: Strings = {
 			guard_no_self_guard: "You can't protect yourself",
 			seer_no_self_check: "You can't check yourself",
 			wolf_empty_kill_not_allowed: 'This room requires a kill - pick a target',
+			guard_empty_not_allowed: 'This room requires a guard - pick someone to protect',
 			fallback: 'Action failed, please try again'
 		},
 		descSelectedSeat: (seat) => `You chose seat ${seat}`,
@@ -208,6 +218,7 @@ export const en: Strings = {
 		winConditionSideKill: 'Side Kill (all gods or all villagers eliminated)',
 		winConditionTotalKill: 'Total Kill (wolves ≥ good)',
 		wolfAllowEmptyKill: 'Wolves may skip a kill',
+		guardAllowEmptyGuard: 'Guard may protect nobody',
 		sameGuardSameSaveLabel: 'Guard + Witch Same Target',
 		sameGuardSameSaveDies: 'Target still dies',
 		sameGuardSameSaveLives: 'Target survives',

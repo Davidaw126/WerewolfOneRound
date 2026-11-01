@@ -4,6 +4,7 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
+	import ScrollArea from '$lib/components/ScrollArea.svelte';
 
 	const t = $derived(strings(i18n.lang));
 	let open = $state(false);
@@ -33,7 +34,10 @@
 			<h2 class="mb-3 font-display text-sm font-bold tracking-widest text-ember uppercase">
 				{t.activityLog.title}
 			</h2>
-			<div class="min-h-0 flex-1 space-y-2 overflow-y-auto">
+			<ScrollArea
+				wrapClass="flex min-h-0 flex-1 flex-col"
+				class="min-h-0 flex-1 space-y-2 overflow-y-auto"
+			>
 				{#if gameStore.activityLog.length === 0}
 					<p class="text-sm text-zinc-500">{t.activityLog.empty}</p>
 				{:else}
@@ -49,7 +53,7 @@
 						</div>
 					{/each}
 				{/if}
-			</div>
+			</ScrollArea>
 			<button onclick={() => (open = false)} class="btn-primary mt-4 w-full"
 				>{t.activityLog.hide}</button
 			>

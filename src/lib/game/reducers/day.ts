@@ -2,7 +2,15 @@
 // Host's record of who left, and entering the hunter's shot. Part of the
 // engine (see engine.ts) - pure, no IO.
 
-import type { Death, EngineAction, EngineEffect, EngineResult, GameState, Seat } from '../types';
+import type {
+	DayResultRecord,
+	Death,
+	EngineAction,
+	EngineEffect,
+	EngineResult,
+	GameState,
+	Seat
+} from '../types';
 import { cascadeDeaths } from '../rules/nightResolution';
 import { checkWinCondition } from '../rules/winCondition';
 import { STATUS_STAGE_ROLES } from '../roleMeta';
@@ -22,6 +30,19 @@ import { advanceToNextNight } from './night';
  * queue. LAST_WORDS itself never changes who's alive, so it doesn't get the
  * same deferral - a winner found before it starts skips it entirely (a
  * decided game has no need for closing remarks). */
+/** Tells the table the day's outcome, and keeps it for a phone that reloads
+ * after the moment. */
+function announceDayResult(
+	draft: GameState,
+	effects: EngineEffect[],
+	result: DayResultRecord & { pkCandidates?: Seat[] }
+): void {
+	const record = { ...result };
+	delete record.pkCandidates;
+	draft.announcedDayResult = record;
+	effects.push({ kind: 'BROADCAST', payload: { kind: 'DayResolved', ...result } });
+}
+
 export function enterHunterShootOrContinue(
 	draft: GameState,
 	effects: EngineEffect[],
@@ -238,19 +259,15 @@ export function handleExile(
 
 		draft.dayDecided = true;
 		const { idiotRevealed, exiledDeaths, followDeathSeat } = applyExile(draft, action.seat);
-		effects.push({
-			kind: 'BROADCAST',
-			payload: {
-				kind: 'DayResolved',
-				eliminatedSeat: action.seat,
-				// Not revealed: an exiled player's card stays face down (only
-				// the 白痴's flip is public, via idiotRevealed).
-				identity: null,
-				tie: false,
-				followDeathSeat,
-				followDeathIdentity: null,
-				idiotRevealed
-			}
+		announceDayResult(draft, effects, {
+			eliminatedSeat: action.seat,
+			// Not revealed: an exiled player's card stays face down (only
+			// the 白痴's flip is public, via idiotRevealed).
+			identity: null,
+			tie: false,
+			followDeathSeat,
+			followDeathIdentity: null,
+			idiotRevealed
 		});
 		effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
 		const lastWordsSeats = lastWordsFrom(exiledDeaths, draft.ruleConfig.lastWords.exiledPlayer);
@@ -268,11 +285,9 @@ export function pushShotStatus(draft: GameState, effects: EngineEffect[], deaths
 	for (const d of deaths) {
 		const role = draft.players[d.seat]?.role;
 		if (!role || !(STATUS_STAGE_ROLES.has(role) || role === 'WOLF_KING')) continue;
-		effects.push({
-			kind: 'PRIVATE',
-			seat: d.seat,
-			payload: { kind: 'ShotStatus', canShoot: draft.pendingShoots.includes(d.seat) }
-		});
+		const canShoot = draft.pendingShoots.includes(d.seat);
+		draft.shotStatuses = { ...draft.shotStatuses, [d.seat]: canShoot };
+		effects.push({ kind: 'PRIVATE', seat: d.seat, payload: { kind: 'ShotStatus', canShoot } });
 	}
 }
 
@@ -343,18 +358,14 @@ export function handleTallyVotes(
 					draft.phase = 'VOTE_PK';
 					draft.pkCandidates = leaders;
 					draft.votes = {};
-					effects.push({
-						kind: 'BROADCAST',
-						payload: {
-							kind: 'DayResolved',
-							eliminatedSeat: null,
-							identity: null,
-							tie: true,
-							followDeathSeat: null,
-							followDeathIdentity: null,
-							idiotRevealed: false,
-							pkCandidates: [...leaders]
-						}
+					announceDayResult(draft, effects, {
+						eliminatedSeat: null,
+						identity: null,
+						tie: true,
+						followDeathSeat: null,
+						followDeathIdentity: null,
+						idiotRevealed: false,
+						pkCandidates: [...leaders]
 					});
 					effects.push({
 						kind: 'BROADCAST',
@@ -378,19 +389,15 @@ export function handleTallyVotes(
 		if (eliminated !== null) {
 			({ idiotRevealed, exiledDeaths, followDeathSeat } = applyExile(draft, eliminated));
 		}
-		effects.push({
-			kind: 'BROADCAST',
-			payload: {
-				kind: 'DayResolved',
-				eliminatedSeat: eliminated,
-				// Cards stay face down on exile (same as EXILE) - only the
-				// 白痴's flip is public, via idiotRevealed.
-				identity: null,
-				tie,
-				followDeathSeat,
-				followDeathIdentity: null,
-				idiotRevealed
-			}
+		announceDayResult(draft, effects, {
+			eliminatedSeat: eliminated,
+			// Cards stay face down on exile (same as EXILE) - only the
+			// 白痴's flip is public, via idiotRevealed.
+			identity: null,
+			tie,
+			followDeathSeat,
+			followDeathIdentity: null,
+			idiotRevealed
 		});
 
 		if (idiotRevealed) {

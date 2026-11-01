@@ -213,3 +213,30 @@ describe('muting', () => {
 		expect(engine.cancels).toBe(1);
 	});
 });
+
+describe('a line whose end never arrives', () => {
+	it('the queue moves on once the engine has gone quiet, not after MAX_LINE_MS', () => {
+		tapUnlocks();
+		voice.say({ text: 'night falls', lang: 'zh' });
+		voice.say({ text: 'wolves wake', lang: 'zh' });
+		vi.advanceTimersByTime(300);
+		engine.busy = true;
+		engine.last().events.onstart();
+		vi.advanceTimersByTime(2000);
+		expect(engine.lines).toEqual(['night falls']);
+		// Finished speaking, and iOS lost the onend.
+		engine.busy = false;
+		vi.advanceTimersByTime(1000 + GAP_MS);
+		expect(engine.lines).toEqual(['night falls', 'wolves wake']);
+	});
+
+	it('an engine that never reported busy still waits for the line’s real end', () => {
+		tapUnlocks();
+		voice.say({ text: 'night falls', lang: 'zh' });
+		voice.say({ text: 'wolves wake', lang: 'zh' });
+		vi.advanceTimersByTime(300);
+		engine.last().events.onstart();
+		vi.advanceTimersByTime(5000);
+		expect(engine.lines).toEqual(['night falls']);
+	});
+});

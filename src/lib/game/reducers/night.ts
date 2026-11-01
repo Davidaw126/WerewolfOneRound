@@ -121,6 +121,8 @@ export function advanceToNextNight(draft: GameState, effects: EngineEffect[]): v
 	draft.fearedSeat = null;
 	draft.currentStepKey = null;
 	draft.dayDecided = false;
+	delete draft.announcedNightDeaths;
+	delete draft.announcedDayResult;
 	effects.push({
 		kind: 'BROADCAST',
 		payload: { kind: 'PhaseChanged', phase: 'NIGHT', nightNumber: draft.round }
@@ -178,6 +180,7 @@ export function handleAnnounceNightResults(state: GameState): EngineResult {
 			payload: { kind: 'NightResultsAnnounced', deaths, nightNumber: draft.round }
 		});
 		draft.pendingNightDeaths = null;
+		draft.announcedNightDeaths = deaths.map((d) => d.seat).sort((a, b) => a - b);
 
 		// A hunter who died tonight but isn't in pendingShoots was denied a shot
 		// by cascadeDeaths' own canTriggerShoot filter (T5) - under today's
@@ -203,12 +206,16 @@ export function handleAnnounceNightResults(state: GameState): EngineResult {
 			}
 		}
 
-		const lastWordsSeats = lastWordsFrom(
-			deaths,
-			draft.isFirstNight
-				? draft.ruleConfig.lastWords.firstNightVictim
-				: draft.ruleConfig.lastWords.nightVictimAfterFirst
-		);
+		const lastWordsSeats = [
+			// Anyone who exploded while this news was still held back.
+			...draft.pendingLastWords,
+			...lastWordsFrom(
+				deaths,
+				draft.isFirstNight
+					? draft.ruleConfig.lastWords.firstNightVictim
+					: draft.ruleConfig.lastWords.nightVictimAfterFirst
+			)
+		];
 		enterHunterShootOrContinue(draft, effects, lastWordsSeats, 'DISCUSSION');
 	});
 }
@@ -375,6 +382,7 @@ export function handleSubmitNightAction(
 				const error = validateGuardAction(cfg, target, seat, draft.lastGuardTarget);
 				if (error) return reject(effects, seat, error);
 				draft.nightActions.guardTarget = target;
+				// 空守 (null) leaves nobody to not repeat: tomorrow is open.
 				draft.lastGuardTarget = target;
 				break;
 			}
@@ -394,6 +402,10 @@ export function handleSubmitNightAction(
 					// parity choice, not an oversight). SPEC-GAP: spec doesn't say
 					// what a seer should see for a 情侣 target.
 					const isBad = baseCamp(targetPlayer) === 'WEREWOLF';
+					draft.seerChecks = [
+						...(draft.seerChecks ?? []),
+						{ round: draft.round, seat, targetSeat: target, isBad }
+					];
 					effects.push({
 						kind: 'PRIVATE',
 						seat,

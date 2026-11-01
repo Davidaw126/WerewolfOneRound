@@ -26,7 +26,8 @@ import {
 import { setSessionRoom } from '../session';
 import { emitToRoom, emitToSession, removeSessionFromRoom } from '../socket/emit';
 import { startGameAndBroadcast } from '../game/gameSync';
-import { replayTurnPromptIfAny } from '../game/turnReplay';
+import { replayGameInfo } from '../game/turnReplay';
+import { withRoomLock } from '../game/gameStateRepo';
 import { buildSetup, validateSetup } from '../../game/rules/setup';
 import { deriveSeatCount, type DealResult } from '../../game/rules/deal';
 import { defaultRuleConfig } from '../../game/defaultRuleConfig';
@@ -57,20 +58,25 @@ export async function enterRoom(code: string, sessionId: string): Promise<Action
 	return catchUp(code, sessionId);
 }
 
-/** The room as it is now for this session, with its role (if it already
- * looked) and any turn prompt it's owed sent again privately - the one
+/** The room as it is now for this session, with everything private it's
+ * owed sent again (before the game, its role if it already looked) - the one
  * replay path, for entering and for coming back from a dropped connection
  * or the background alike. */
 export async function catchUp(
 	code: string,
 	sessionId: string
 ): Promise<{ ok: true; state: RoomPublicState } | Refusal> {
-	const state = await getPublicState(code, sessionId);
-	if (!state) return refuse('room_not_found');
-	const revealedRole = await getRevealedRoleIfAny(code, sessionId);
-	if (revealedRole) emitToSession(sessionId, { kind: 'YourRole', role: revealedRole });
-	await replayTurnPromptIfAny(code, sessionId);
-	return { ok: true, state };
+	// Under the room lock, so the state and what's replayed are one moment
+	// of the room - never half a stop, a Re-deal or a stage change.
+	return withRoomLock(code, async () => {
+		const state = await getPublicState(code, sessionId);
+		if (!state) return refuse('room_not_found');
+		if (!(await replayGameInfo(code, sessionId))) {
+			const revealedRole = await getRevealedRoleIfAny(code, sessionId);
+			if (revealedRole) emitToSession(sessionId, { kind: 'YourRole', role: revealedRole });
+		}
+		return { ok: true as const, state };
+	});
 }
 
 /** The Host's role setup: dealt, and the room moves to SEATING. */
@@ -124,13 +130,18 @@ export async function takeSeat(
 
 /** Shows the player the role dealt to their seat - to them alone. */
 export async function revealRole(code: string, sessionId: string): Promise<AckResponse> {
-	const seat = await seatOf(code, sessionId);
-	if (seat === null) return refuse('not_seated');
-	const role = await currentRoleOfSeat(code, seat);
-	if (!role) return refuse('no_role_assigned');
-	await markRevealed(code, sessionId);
-	emitToSession(sessionId, { kind: 'YourRole', role });
-	return { ok: true };
+	// Under the room lock, so a Re-deal can't land between reading the card and
+	// telling the phone: the old card would arrive after the news that it's
+	// gone, and the phone would show it until the game started.
+	return withRoomLock(code, async () => {
+		const seat = await seatOf(code, sessionId);
+		if (seat === null) return refuse('not_seated');
+		const role = await currentRoleOfSeat(code, seat);
+		if (!role) return refuse('no_role_assigned');
+		await markRevealed(code, sessionId);
+		emitToSession(sessionId, { kind: 'YourRole', role });
+		return { ok: true };
+	});
 }
 
 export async function rerollRoles(code: string, sessionId: string): Promise<AckResponse> {
@@ -138,11 +149,10 @@ export async function rerollRoles(code: string, sessionId: string): Promise<AckR
 		const room = await readRoomHash(code);
 		if (room?.phase !== 'SEATING') return refuse('invalid_phase');
 		await redeal(code);
+		emitToRoom(code, { kind: 'RolesRerolled' });
 		return null;
 	});
-	if (done) return done;
-	emitToRoom(code, { kind: 'RolesRerolled' });
-	return { ok: true };
+	return done ?? { ok: true };
 }
 
 /** Start game, in one step: under the room lock the seats are locked, the
@@ -211,11 +221,10 @@ export async function stopGame(code: string, sessionId: string): Promise<AckResp
 		const room = await readRoomHash(code);
 		if (!room || room.phase === 'LOBBY') return refuse('invalid_phase');
 		await resetToSeating(code);
+		await announceBackToSeating(code);
 		return null;
 	});
-	if (done) return done;
-	await announceBackToSeating(code);
-	return { ok: true };
+	return done ?? { ok: true };
 }
 
 /** Leave (see GLOSSARY.md): the Host leaving closes the room; a player

@@ -40,6 +40,13 @@ describe('a one-seat pick', () => {
 			action: { role: 'WEREWOLF', targetSeat: null }
 		});
 	});
+
+	it('空守 sends no target', () => {
+		expect(PickDraft.emptyGuard().action).toEqual({
+			kind: 'NightSubmitAction',
+			action: { role: 'GUARD', targetSeat: null }
+		});
+	});
 });
 
 describe('the witch', () => {

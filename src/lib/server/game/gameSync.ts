@@ -4,8 +4,7 @@
 //   runGameAction(code, action) -> lock, decide, reduce, save (gameStateRepo)
 //     -> interpret the result: a night-rule rejection or an ignored action
 //        becomes an error ack, anything else ok
-//     -> mirror the game's phase into the room (roomRepo.recordGamePhase),
-//        broadcast PhaseChanged only when the phase actually changed (an
+//     -> broadcast PhaseChanged only when the phase actually changed (an
 //        unconditional re-broadcast on every vote cast would retrigger
 //        anything the client keys off phase, like narration)
 //     -> hand every other effect to the translator, then tell the room who
@@ -18,7 +17,7 @@
 // this module with a fake io and fake timers.
 
 import { redis } from '../redis';
-import { recordGamePhase, isHost } from '../rooms/roomRepo';
+import { touchRoomTtl, isHost } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
 import type { EngineResult, GameState, RoleId } from '../../game/types';
 import { refuse, type AckResponse } from '../../shared/events';
@@ -79,17 +78,22 @@ function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
 	// mid-turn (上帝之手 kills or recasts them), and that stage must not freeze.
 	if (roleHasLivingHolder(state, role)) return;
 
-	scheduleAdvance(code, state.currentStepKey, fakeStageDurationMs(role));
+	scheduleAdvance(code, state, fakeStageDurationMs(role));
 }
 
-/** Moves the night on from `expectedStepKey` after `ms` - a no-op if the
- * stage has already moved on by then (the host advanced it, or another
- * timer won the race). */
-function scheduleAdvance(code: string, expectedStepKey: string | null, ms: number): void {
+/** Moves the night on from the stage `from` is on after `ms` - a no-op if
+ * the stage has already moved on by then (the host advanced it, or another
+ * timer won the race), or if this is no longer that game or that night: a
+ * restarted game is on the same stage names, and a timer left over from the
+ * stopped one would skip somebody's turn. */
+function scheduleAdvance(code: string, from: GameState, ms: number): void {
+	const { startedAt, round, currentStepKey: expectedStepKey } = from;
 	setTimeout(() => {
-		runGameAction(code, { type: 'ADVANCE_STAGE', expectedStepKey }).catch((err) =>
-			console.error('auto-advance failed', err)
-		);
+		runGameAction(code, (now) =>
+			now.startedAt === startedAt && now.round === round
+				? { type: 'ADVANCE_STAGE', expectedStepKey }
+				: refuse('invalid_phase')
+		).catch((err) => console.error('auto-advance failed', err));
 	}, ms);
 }
 
@@ -101,7 +105,7 @@ function scheduleNightTimers(code: string, before: GameState | null, after: Game
 	const alreadyFinished =
 		before !== null && before.currentStepKey === after.currentStepKey && stageFinished(before);
 	if (stageFinished(after) && !alreadyFinished) {
-		scheduleAdvance(code, after.currentStepKey, postActionPauseMs());
+		scheduleAdvance(code, after, postActionPauseMs());
 	}
 	maybeScheduleFakeStageAdvance(code, after);
 }
@@ -131,9 +135,17 @@ async function syncAndBroadcast(
 	result: EngineResult
 ): Promise<void> {
 	const phase = result.state.phase;
-	await recordGamePhase(code, phase, result.state.round);
+	await touchRoomTtl(code);
 	if (before === null || phase !== before.phase) {
-		emitToRoom(code, { kind: 'PhaseChanged', phase, nightNumber: result.state.round });
+		emitToRoom(code, {
+			kind: 'PhaseChanged',
+			phase,
+			nightNumber: result.state.round,
+			// How a phone learns which game this is (its diary is saved under it).
+			...(before === null && result.state.startedAt
+				? { gameId: String(result.state.startedAt) }
+				: {})
+		});
 	}
 	await translateEffects(code, result.effects);
 	const deadSeats = deadSeatsOf(result.state);

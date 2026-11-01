@@ -152,6 +152,32 @@ describe('time of day', () => {
 });
 
 describe('events', () => {
+	it("a new night takes down the last round's news, and the next dawn does not bring it back", () => {
+		const dayResult = {
+			eliminatedSeat: 2,
+			identity: null,
+			tie: false,
+			followDeathSeat: null,
+			followDeathIdentity: null,
+			idiotRevealed: false
+		};
+		const store = phoneOf(
+			's1',
+			room({ phase: 'DISCUSSION', lastNightDeaths: [1], lastDayResult: dayResult })
+		);
+		store.applyServerEvent({ kind: 'PhaseChanged', phase: 'NIGHT', nightNumber: 2 });
+		expect(store.state?.lastNightDeaths).toBeNull();
+		expect(store.state?.lastDayResult).toBeNull();
+		store.applyServerEvent({ kind: 'PhaseChanged', phase: 'DAWN', nightNumber: 2 });
+		expect(store.state?.lastNightDeaths).toBeNull();
+	});
+
+	it('a hunter shot returning to the day keeps the news up', () => {
+		const store = phoneOf('s1', room({ phase: 'HUNTER_SHOOT', lastNightDeaths: [1] }));
+		store.applyServerEvent({ kind: 'PhaseChanged', phase: 'DISCUSSION', nightNumber: 1 });
+		expect(store.state?.lastNightDeaths).toEqual([1]);
+	});
+
 	it('takes who is dead and who flipped from the server, both ways (上帝之手 REVIVE)', () => {
 		const store = phoneOf('s1', room());
 		store.applyServerEvent({ kind: 'DeathsUpdated', deadSeats: [2, 4], revealedIdiots: [3] });

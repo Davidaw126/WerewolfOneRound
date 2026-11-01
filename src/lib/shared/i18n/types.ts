@@ -46,9 +46,14 @@ export interface Strings {
 	};
 	room: {
 		loading: string;
+		scrollMore: string;
 		shareCode: string;
 		waitingHostConfig: (hostUsername: string) => string;
 		announceButton: string;
+		dawnExplodeButton: string;
+		dawnExplodePick: string;
+		dawnExplodeConfirm: (seat: number) => string;
+		dawnExploded: string;
 		seatingWaitingHost: string;
 		playAgain: string;
 		restarting: string;
@@ -105,6 +110,8 @@ export interface Strings {
 		selectWolfTarget: string;
 		emptyKill: string;
 		descEmptyKill: string;
+		emptyGuard: string;
+		descEmptyGuard: string;
 		selectSeerTarget: string;
 		selectGuardTarget: string;
 		selectWolfBeautyTarget: string;
@@ -163,6 +170,7 @@ export interface Strings {
 		winConditionSideKill: string;
 		winConditionTotalKill: string;
 		wolfAllowEmptyKill: string;
+		guardAllowEmptyGuard: string;
 		sameGuardSameSaveLabel: string;
 		sameGuardSameSaveDies: string;
 		sameGuardSameSaveLives: string;

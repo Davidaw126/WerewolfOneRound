@@ -7,6 +7,7 @@
 	import { strings, roleName, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { RoleId } from '$lib/game/types';
+	import ScrollArea from './ScrollArea.svelte';
 
 	/** `open` is owned by PhaseBanner, whose top-right button toggles it. */
 	let { gameRunning, open }: { gameRunning: boolean; open: boolean } = $props();
@@ -49,7 +50,7 @@
 
 <div>
 	{#if open}
-		<div
+		<ScrollArea
 			id="host-override-panel"
 			class="panel max-h-[50dvh] space-y-3 overflow-y-auto border-ember/30 p-4"
 		>
@@ -131,6 +132,6 @@
 					</button>
 				</div>
 			{/if}
-		</div>
+		</ScrollArea>
 	{/if}
 </div>

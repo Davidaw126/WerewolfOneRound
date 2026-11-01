@@ -47,8 +47,10 @@
 		turn.sent = true;
 		const res = await sendAction(action);
 		if (!res.ok) {
-			// The reason pops up via sendAction's global error handler.
-			turn.sent = false;
+			// The reason pops up via sendAction's global error handler. Already
+			// submitted means this turn is done: a first tap went through and
+			// only its reply was lost.
+			if (res.error !== 'already_submitted') turn.sent = false;
 			return;
 		}
 		gameStore.logActivity(entry);
@@ -181,6 +183,15 @@
 					class="btn-ghost w-full py-2 text-sm"
 				>
 					{t.emptyKill}
+				</button>
+			{/if}
+			{#if role === 'GUARD' && ctx?.guard?.allowEmptyGuard}
+				<!-- 空守: only offered when the room's rules allow it. -->
+				<button
+					onclick={() => submit(PickDraft.emptyGuard())}
+					class="btn-ghost w-full py-2 text-sm"
+				>
+					{t.emptyGuard}
 				</button>
 			{/if}
 		{:else if prompt === 'potions'}

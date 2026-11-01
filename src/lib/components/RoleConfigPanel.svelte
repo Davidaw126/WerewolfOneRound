@@ -11,6 +11,7 @@
 	import type { ValidationIssue } from '$lib/game/rules/setup';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import PixelSprite from './PixelSprite.svelte';
+	import ScrollArea from './ScrollArea.svelte';
 
 	const t = $derived(strings(i18n.lang));
 
@@ -148,7 +149,10 @@
 		{t.roleConfig.title}
 	</h2>
 
-	<div class="min-h-0 flex-1 space-y-3 overflow-y-auto">
+	<ScrollArea
+		wrapClass="flex min-h-0 flex-1 flex-col"
+		class="min-h-0 flex-1 space-y-3 overflow-y-auto"
+	>
 		<div class="panel p-3">
 			<div class="mb-2 text-xs font-bold tracking-widest text-ember uppercase">
 				{t.roleConfig.presets}
@@ -210,6 +214,11 @@
 						<option value="TARGET_LIVES">{t.roleConfig.sameGuardSameSaveLives}</option>
 					</select>
 				</label>
+				{@render toggle(
+					t.roleConfig.guardAllowEmptyGuard,
+					rules.guard.allowEmptyGuard,
+					() => (rules.guard.allowEmptyGuard = !rules.guard.allowEmptyGuard)
+				)}
 			</div>
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
@@ -324,7 +333,7 @@
 				{/each}
 			</div>
 		{/if}
-	</div>
+	</ScrollArea>
 
 	<!-- The role list above is flex-1 (fills all leftover space itself, with
 	     its own internal scroll), so this just naturally lands at the true

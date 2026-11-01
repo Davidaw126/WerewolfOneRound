@@ -69,10 +69,9 @@
 	async function enterNight() {
 		// Night can't be undone, so always one confirm - worded more firmly
 		// when nobody has left the table today.
-		const prompt =
-			markedToday || dayDecided
-				? t.discussion.confirmEnterNightPlain
-				: t.discussion.confirmEnterNight;
+		const prompt = markedToday
+			? t.discussion.confirmEnterNightPlain
+			: t.discussion.confirmEnterNight;
 		if (!(await askConfirm(prompt))) return;
 		if (await run({ kind: 'DayEndDay' })) markedToday = false;
 	}
@@ -173,11 +172,14 @@
 			</button>
 		{/if}
 
-		<button
-			onclick={enterNight}
-			disabled={busy}
-			class="{markedToday || dayDecided ? 'btn-primary' : 'btn-ghost'} w-full py-2 text-sm"
-			>{t.discussion.enterNight}</button
-		>
+		<!-- Once the day is settled the room page pins this at the top instead. -->
+		{#if !dayDecided}
+			<button
+				onclick={enterNight}
+				disabled={busy}
+				class="{markedToday ? 'btn-primary' : 'btn-ghost'} w-full py-2 text-sm"
+				>{t.discussion.enterNight}</button
+			>
+		{/if}
 	{/if}
 </div>

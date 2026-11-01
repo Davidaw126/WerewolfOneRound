@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
+	import type { ClientAction } from '$lib/shared/events';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { roomSession } from '$lib/client/roomSession.svelte';
@@ -19,6 +20,7 @@
 	import DiscussionPanel from '$lib/components/DiscussionPanel.svelte';
 	import HunterShotPrompt from '$lib/components/HunterShotPrompt.svelte';
 	import GameOverScreen from '$lib/components/GameOverScreen.svelte';
+	import DawnSelfExplode from '$lib/components/DawnSelfExplode.svelte';
 	import JudgeAudioPlayer from '$lib/components/JudgeAudioPlayer.svelte';
 	import { keepScreenAwake } from '$lib/client/wakeLock';
 	import PhaseBanner from '$lib/components/PhaseBanner.svelte';
@@ -26,6 +28,7 @@
 	import ActivityLogButton from '$lib/components/ActivityLogButton.svelte';
 	import RoomLogButton from '$lib/components/RoomLogButton.svelte';
 	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
+	import ScrollArea from '$lib/components/ScrollArea.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -79,10 +82,19 @@
 	async function startGame() {
 		// One step on the server: locks the seats, checks the setup against
 		// who sat down, and deals - or refuses with the seats left open.
-		await sendAction({ kind: 'RoomStartGame' });
+		await hostAction({ kind: 'RoomStartGame' });
 	}
 	async function rerollRoles() {
-		await sendAction({ kind: 'RoomRerollRoles' });
+		await hostAction({ kind: 'RoomRerollRoles' });
+	}
+	// One at a time: a second tap while the first is on its way would re-deal
+	// everyone again, or get a Start or 公布 refused with an error popup.
+	let hostBusy = $state(false);
+	async function hostAction(action: ClientAction) {
+		if (hostBusy) return;
+		hostBusy = true;
+		await sendAction(action);
+		hostBusy = false;
 	}
 	/** Fallback only - players act or confirm for themselves; this is for a
 	 * turn stuck on a phone that died or locked. The host's eyes are shut too. The closing cue is
@@ -97,7 +109,12 @@
 		if (res.ok) gameStore.coupleConfirmed = true;
 	}
 	async function announceNightResults() {
-		await sendAction({ kind: 'NightAnnounceResults' });
+		await hostAction({ kind: 'NightAnnounceResults' });
+	}
+
+	async function enterNightNow() {
+		if (!(await askConfirm(t.discussion.confirmEnterNightPlain))) return;
+		await hostAction({ kind: 'DayEndDay' });
 	}
 
 	let leavingAfterGameOver = $state(false);
@@ -162,8 +179,15 @@
 				     content below is showing - dead seats/voting/etc. are never
 				     blocked on this, so the host can tap it whenever during the day,
 				     not just at one forced moment. -->
-				<button onclick={announceNightResults} class="btn-primary w-full">
+				<button onclick={announceNightResults} disabled={hostBusy} class="btn-primary w-full">
 					{t.room.announceButton}
+				</button>
+				<DawnSelfExplode />
+			{:else if isHost && roomState?.phase === 'DISCUSSION' && roomState.dayDecided}
+				<!-- The day is settled, so this is the Host's one next move: pinned
+				     here rather than below the seats, off-screen at a big table. -->
+				<button onclick={enterNightNow} disabled={hostBusy} class="btn-primary w-full">
+					{t.discussion.enterNight}
 				</button>
 			{/if}
 		</div>
@@ -182,18 +206,19 @@
 		     render flush against the screen's edge, visibly detached from the
 		     column it's actually scrolling. -->
 		<div class="flex min-h-0 flex-1 flex-col">
-			<div
-				class="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4"
+			<ScrollArea
+				wrapClass="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col"
+				class="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4"
 			>
-				{#if gameStore.lastNightDeaths !== null}
+				{#if gameStore.state?.lastNightDeaths}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{formatNightDeaths(gameStore.lastNightDeaths, i18n.lang)}
+						{formatNightDeaths(gameStore.state.lastNightDeaths, i18n.lang)}
 					</div>
 				{/if}
 
-				{#if gameStore.lastDayResult}
+				{#if gameStore.state?.lastDayResult}
 					<div class="panel px-4 py-2 text-sm text-zinc-400">
-						{formatDayResult({ ...gameStore.lastDayResult, lang: i18n.lang })}
+						{formatDayResult({ ...gameStore.state.lastDayResult, lang: i18n.lang })}
 					</div>
 				{/if}
 
@@ -310,7 +335,7 @@
 				{:else if roomState.phase === 'GAME_OVER'}
 					<GameOverScreen />
 				{/if}
-			</div>
+			</ScrollArea>
 		</div>
 
 		{#if roomState.phase !== 'LOBBY'}
@@ -331,9 +356,12 @@
 				{#if roomState.phase === 'SEATING'}
 					{#if isHost}
 						<div class="flex gap-2">
-							<button onclick={rerollRoles} class="btn-ghost flex-1 text-sm">{t.room.reroll}</button
+							<button onclick={rerollRoles} disabled={hostBusy} class="btn-ghost flex-1 text-sm"
+								>{t.room.reroll}</button
 							>
-							<button onclick={startGame} class="btn-primary flex-1">{t.room.startGame}</button>
+							<button onclick={startGame} disabled={hostBusy} class="btn-primary flex-1"
+								>{t.room.startGame}</button
+							>
 						</div>
 					{:else}
 						<p class="text-center text-sm text-zinc-500">{t.room.seatingWaitingHost}</p>
@@ -356,7 +384,7 @@
 					     page - without a cap a tall prompt could crowd the seat
 					     circle above it out of view instead of just this section
 					     scrolling internally. -->
-					<div class="max-h-[45vh] space-y-2 overflow-y-auto">
+					<ScrollArea class="max-h-[45vh] space-y-2 overflow-y-auto">
 						<NightActionPrompt />
 						{#if !gameStore.myTurnRole}
 							{#if stage?.kind === 'COUPLE_REVEAL'}
@@ -397,7 +425,7 @@
 								{t.room.forceContinue}
 							</button>
 						{/if}
-					</div>
+					</ScrollArea>
 				{/if}
 				<div class="flex gap-2">
 					<ActivityLogButton />
