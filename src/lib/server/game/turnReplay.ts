@@ -15,7 +15,7 @@
 import type { GameState, Player } from '../../game/types';
 import { loadGameState } from './gameStateRepo';
 import { emitToSession } from '../socket/emit';
-import { translateEffects } from './effectTranslator';
+import { translateEffects, recipientsOf } from './effectTranslator';
 import { notifyRoleHolders } from '../../game/rules/turnContext';
 import { currentStageRole, isNightPhase, turnUsed } from '../../game/rules/stage';
 
@@ -77,7 +77,8 @@ async function replayTurnPrompt(code: string, state: GameState, player: Player):
 			e.payload.kind === 'YourTurnPrompt' ? { ...e, payload: { ...e.payload, replay: true } } : e
 		);
 	if (effects.length === 0) return;
-	await translateEffects(code, effects);
+	// Only this player's own effects are left, so no Host copy is owed.
+	translateEffects(code, effects, recipientsOf(state, null));
 	// A 开枪状态 prompt this seat has confirmed goes back to its waiting line.
 	if (state.stageConfirms?.includes(player.seat)) {
 		emitToSession(player.sessionId, { kind: 'StageConfirmed' });

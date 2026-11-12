@@ -11,29 +11,39 @@
 //   - 'NightActionRejected' - becomes the submitter's ack error
 //     (runGameAction), never a pushed event.
 
-import type { EngineEffect } from '../../game/types';
+import type { EngineEffect, GameState } from '../../game/types';
 import type { PrivateInfo } from '../../shared/events';
 import { emitToRoom, emitToSession } from '../socket/emit';
-import { sessionInSeat, hostSessionOf } from '../rooms/roomRepo';
 import { toPublicStage, toWireWinner } from './projection';
 
-async function emitPrivate(code: string, seat: number, event: PrivateInfo): Promise<void> {
-	const sessionId = await sessionInSeat(code, seat);
-	// A seat with nobody connected (disconnected mid-game) legitimately has no
-	// live session to deliver a private effect to - not an error, just nobody
-	// there to tell.
+/** Who the private effects of one action go to: the session in each seat
+ * and the Host. Taken from the GameState the action just produced, so
+ * delivering needs no further read - and, with nothing to wait for, one
+ * action's messages always go out together and in order. */
+export interface Recipients {
+	sessionOfSeat: Record<number, string>;
+	host: string | null;
+}
+
+export function recipientsOf(state: GameState, host: string | null): Recipients {
+	const sessionOfSeat: Record<number, string> = {};
+	for (const p of Object.values(state.players)) sessionOfSeat[p.seat] = p.sessionId;
+	return { sessionOfSeat, host };
+}
+
+function emitPrivate(to: Recipients, seat: number, event: PrivateInfo): void {
+	const sessionId = to.sessionOfSeat[seat];
 	if (sessionId) emitToSession(sessionId, event);
 }
 
 /** S4: the host-only counterpart to emitToRoom - for information (which role
  * is acting, that a role just submitted) that would out a role's holder if
  * every player received it. */
-async function emitToHost(code: string, event: PrivateInfo): Promise<void> {
-	const host = await hostSessionOf(code);
-	if (host) emitToSession(host, event);
+function emitToHost(to: Recipients, event: PrivateInfo): void {
+	if (to.host) emitToSession(to.host, event);
 }
 
-export async function translateEffects(code: string, effects: EngineEffect[]): Promise<void> {
+export function translateEffects(code: string, effects: EngineEffect[], to: Recipients): void {
 	for (const effect of effects) {
 		const payload = effect.payload;
 		const seat = effect.seat!;
@@ -69,13 +79,13 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'YourRole':
 			case 'CoupleRevealed':
 			case 'YourTurnPrompt':
-				await emitPrivate(code, seat, payload);
+				emitPrivate(to, seat, payload);
 				continue;
 
 			// S4: acknowledges a role's submission - to the Host only, since
 			// telling the room would out that role's holder as having acted.
 			case 'NightActionAck':
-				await emitToHost(code, payload);
+				emitToHost(to, payload);
 				continue;
 
 			// --- Reshaped or split --------------------------------------------
@@ -83,10 +93,8 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				// 改变身份 goes only to that seat's player and the Host: a
 				// room-wide notice would point every player at that seat.
 				if (payload.overrideKind === 'SET_ROLE') {
-					const [playerSession, host] = await Promise.all([
-						sessionInSeat(code, payload.seat),
-						hostSessionOf(code)
-					]);
+					const playerSession = to.sessionOfSeat[payload.seat];
+					const host = to.host;
 					if (playerSession)
 						emitToSession(playerSession, {
 							kind: 'RoleChangedByHost',
@@ -105,7 +113,7 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				// gets a private, full copy (with role) so JudgeAudioPlayer knows
 				// what to narrate - see PublicNightStage's own comment.
 				emitToRoom(code, { kind: 'StageChanged', stage: toPublicStage(payload.stage) });
-				await emitToHost(code, { kind: 'HostStageChanged', stage: payload.stage });
+				emitToHost(to, { kind: 'HostStageChanged', stage: payload.stage });
 				continue;
 
 			case 'NightResultsAnnounced':
@@ -122,7 +130,7 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 				continue;
 
 			case 'SeerResult':
-				await emitPrivate(code, seat, {
+				emitPrivate(to, seat, {
 					kind: 'SeerResult',
 					targetSeat: payload.targetSeat,
 					isWolf: payload.isBad
@@ -132,7 +140,7 @@ export async function translateEffects(code: string, effects: EngineEffect[]): P
 			case 'ThiefChoice':
 				// The engine's buried pile is only ever empty or 2 cards.
 				if (payload.buried.length !== 2) continue;
-				await emitPrivate(code, seat, {
+				emitPrivate(to, seat, {
 					kind: 'ThiefChoice',
 					buried: [payload.buried[0], payload.buried[1]]
 				});

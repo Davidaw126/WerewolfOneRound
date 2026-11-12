@@ -1,11 +1,11 @@
 import { loadGameState } from '../../game/gameStateRepo';
-import { runGameAction } from '../../game/gameSync';
+import { runGameAction, asSeat } from '../../game/gameSync';
 import { stageOf } from '../../game/projection';
 import { currentStage, currentStageRole } from '../../../game/rules/stage';
 import { emitToRoom } from '../emit';
 import { refuse, type AckResponse, type NightActionSubmission } from '../../../shared/events';
 import type { NightActions, Player, RoleId } from '../../../game/types';
-import { requireRoomCode, requireSeat, requireHost, type GameSocket } from './helpers';
+import { requireRoomCode, requireHost, type GameSocket } from './helpers';
 
 // The pause after a finished turn, the 假环节 timing and the stale-timer
 // guard all live in gameSync.ts's runGameAction.
@@ -61,27 +61,29 @@ export async function handleNightSubmitAction(
 	action: NightActionSubmission
 ): Promise<AckResponse> {
 	const code = await requireRoomCode(socket);
-	const seat = await requireSeat(code, socket.data.sessionId);
 
-	return runGameAction(code, (state) => {
-		// The server-side role-match check that closed the old app's cheating
-		// vector: a client can only ever submit an action for the role they
-		// were actually dealt, never an arbitrary claimed role. Read from the
-		// LIVE GameState, not a static identities snapshot - a 盗贼 swap changes
-		// this mid-game, and this must reflect that.
-		const roleId = action.role;
-		const player = state.players[seat];
-		if (!player || player.role !== roleId) {
-			return refuse('not_your_role');
-		}
-		// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
-		// 恶灵骑士 would otherwise be read as their own skill's target.
-		const nightAction =
-			currentStageRole(state) === 'WEREWOLF' && 'targetSeat' in action
-				? { wolfKillTarget: action.targetSeat }
-				: buildNightAction(action, player);
-		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction };
-	});
+	return runGameAction(
+		code,
+		asSeat(socket.data.sessionId, (state, seat) => {
+			// The server-side role-match check that closed the old app's cheating
+			// vector: a client can only ever submit an action for the role they
+			// were actually dealt, never an arbitrary claimed role. Read from the
+			// LIVE GameState, not a static identities snapshot - a 盗贼 swap changes
+			// this mid-game, and this must reflect that.
+			const roleId = action.role;
+			const player = state.players[seat];
+			if (!player || player.role !== roleId) {
+				return refuse('not_your_role');
+			}
+			// In the pack's kill turn every wolf's pick is the kill - a 狼美人 or
+			// 恶灵骑士 would otherwise be read as their own skill's target.
+			const nightAction =
+				currentStageRole(state) === 'WEREWOLF' && 'targetSeat' in action
+					? { wolfKillTarget: action.targetSeat }
+					: buildNightAction(action, player);
+			return { type: 'SUBMIT_NIGHT_ACTION', seat, role: roleId, action: nightAction };
+		})
+	);
 }
 
 /** A feared player (恶灵骑士) ends their turn without acting. The engine only
@@ -89,21 +91,20 @@ export async function handleNightSubmitAction(
  * the same auto-advance as a real action, so the pause is indistinguishable. */
 export async function handleNightPass(socket: GameSocket): Promise<AckResponse> {
 	const code = await requireRoomCode(socket);
-	const seat = await requireSeat(code, socket.data.sessionId);
-	return runGameAction(code, (state) => {
-		const player = state.players[seat];
-		if (!player) return refuse('not_your_role');
-		if (state.fearedSeat !== seat) return refuse('not_feared');
-		return { type: 'SUBMIT_NIGHT_ACTION', seat, role: player.role, action: {} };
-	});
+	return runGameAction(
+		code,
+		asSeat(socket.data.sessionId, (state, seat) => {
+			if (state.fearedSeat !== seat) return refuse('not_feared');
+			return { type: 'SUBMIT_NIGHT_ACTION', seat, role: state.players[seat].role, action: {} };
+		})
+	);
 }
 
 export async function handleNightConfirmStage(socket: GameSocket): Promise<AckResponse> {
 	const code = await requireRoomCode(socket);
-	const seat = await requireSeat(code, socket.data.sessionId);
 	return runGameAction(
 		code,
-		{ type: 'CONFIRM_STAGE', seat },
+		asSeat(socket.data.sessionId, (_state, seat) => ({ type: 'CONFIRM_STAGE', seat })),
 		{
 			// 情侣相认 shows the same button on every phone, so a non-lover's tap
 			// must look exactly like a lover's - no error popup to give it away.

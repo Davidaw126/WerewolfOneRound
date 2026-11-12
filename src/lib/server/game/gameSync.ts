@@ -11,15 +11,15 @@
 //        is dead if that changed (DeathsUpdated - the phones' only source)
 //     -> arm the night's pacing timers.
 //
-// Handlers only check who is asking (requireHost / requireSeat) and say what
-// they want; everything after that lives here. Messages go out through
+// Handlers only say who is asking (the `host` option, asSeat) and what they
+// want; everything after that lives here. Messages go out through
 // socket/emit.ts's io instance and timers through setTimeout, so tests run
 // this module with a fake io and fake timers.
 
 import { redis } from '../redis';
-import { touchRoomTtl, isHost } from '../rooms/roomRepo';
+import { touchRoomTtl, isHost, hostSessionOf } from '../rooms/roomRepo';
 import { emitToRoom } from '../socket/emit';
-import type { EngineResult, GameState, RoleId } from '../../game/types';
+import type { EngineAction, EngineResult, GameState, RoleId } from '../../game/types';
 import { refuse, type AckResponse } from '../../shared/events';
 import type { ActionErrorCode } from '../../shared/actionErrors';
 import { STATUS_STAGE_ROLES } from '../../game/roleMeta';
@@ -31,7 +31,7 @@ import {
 	roleHasLivingHolder,
 	stageFinished
 } from '../../game/rules/stage';
-import { translateEffects } from './effectTranslator';
+import { translateEffects, recipientsOf } from './effectTranslator';
 import { deadSeatsOf, revealedIdiotsOf } from './projection';
 import {
 	applyGameAction,
@@ -147,7 +147,9 @@ async function syncAndBroadcast(
 	result: EngineResult
 ): Promise<void> {
 	const phase = result.state.phase;
-	await touchRoomTtl(code);
+	// The one read before anything goes out; from here to the last message
+	// nothing waits, so two actions' messages can't interleave.
+	const to = recipientsOf(result.state, await hostSessionOf(code));
 	if (before === null || phase !== before.phase) {
 		emitToRoom(code, {
 			kind: 'PhaseChanged',
@@ -159,7 +161,7 @@ async function syncAndBroadcast(
 				: {})
 		});
 	}
-	await translateEffects(code, result.effects);
+	translateEffects(code, result.effects, to);
 	const deadSeats = deadSeatsOf(result.state);
 	const revealedIdiots = revealedIdiotsOf(result.state);
 	if (
@@ -170,6 +172,7 @@ async function syncAndBroadcast(
 		emitToRoom(code, { kind: 'DeathsUpdated', deadSeats, revealedIdiots });
 	}
 	scheduleNightTimers(code, before, result.state);
+	await touchRoomTtl(code);
 }
 
 const sameSeats = (a: number[], b: number[]) =>
@@ -180,6 +183,18 @@ const NOT_HOST: Refusal = refuse('not_host');
 /** A Host check that runs under the room lock, together with the write. */
 function hostCheck(code: string, sessionId: string): () => Promise<Refusal | null> {
 	return async () => ((await isHost(code, sessionId)) ? null : NOT_HOST);
+}
+
+/** A seated player's action. Their seat is read from the game itself, under
+ * the lock, in the same step as the action it's for. */
+export function asSeat(
+	sessionId: string,
+	act: (state: GameState, seat: number) => EngineAction | Refusal
+): ActionInput {
+	return (state) => {
+		const player = Object.values(state.players).find((p) => p.sessionId === sessionId);
+		return player ? act(state, player.seat) : refuse('not_seated');
+	};
 }
 
 export interface RunOptions {

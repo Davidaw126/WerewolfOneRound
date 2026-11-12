@@ -1,6 +1,6 @@
 import type { Socket } from 'socket.io';
 import type { SocketData } from '../types';
-import { isHost, seatOf } from '../../rooms/roomRepo';
+import { isHost } from '../../rooms/roomRepo';
 import { getSession } from '../../session';
 import { ActionError } from '../actionError';
 
@@ -21,10 +21,4 @@ export async function requireRoomCode(socket: GameSocket): Promise<string> {
 
 export async function requireHost(code: string, sessionId: string): Promise<void> {
 	if (!(await isHost(code, sessionId))) throw new ActionError('not_host');
-}
-
-export async function requireSeat(code: string, sessionId: string): Promise<number> {
-	const seat = await seatOf(code, sessionId);
-	if (seat === null) throw new ActionError('not_seated');
-	return seat;
 }
