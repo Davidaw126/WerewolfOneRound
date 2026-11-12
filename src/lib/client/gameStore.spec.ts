@@ -235,3 +235,32 @@ describe('events', () => {
 		expect(store.roomLog.at(-1)?.line).toEqual({ key: 'gameOver', args: ['wolves'] });
 	});
 });
+
+describe('a wolf’s teammates', () => {
+	const packPrompt = (teammateSeats: number[]) =>
+		({
+			kind: 'YourTurnPrompt',
+			role: 'WEREWOLF',
+			context: { seat: 1, packKill: true, wolf: { teammateSeats } }
+		}) as const;
+
+	it('go in the diary once, again only when they change, and onto the card', () => {
+		const store = phoneOf('s1', room({ phase: 'NIGHT' }));
+		expect(store.teammates).toEqual([]);
+		store.applyPrivateEvent(packPrompt([3, 4]));
+		store.applyPrivateEvent(packPrompt([3, 4]));
+		store.applyPrivateEvent(packPrompt([4]));
+		const noted = store.activityLog.filter((e) => e.line.key === 'wolfTeammates');
+		expect(noted.map((e) => renderLine(e.line, 'zh'))).toEqual([
+			'你的狼队友：3号、4号',
+			'你的狼队友：4号'
+		]);
+		expect(store.teammates).toEqual([4]);
+	});
+
+	it('a lone wolf has nothing to note', () => {
+		const store = phoneOf('s1', room({ phase: 'NIGHT' }));
+		store.applyPrivateEvent(packPrompt([]));
+		expect(store.activityLog).toEqual([]);
+	});
+});

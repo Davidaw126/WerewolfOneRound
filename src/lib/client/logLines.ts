@@ -23,6 +23,7 @@ import {
 	formatShotStatus,
 	formatRoomClosedByHost,
 	formatPlayerLeftMidGame,
+	seatLabel,
 	type Lang,
 	type Strings
 } from '$lib/shared/i18n';
@@ -56,6 +57,11 @@ const LINES = {
 	shotStatus: (lang: Lang, canShoot: boolean) => formatShotStatus(canShoot, lang),
 	roomClosedByHost: (lang: Lang) => formatRoomClosedByHost(lang),
 	playerLeftMidGame: (lang: Lang, seat: number | null) => formatPlayerLeftMidGame(seat, lang),
+	/** A wolf's living teammates, as their kill turn last showed them. */
+	wolfTeammates: (lang: Lang, seats: number[]) =>
+		strings(lang).nightPrompt.wolfTeammates(
+			seats.map((s) => seatLabel(s, lang)).join(lang === 'zh' ? '、' : ', ')
+		),
 	/** The witch's night in one line: what she saved and/or poisoned. */
 	witchNight: (lang: Lang, saved: number | null, poisoned: number | null) => {
 		const t = strings(lang).nightPrompt;

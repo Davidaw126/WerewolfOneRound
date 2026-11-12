@@ -369,6 +369,16 @@ export class GameStore {
 		};
 	}
 
+	/** A wolf's living teammates, as last noted in the diary (kept across a
+	 * reload with it) - for the role card. Empty for everyone else. */
+	get teammates(): number[] {
+		for (let i = this.activityLog.length - 1; i >= 0; i--) {
+			const entry = this.activityLog[i].line;
+			if (entry.key === 'wolfTeammates') return entry.args[0];
+		}
+		return [];
+	}
+
 	/** A line everyone at the table learned: into the diary (marked public)
 	 * and the room log. */
 	private logPublic(line: LogLine): void {
@@ -796,6 +806,11 @@ export class GameStore {
 				const role = event.role;
 				this.pendingTurnRole = role;
 				this.pendingTurnContext = event.context;
+				// A wolf otherwise sees their teammates only while the kill turn
+				// is open: note them (and any change - a death, a 野孩子 joining).
+				const pack = event.context.wolf?.teammateSeats ?? [];
+				if (pack.length > 0 && JSON.stringify(pack) !== JSON.stringify(this.teammates))
+					this.logActivity(logLine('wolfTeammates', pack));
 				if (event.replay) {
 					// Re-sent after a reconnect/reload (server's turnReplay.ts) -
 					// this stage's narration already played while we were away, so

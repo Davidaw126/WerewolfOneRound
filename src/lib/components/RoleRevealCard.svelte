@@ -4,7 +4,7 @@
 	import { sendAction } from '$lib/client/socket';
 	import { line as logLine } from '$lib/client/logLines';
 	import RoleFace from './RoleFace.svelte';
-	import { strings } from '$lib/shared/i18n';
+	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 
 	const t = $derived(strings(i18n.lang));
@@ -79,6 +79,20 @@
 			transition:scale={{ duration: 150, start: 0.85 }}
 		>
 			<RoleFace role={gameStore.myRole} size="lg" showTeam={false} />
+			<!-- What only this player knows about the table, on the same
+			     hold-to-view card as the role itself. -->
+			{#if gameStore.teammates.length > 0}
+				<p class="mt-3 text-center text-sm text-wolf">
+					{t.nightPrompt.wolfTeammates(
+						gameStore.teammates.map((s) => seatLabel(s, i18n.lang)).join('、')
+					)}
+				</p>
+			{/if}
+			{#if gameStore.myPartnerSeat !== null}
+				<p class="mt-2 text-center text-sm text-lav">
+					💕 {t.room.coupleLinked(gameStore.myPartnerSeat)}
+				</p>
+			{/if}
 			<p class="mt-3 text-center text-[11px] text-zinc-500">{t.roleReveal.releaseToHide}</p>
 		</div>
 	</div>
