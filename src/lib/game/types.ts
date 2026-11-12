@@ -275,7 +275,11 @@ export interface Player {
 
 	// --- MUST NOT be sent to any other player - see viewFilter.ts (M4) ---
 	role: RoleId;
-	convertedToWolf: boolean; // 野孩子 (M7)
+	/** 野孩子 whose idol died: from then on their `role` is WEREWOLF (they
+	 * wake with the pack, wolves see them, the seer reads them as bad). */
+	convertedToWolf: boolean;
+	/** They've been told - held back until the idol's death is public. */
+	conversionTold?: boolean;
 	thiefExtraCards?: RoleId[]; // 盗贼's buried pair, visible only to the thief
 
 	// --- Public fields ---
@@ -533,6 +537,8 @@ export type EnginePayload =
 	  }
 	| { kind: 'NightActionAck'; role: RoleId }
 	| { kind: 'YourRole'; role: RoleId }
+	/** 野孩子: your idol is dead, you are a wolf now. */
+	| { kind: 'WildChildConverted' }
 	| { kind: 'SeerResult'; targetSeat: Seat; isBad: boolean }
 	| { kind: 'CoupleRevealed'; partnerSeat: Seat }
 	| { kind: 'ThiefChoice'; buried: RoleId[] }

@@ -273,7 +273,13 @@ export function cascadeDeaths(state: GameState, initial: Death[], opts: CascadeO
 		// convertedToWolf, checked again by checkWinCondition/getCamp)
 		if (state.wildChildIdol === d.seat && state.wildChildSeat != null) {
 			const child = state.players[state.wildChildSeat];
-			if (child && !child.isDead) child.convertedToWolf = true;
+			if (child && !child.isDead && !child.convertedToWolf) {
+				child.convertedToWolf = true;
+				// A real change of card, not just of the win count: from here
+				// they wake with the pack and the wolves see them as one of
+				// their own. They're told once the death is public (engine.ts).
+				child.role = 'WEREWOLF';
+			}
 		}
 
 		// T4: 警徽流 - blocking, handled by the IO shell (host picks transfer-or-tear)

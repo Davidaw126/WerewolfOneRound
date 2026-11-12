@@ -126,6 +126,8 @@ export const en: Strings = {
 				: `Teammate seat ${bySeat} chose to kill seat ${target} — close your eyes`,
 		roleDoneByOther: 'Someone else with this role already acted tonight — close your eyes',
 		roleChangedForYou: 'The host changed your role with God Mode — check your card',
+		wildChildConverted:
+			'Your idol is dead. You are a werewolf from now on — wake with the wolves at night',
 		fearedTonight: 'The Nightmare has filled you with fear - you cannot use your skill tonight',
 		fearedPass: 'OK, skip my turn',
 		descFearedPassed: 'Feared - did not act tonight',

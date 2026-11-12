@@ -248,6 +248,8 @@ export type ServerEvent =
 
 export type PrivateInfo =
 	| { kind: 'YourRole'; role: RoleId }
+	/** 野孩子: your idol is dead and you are a wolf from now on. */
+	| { kind: 'WildChildConverted' }
 	// `replay`: re-sent by a catch-up (see turnReplay.ts) - the phone may
 	// already have it, so it mustn't announce or log it twice.
 	| {

@@ -100,6 +100,7 @@ export interface Strings {
 		packKillChosen: (bySeat: number, target: number | null) => string;
 		roleDoneByOther: string;
 		roleChangedForYou: string;
+		wildChildConverted: string;
 		fearedTonight: string;
 		fearedPass: string;
 		descFearedPassed: string;

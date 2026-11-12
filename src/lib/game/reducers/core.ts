@@ -4,6 +4,7 @@
 import { produce } from 'immer';
 import type { EngineEffect, EngineResult, GameState, RoleId, Seat, Camp } from '../types';
 import { type NightRuleError } from '../rules/nightRules';
+import { revealedCard } from '../rules/winCondition';
 
 // ---------------------------------------------------------------------------
 // withEffects - the immer + side-channel-effects-array pattern every reducer
@@ -30,7 +31,7 @@ export function endGame(draft: GameState, effects: EngineEffect[], winner: Camp)
 	draft.phase = 'GAME_OVER';
 	draft.winner = winner;
 	const identities: Record<Seat, RoleId> = {};
-	for (const p of Object.values(draft.players)) identities[p.seat] = p.role;
+	for (const p of Object.values(draft.players)) identities[p.seat] = revealedCard(p);
 	// Immer revokes every draft proxy once produce() returns - `effects` lives
 	// outside the draft tree, so any array/object read off `draft` must be
 	// copied into a plain value before it's embedded in a payload, or it

@@ -77,6 +77,7 @@ export function translateEffects(code: string, effects: EngineEffect[], to: Reci
 			case 'StageConfirmed':
 			case 'ShotStatus':
 			case 'YourRole':
+			case 'WildChildConverted':
 			case 'CoupleRevealed':
 			case 'YourTurnPrompt':
 				emitPrivate(to, seat, payload);

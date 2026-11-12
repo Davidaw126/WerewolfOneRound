@@ -31,7 +31,10 @@ export async function replayGameInfo(code: string, sessionId: string): Promise<b
 
 	// Everyone is sent their card at the start, whether or not they tapped
 	// to view it during seating.
-	emitToSession(sessionId, { kind: 'YourRole', role: player.role });
+	// A 野孩子 already converted but not yet told (the idol's death is still
+	// secret) keeps seeing the card they know.
+	const card = player.convertedToWolf && !player.conversionTold ? 'WILD_CHILD' : player.role;
+	emitToSession(sessionId, { kind: 'YourRole', role: card });
 
 	if (state.lovers?.includes(player.seat)) {
 		const [a, b] = state.lovers;

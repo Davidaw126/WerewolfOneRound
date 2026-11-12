@@ -19,8 +19,14 @@ import { ROLE_META } from '../roleMeta';
  * isCrossCampLovers uses this specifically to avoid depending on getCamp
  * (which itself calls isCrossCampLovers - baseCamp breaks that cycle). */
 export function baseCamp(player: Player): Camp {
-	if (player.role === 'WILD_CHILD' && player.convertedToWolf) return 'WEREWOLF';
+	if (player.convertedToWolf) return 'WEREWOLF';
 	return ROLE_META[player.role].camp;
+}
+
+/** The card a player is shown to have held when the game is revealed: a
+ * converted 野孩子 is still shown as 野孩子, not as the wolf they became. */
+export function revealedCard(player: Player): RoleId {
+	return player.convertedToWolf ? 'WILD_CHILD' : player.role;
 }
 
 export function isCrossCampLovers(state: GameState): boolean {

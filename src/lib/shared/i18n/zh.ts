@@ -125,6 +125,7 @@ export const zh: Strings = {
 				: `队友 ${bySeat} 号已选择刀 ${target} 号，请闭眼`,
 		roleDoneByOther: '这个身份今晚已经有人行动过了，请闭眼',
 		roleChangedForYou: '房主用上帝之手更改了你的身份，请查看身份牌',
+		wildChildConverted: '你的榜样死了。从现在起你是狼人，夜里和狼人一起睁眼',
 		fearedTonight: '你今晚被恶灵骑士恐惧，无法使用技能',
 		fearedPass: '知道了，跳过本回合',
 		descFearedPassed: '被恐惧，今晚未行动',

@@ -731,6 +731,11 @@ export class GameStore {
 				}
 				break;
 			}
+			case 'WildChildConverted': {
+				this.logActivity(logLine('text', 'nightPrompt', 'wildChildConverted'));
+				this.showInfoPopup(strings(i18n.lang).nightPrompt.wildChildConverted, 'bad', 8000);
+				break;
+			}
 			case 'RoleDoneByOther': {
 				this.roleDoneByOther = true;
 				this.logActivity(logLine('text', 'nightPrompt', 'roleDoneByOther'));

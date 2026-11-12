@@ -1022,6 +1022,87 @@ describe('M7: WILD_CHILD conversion (T3, UT-23)', () => {
 	});
 });
 
+describe('野孩子 whose idol dies joins the pack', () => {
+	const board = {
+		1: 'WEREWOLF',
+		2: 'VILLAGER',
+		3: 'WILD_CHILD',
+		4: 'VILLAGER',
+		5: 'SEER',
+		6: 'VILLAGER',
+		7: 'WITCH'
+	} as const;
+
+	/** Night 1 with seat 3 idolising seat 2 and the wolves killing `victim`. */
+	function toDawn(victim: number) {
+		let { state } = start(board);
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 3,
+			role: 'WILD_CHILD',
+			action: { wildChildIdol: 2 }
+		}));
+		({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: victim }
+		}));
+		while (state.phase !== 'DAWN') ({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
+		return state;
+	}
+
+	/** This spec's games have 遗言 on: the Host taps through it. */
+	function pastLastWords(state: GameState): GameState {
+		while (state.phase === 'LAST_WORDS') ({ state } = reduce(state, { type: 'NEXT_SPEAKER' }));
+		return state;
+	}
+
+	it('is told only once the idol’s death is announced, then wakes with the wolves', () => {
+		const dawn = toDawn(2);
+		// Held back with the night's news: telling them now would leak it.
+		const early = reduce(dawn, { type: 'HOST_OVERRIDE', kind: 'REVIVE', seat: 6 });
+		expect(effectsOfKind(early.effects, 'WildChildConverted')).toHaveLength(0);
+
+		const announced = reduce(dawn, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		const told = effectsOfKind(announced.effects, 'WildChildConverted');
+		expect(told.map((e) => e.seat)).toEqual([3]);
+		expect(
+			effectsOfKind(announced.effects, 'YourRole').some(
+				(e) => e.seat === 3 && payload<{ role: string }>(e).role === 'WEREWOLF'
+			)
+		).toBe(true);
+
+		const night2 = reduce(pastLastWords(announced.state), { type: 'END_DAY' });
+		expect(night2.state.currentStepKey).toBe('role:WEREWOLF');
+		const prompts = effectsOfKind(night2.effects, 'YourTurnPrompt');
+		expect(prompts.map((e) => e.seat).sort()).toEqual([1, 3]);
+		const mine = payload<{ context: { wolf: { teammateSeats: number[] } } }>(
+			prompts.find((e) => e.seat === 1)
+		);
+		expect(mine.context.wolf.teammateSeats).toEqual([3]);
+	});
+
+	it('is told nothing while the idol lives, and is still shown as 野孩子 at the end', () => {
+		const dawn = toDawn(4);
+		const announced = reduce(dawn, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		expect(effectsOfKind(announced.effects, 'WildChildConverted')).toHaveLength(0);
+
+		// The idol dies by day: told at once. Then the game ends.
+		const out = reduce(pastLastWords(announced.state), { type: 'DAY_OUT', seats: [2] });
+		expect(effectsOfKind(out.effects, 'WildChildConverted').map((e) => e.seat)).toEqual([3]);
+		let state = out.state;
+		({ state } = reduce(state, { type: 'HOST_OVERRIDE', kind: 'KILL', seat: 1 }));
+		const end = reduce(state, { type: 'HOST_OVERRIDE', kind: 'KILL', seat: 3 });
+		expect(end.state.phase).toBe('GAME_OVER');
+		const over = payload<{ identities: Record<number, string> }>(
+			effectsOfKind(end.effects, 'GameOver')[0]
+		);
+		expect(over.identities[3]).toBe('WILD_CHILD');
+	});
+});
+
 describe('M7: THIEF forced wolf pick (UT-24)', () => {
 	it('both buried cards being wolf roles rejects "keep original identity"; picking one succeeds', () => {
 		const roleConfig: Partial<Record<RoleId, number>> = {

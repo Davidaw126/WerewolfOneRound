@@ -12,6 +12,7 @@
 
 import type { Camp, GameState, RoleId } from '../../game/types';
 import { currentStage } from '../../game/rules/stage';
+import { revealedCard } from '../../game/rules/winCondition';
 import type {
 	NightStage as LegacyNightStage,
 	PublicNightStage,
@@ -89,6 +90,6 @@ export function winnerOf(state: GameState): Winner | null {
 
 export function identitiesOf(state: GameState): Record<number, RoleId> {
 	const out: Record<number, RoleId> = {};
-	for (const p of Object.values(state.players)) out[p.seat] = p.role;
+	for (const p of Object.values(state.players)) out[p.seat] = revealedCard(p);
 	return out;
 }

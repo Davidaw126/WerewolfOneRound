@@ -146,6 +146,27 @@ export function startGame(params: StartGameParams): EngineResult {
 
 /** The engine's single steady-state entry point (§2.1.2). */
 export function reduce(state: GameState, action: EngineAction): EngineResult {
+	return tellConvertedChild(apply(state, action));
+}
+
+/** A 野孩子 whose idol died is a wolf from that moment, but learns it only
+ * once the death is public - a night death stays secret until 公布, and the
+ * news of their own change would give it away. Checked after every action,
+ * so whichever one makes the death public is the one that tells them. */
+function tellConvertedChild(result: EngineResult): EngineResult {
+	const { wildChildSeat: seat, wildChildIdol: idol, pendingNightDeaths } = result.state;
+	const child = seat === null ? undefined : result.state.players[seat];
+	if (seat === null || !child || !child.convertedToWolf || child.conversionTold) return result;
+	if ((pendingNightDeaths ?? []).some((d) => d.seat === idol)) return result;
+	const told = withEffects(result.state, (draft, effects) => {
+		draft.players[seat].conversionTold = true;
+		effects.push({ kind: 'PRIVATE', seat, payload: { kind: 'YourRole', role: 'WEREWOLF' } });
+		effects.push({ kind: 'PRIVATE', seat, payload: { kind: 'WildChildConverted' } });
+	});
+	return { state: told.state, effects: [...result.effects, ...told.effects] };
+}
+
+function apply(state: GameState, action: EngineAction): EngineResult {
 	switch (action.type) {
 		case 'SUBMIT_NIGHT_ACTION':
 			return handleSubmitNightAction(state, action);
