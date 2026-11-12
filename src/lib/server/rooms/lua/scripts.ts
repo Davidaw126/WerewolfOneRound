@@ -34,6 +34,13 @@ if phase ~= 'SEATING' or lockStatus == '1' then
 	return cjson.encode({ ok = false, error = 'seating_closed' })
 end
 
+-- Only the table's own seats: one beyond it has no card, and its player
+-- would be counted at the start without ever showing in the seat circle.
+local seatCount = tonumber(redis.call('HGET', roomKey, 'numberOfSeats')) or 0
+if tonumber(newSeat) > seatCount then
+	return cjson.encode({ ok = false, error = 'invalid_action' })
+end
+
 local occupant = redis.call('HGET', seatsKey, newSeat)
 if occupant and occupant ~= '' and occupant ~= sessionId then
 	return cjson.encode({ ok = false, error = 'seat_taken' })

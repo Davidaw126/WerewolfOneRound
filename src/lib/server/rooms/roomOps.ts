@@ -174,6 +174,12 @@ export async function startGame(code: string, sessionId: string): Promise<AckRes
 				? refuse(validation.errors[0].code, validation.errors)
 				: refuse('room_not_found');
 		}
+		// Every player needs a card: a seat the deal doesn't cover would start
+		// the game with no role at all.
+		if (params.players.some((p) => !params.deal.identities[String(p.seat)])) {
+			await setSeatsLocked(code, false);
+			return refuse('no_role_assigned');
+		}
 		return params;
 	});
 	if (reply.ok) emitToRoom(code, { kind: 'LockUpdated', locked: true });

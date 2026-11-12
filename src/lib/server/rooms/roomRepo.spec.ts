@@ -175,6 +175,16 @@ describe('seats', () => {
 		});
 	});
 
+	it('rejects a seat number beyond the table', async () => {
+		const code = await room.createRoom(HOST);
+		await room.submitRoomConfigAtomic(code, HOST, config);
+		expect(await room.takeSeatAtomic(code, 's1', 4, 'P1')).toMatchObject({
+			error: 'invalid_action'
+		});
+		expect(await room.seatOf(code, 's1')).toBeNull();
+		expect(await room.takeSeatAtomic(code, 's1', 3, 'P1')).toEqual({ ok: true });
+	});
+
 	it('frees a seat when its player leaves', async () => {
 		const code = await seatedRoom();
 		expect(await room.freeSeat(code, 's2')).toEqual({ vacated: true, redealt: false });
@@ -297,6 +307,18 @@ describe('Leave', () => {
 		expect((await room.readRoomHash(code))?.phase).toBe('SEATING');
 		expect(await loadGameState(code)).toBeNull();
 		expect(await room.seatOf(code, 's2')).toBeNull();
+	});
+
+	it('by someone without a seat mid-round leaves the game running', async () => {
+		const code = await seatedRoom();
+		await startGameWithRoles(code);
+		expect(await room.leaveRoom(code, 'watcher')).toEqual({
+			kind: 'left',
+			vacated: false,
+			redealt: false
+		});
+		expect((await room.readRoomHash(code))?.phase).toBe('FIRST_NIGHT');
+		expect(await loadGameState(code)).not.toBeNull();
 	});
 
 	it('by a player during seating frees their seat', async () => {

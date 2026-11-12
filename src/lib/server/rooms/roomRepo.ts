@@ -229,7 +229,7 @@ export type LeaveOutcome =
 	/** The Host left: the room is gone. */
 	| { kind: 'closed' }
 	/** A player left mid-round: back to SEATING for everyone. */
-	| { kind: 'round_ended'; seat: number | null }
+	| { kind: 'round_ended'; seat: number }
 	/** A player left before (or after) a round. */
 	| { kind: 'left'; vacated: boolean; redealt: boolean }
 	/** The room no longer exists. */
@@ -249,6 +249,9 @@ export async function leaveRoom(code: string, sessionId: string): Promise<LeaveO
 		}
 		if (IN_PROGRESS_PHASES.includes(room.phase)) {
 			const seat = await seatOf(code, sessionId);
+			// Someone who never sat down (the table was full, a second phone)
+			// isn't in the game: their leaving costs the round nothing.
+			if (seat === null) return { kind: 'left', vacated: false, redealt: false };
 			await freeSeat(code, sessionId);
 			await resetToSeating(code);
 			return { kind: 'round_ended', seat };
