@@ -194,7 +194,9 @@
 				disabled={draft.pick.target === null}
 				class="btn-primary w-full"
 			>
-				{t.confirm}
+				{draft.pick.target !== null
+					? t.confirmPicked(seatLabel(draft.pick.target, i18n.lang))
+					: t.confirm}
 			</button>
 			{#if packTurn && ctx?.wolf?.allowEmptyKill}
 				<!-- 空刀: only offered when the room's rules allow it. -->
@@ -267,7 +269,7 @@
 				{/if}
 			{/if}
 			<button onclick={() => submit(draft.potions.submission())} class="btn-primary w-full">
-				{t.confirm}
+				{t.witchConfirm(draft.potions.antidote ? killedSeat : null, draft.potions.poison)}
 			</button>
 		{:else if prompt === 'link'}
 			<p class="text-sm text-zinc-400">{t.cupidSelectTwo}</p>
@@ -279,7 +281,11 @@
 				disabled={draft.link.second === null || draft.link.first === null}
 				class="btn-primary w-full"
 			>
-				{t.confirm}
+				{draft.link.first !== null && draft.link.second !== null
+					? t.confirmPicked(
+							`${seatLabel(draft.link.first, i18n.lang)}、${seatLabel(draft.link.second, i18n.lang)}`
+						)
+					: t.confirm}
 			</button>
 		{:else if prompt === 'thief'}
 			{#if gameStore.thiefChoice}

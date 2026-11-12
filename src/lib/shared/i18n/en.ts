@@ -68,7 +68,9 @@ export const en: Strings = {
 		voteWaitAnnounceHost: 'Announce last night’s results to start the vote',
 		voteWaitAnnouncePlayer:
 			"Waiting for the host to announce last night's results — voting hasn't started…",
-		dawnWaitPlayer: "It's morning. Waiting for the host to announce last night's news…"
+		dawnWaitPlayer: "It's morning. Waiting for the host to announce last night's news…",
+		seatedCount: (n, total) => `Seated ${n} / ${total}`,
+		nightPlan: "Tonight's turns"
 	},
 	phaseBanner: {
 		lobby: 'Host is configuring roles',
@@ -140,6 +142,15 @@ export const en: Strings = {
 		wildChildConverted:
 			'Your idol is dead. You are a werewolf from now on — wake with the wolves at night',
 		tapSeatAbove: '👆 Tap a seat above',
+		confirmPicked: (seats) => `Confirm · ${seats}`,
+		witchConfirm: (saved, poisoned) =>
+			saved !== null && poisoned !== null
+				? `Confirm · save seat ${saved}, poison seat ${poisoned}`
+				: saved !== null
+					? `Confirm · save seat ${saved}`
+					: poisoned !== null
+						? `Confirm · poison seat ${poisoned}`
+						: 'Confirm · no potion tonight',
 		pickedSeats: (seats) => `Picked: ${seats}`,
 		fearedTonight: 'The Nightmare has filled you with fear - you cannot use your skill tonight',
 		fearedPass: 'OK, skip my turn',

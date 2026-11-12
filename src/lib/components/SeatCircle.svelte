@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { scale } from 'svelte/transition';
-	import type { RoleId } from '$lib/game/types';
 	import type { SeatState } from '$lib/shared/gameTypes';
 	import { strings, roleName } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
@@ -13,7 +12,6 @@
 		onTake = () => {},
 		disabled = false,
 		hostSessionId = null,
-		myTurnRole = null,
 		highlight = [],
 		fit = false
 	}: {
@@ -23,7 +21,6 @@
 		onTake?: (seat: number) => void;
 		disabled?: boolean;
 		hostSessionId?: string | null;
-		myTurnRole?: RoleId | null;
 		/** Seats the latest news is about (last night's dead, today's exits). */
 		highlight?: number[];
 		/** Shrink to the height left too, not only the width - for the night,
@@ -56,7 +53,6 @@
 		{@const angle = (i / seats.length) * 2 * Math.PI - Math.PI / 2}
 		{@const x = 50 + 42 * Math.cos(angle)}
 		{@const y = 50 + 42 * Math.sin(angle)}
-		{@const isMyTurn = seat.seatNumber === mySeat && myTurnRole !== null}
 		{@const canPick = picking?.pickable(seat.seatNumber) ?? false}
 		{@const tone = picking?.picked(seat.seatNumber) ?? null}
 		{@const inNews = highlight.includes(seat.seatNumber)}
@@ -86,7 +82,7 @@
 				{seat.isDead && !inNews ? 'dead-pop opacity-55 grayscale saturate-0' : ''}
 				{seat.isDead && inNews ? 'dead-pop opacity-80' : ''}
 				{inNews ? 'shadow-[0_0_0_3px_rgba(220,38,38,0.85)]' : ''}
-				{isMyTurn && !picking ? 'animate-pulse shadow-[0_0_0_4px_rgba(245,158,11,0.4)]' : ''}"
+"
 		>
 			{#if seat.sessionId === hostSessionId}
 				<span class="absolute -top-2 -right-1.5 text-xs" title={t.seatCircle.host}>👑</span>

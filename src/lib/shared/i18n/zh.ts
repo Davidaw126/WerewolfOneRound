@@ -69,7 +69,9 @@ export const zh: Strings = {
 		startGame: '开始游戏',
 		voteWaitAnnounceHost: '公布昨晚结果后即可开始投票',
 		voteWaitAnnouncePlayer: '等待房主公布昨晚结果，投票尚未开始…',
-		dawnWaitPlayer: '天亮了，等待房主公布昨晚信息…'
+		dawnWaitPlayer: '天亮了，等待房主公布昨晚信息…',
+		seatedCount: (n, total) => `已坐 ${n} / ${total}`,
+		nightPlan: '今晚的行动顺序'
 	},
 	phaseBanner: {
 		lobby: '房主配置角色中',
@@ -138,6 +140,15 @@ export const zh: Strings = {
 		roleChangedForYou: '房主用上帝之手更改了你的身份，请查看身份牌',
 		wildChildConverted: '你的榜样死了。从现在起你是狼人，夜里和狼人一起睁眼',
 		tapSeatAbove: '👆 点上方的座位选择',
+		confirmPicked: (seats) => `确认 · ${seats}`,
+		witchConfirm: (saved, poisoned) =>
+			saved !== null && poisoned !== null
+				? `确认 · 救 ${saved} 号、毒 ${poisoned} 号`
+				: saved !== null
+					? `确认 · 救 ${saved} 号`
+					: poisoned !== null
+						? `确认 · 毒 ${poisoned} 号`
+						: '确认 · 今晚不用药',
 		pickedSeats: (seats) => `已选：${seats}`,
 		fearedTonight: '你今晚被恶灵骑士恐惧，无法使用技能',
 		fearedPass: '知道了，跳过本回合',

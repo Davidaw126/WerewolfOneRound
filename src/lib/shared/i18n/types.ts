@@ -78,6 +78,8 @@ export interface Strings {
 		voteWaitAnnounceHost: string;
 		voteWaitAnnouncePlayer: string;
 		dawnWaitPlayer: string;
+		seatedCount: (seated: number, total: number) => string;
+		nightPlan: string;
 	};
 	phaseBanner: {
 		lobby: string;
@@ -113,6 +115,8 @@ export interface Strings {
 		roleChangedForYou: string;
 		wildChildConverted: string;
 		tapSeatAbove: string;
+		confirmPicked: (seats: string) => string;
+		witchConfirm: (saved: number | null, poisoned: number | null) => string;
 		pickedSeats: (seats: string) => string;
 		fearedTonight: string;
 		fearedPass: string;

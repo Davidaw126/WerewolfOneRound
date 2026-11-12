@@ -30,6 +30,7 @@
 	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
 	import ScrollArea from '$lib/components/ScrollArea.svelte';
 	import ShareRoom from '$lib/components/ShareRoom.svelte';
+	import HostNightStrip from '$lib/components/HostNightStrip.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -79,6 +80,7 @@
 	// The latest news - last night's dead, today's exile - outlined on the
 	// circle too, so the table sees whose seat it is at a glance. Over once
 	// the game is: the reveal takes its place.
+	const seatedCount = $derived(roomState?.seats.filter((s) => s.sessionId !== null).length ?? 0);
 	const showNews = $derived(roomState?.phase !== 'GAME_OVER');
 	const newsSeats = $derived.by(() => {
 		const day = roomState?.lastDayResult;
@@ -280,7 +282,6 @@
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
 							highlight={newsSeats}
-							myTurnRole={gameStore.myTurnRole}
 							fit
 						/>
 					</div>
@@ -351,6 +352,9 @@
 				style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom))"
 			>
 				{#if roomState.phase === 'SEATING'}
+					<p class="text-center text-sm text-zinc-400 tabular-nums">
+						{t.room.seatedCount(seatedCount, roomState.seats.length)}
+					</p>
 					{#if isHost}
 						<div class="flex gap-2">
 							<button onclick={rerollRoles} disabled={hostBusy} class="btn-ghost flex-1 text-sm"
@@ -429,6 +433,9 @@
 							{:else}
 								<p class="text-center text-sm text-zinc-500">{t.room.waitingOthers}</p>
 							{/if}
+						{/if}
+						{#if isHost}
+							<HostNightStrip />
 						{/if}
 						{#if gameStore.needsHostAdvance}
 							<button
