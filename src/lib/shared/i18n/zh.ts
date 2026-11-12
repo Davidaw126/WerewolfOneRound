@@ -229,16 +229,8 @@ export const zh: Strings = {
 		blackWolfKingHeader: '黑狼王',
 		blackWolfKingCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪',
 		hunterCanShootWhenPoisoned: '被毒死仍可开枪',
-		hunterCanShootWhenExiled: '被放逐可开枪',
 		hunterCanShootWhenWolfKilled: '被狼人刀死可开枪',
-		hunterCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪',
-		idiotHeader: '白痴',
-		idiotRevealOnExile: '被放逐翻牌免死',
-		idiotKeepsSpeechRight: '翻牌后保留发言权',
-		idiotLosesVoteRight: '翻牌后失去投票权',
-		idiotCanRunForSheriffAfterReveal: '翻牌后仍可竞选警长',
-		idiotTearsBadgeIfSheriff: '翻牌若为警长则立即撕警徽',
-		idiotDiesNormallyAtNight: '夜晚仍可正常死亡'
+		hunterCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪'
 	},
 	discussion: {
 		lastWordsTitle: '遗言',

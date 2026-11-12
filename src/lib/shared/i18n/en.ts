@@ -235,16 +235,8 @@ export const en: Strings = {
 		blackWolfKingHeader: 'Black Wolf King',
 		blackWolfKingCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide",
 		hunterCanShootWhenPoisoned: 'Can shoot even when poisoned',
-		hunterCanShootWhenExiled: 'Can shoot when exiled',
 		hunterCanShootWhenWolfKilled: 'Can shoot when killed by wolves',
-		hunterCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide",
-		idiotHeader: 'Idiot',
-		idiotRevealOnExile: 'Reveals card to survive exile',
-		idiotKeepsSpeechRight: 'Keeps speaking rights after reveal',
-		idiotLosesVoteRight: 'Loses voting rights after reveal',
-		idiotCanRunForSheriffAfterReveal: 'Can still run for sheriff after reveal',
-		idiotTearsBadgeIfSheriff: "Badge is torn immediately if they're sheriff",
-		idiotDiesNormallyAtNight: 'Can still die normally at night'
+		hunterCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide"
 	},
 	discussion: {
 		lastWordsTitle: 'Last Words',

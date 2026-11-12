@@ -258,11 +258,6 @@
 					() => (rules.hunter.canShootWhenPoisoned = !rules.hunter.canShootWhenPoisoned)
 				)}
 				{@render toggle(
-					t.roleConfig.hunterCanShootWhenExiled,
-					rules.hunter.canShootWhenExiled,
-					() => (rules.hunter.canShootWhenExiled = !rules.hunter.canShootWhenExiled)
-				)}
-				{@render toggle(
 					t.roleConfig.hunterCanShootWhenWolfKilled,
 					rules.hunter.canShootWhenWolfKilled,
 					() => (rules.hunter.canShootWhenWolfKilled = !rules.hunter.canShootWhenWolfKilled)
@@ -288,42 +283,6 @@
 					)}
 				</div>
 			{/if}
-
-			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-					{t.roleConfig.idiotHeader}
-				</div>
-				{@render toggle(
-					t.roleConfig.idiotRevealOnExile,
-					rules.idiot.revealOnExile,
-					() => (rules.idiot.revealOnExile = !rules.idiot.revealOnExile)
-				)}
-				{@render toggle(
-					t.roleConfig.idiotKeepsSpeechRight,
-					rules.idiot.keepsSpeechRight,
-					() => (rules.idiot.keepsSpeechRight = !rules.idiot.keepsSpeechRight)
-				)}
-				{@render toggle(
-					t.roleConfig.idiotLosesVoteRight,
-					rules.idiot.losesVoteRight,
-					() => (rules.idiot.losesVoteRight = !rules.idiot.losesVoteRight)
-				)}
-				{@render toggle(
-					t.roleConfig.idiotCanRunForSheriffAfterReveal,
-					rules.idiot.canRunForSheriffAfterReveal,
-					() => (rules.idiot.canRunForSheriffAfterReveal = !rules.idiot.canRunForSheriffAfterReveal)
-				)}
-				{@render toggle(
-					t.roleConfig.idiotTearsBadgeIfSheriff,
-					rules.idiot.tearsBadgeIfSheriff,
-					() => (rules.idiot.tearsBadgeIfSheriff = !rules.idiot.tearsBadgeIfSheriff)
-				)}
-				{@render toggle(
-					t.roleConfig.idiotDiesNormallyAtNight,
-					rules.idiot.diesNormallyAtNight,
-					() => (rules.idiot.diesNormallyAtNight = !rules.idiot.diesNormallyAtNight)
-				)}
-			</div>
 		</div>
 
 		{#if issues.length > 0}

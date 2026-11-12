@@ -186,16 +186,8 @@ export interface Strings {
 		blackWolfKingHeader: string;
 		blackWolfKingCanShootWhenLoverSuicide: string;
 		hunterCanShootWhenPoisoned: string;
-		hunterCanShootWhenExiled: string;
 		hunterCanShootWhenWolfKilled: string;
 		hunterCanShootWhenLoverSuicide: string;
-		idiotHeader: string;
-		idiotRevealOnExile: string;
-		idiotKeepsSpeechRight: string;
-		idiotLosesVoteRight: string;
-		idiotCanRunForSheriffAfterReveal: string;
-		idiotTearsBadgeIfSheriff: string;
-		idiotDiesNormallyAtNight: string;
 	};
 	discussion: {
 		lastWordsTitle: string;
