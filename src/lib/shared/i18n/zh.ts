@@ -85,7 +85,13 @@ export const zh: Strings = {
 		stageActing: '角色行动中',
 		roomCode: '房间号',
 		stopGameConfirm: '确定要结束当前游戏吗？所有玩家将返回座位，可使用相同配置重新开始。',
-		stopGameAria: '结束游戏'
+		stopGameAria: '结束游戏',
+		menu: '菜单',
+		menuClose: '关闭',
+		menuName: '我的名字',
+		menuSound: '法官语音 · 超时提醒',
+		menuLanguage: '语言',
+		menuLeave: '离开房间'
 	},
 	errors: {
 		timeout: '网络无响应，请检查连接后重试',

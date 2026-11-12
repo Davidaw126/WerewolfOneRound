@@ -94,6 +94,12 @@ export interface Strings {
 		roomCode: string;
 		stopGameConfirm: string;
 		stopGameAria: string;
+		menu: string;
+		menuClose: string;
+		menuName: string;
+		menuSound: string;
+		menuLanguage: string;
+		menuLeave: string;
 	};
 	/** Refusal codes -> popup text (formatRefusal). Every code needs a line;
 	 * `fallback` is for a reply from a newer server this phone doesn't know. */

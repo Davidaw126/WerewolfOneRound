@@ -85,7 +85,13 @@ export const en: Strings = {
 		roomCode: 'Room',
 		stopGameConfirm:
 			'End the current game? Everyone will return to their seats and can restart with the same setup.',
-		stopGameAria: 'End Game'
+		stopGameAria: 'End Game',
+		menu: 'Menu',
+		menuClose: 'Close',
+		menuName: 'My name',
+		menuSound: 'Judge voice · slow-turn reminder',
+		menuLanguage: 'Language',
+		menuLeave: 'Leave room'
 	},
 	errors: {
 		timeout: 'No response from the server - check your connection and try again',

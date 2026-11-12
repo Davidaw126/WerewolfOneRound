@@ -17,6 +17,9 @@
 	const t = $derived(strings(i18n.lang));
 	const room = $derived(gameStore.state);
 	let godToolsOpen = $state(false);
+	/** The menu sheet: room code, sound, language, name, stop, leave - kept
+	 * out of the header so it carries only the phase and 上帝之手. */
+	let menuOpen = $state(false);
 	const canStop = $derived(
 		isHost && room !== null && room.phase !== 'LOBBY' && room.phase !== 'GAME_OVER'
 	);
@@ -68,6 +71,7 @@
 	});
 
 	async function stopGame() {
+		menuOpen = false;
 		if (!(await askConfirm(t.phaseBanner.stopGameConfirm))) return;
 		await sendAction({ kind: 'RoomStopGame' });
 	}
@@ -96,7 +100,10 @@
 				<!-- Top-right, out of the way of the phase actions; while open it
 				     turns ember and says 收起 so it reads as the way to close it. -->
 				<button
-					onclick={() => (godToolsOpen = !godToolsOpen)}
+					onclick={() => {
+						godToolsOpen = !godToolsOpen;
+						menuOpen = false;
+					}}
 					aria-expanded={godToolsOpen}
 					aria-controls="host-override-panel"
 					class="shrink-0 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition {godToolsOpen
@@ -110,54 +117,81 @@
 					{/if}
 				</button>
 			{/if}
-		</div>
-
-		<!-- Utility strip: room/audio (static, room-wide) on the left,
-		     identity + destructive controls on the right. One row at any width:
-		     the username chip is the only part that gives way (truncates), so
-		     nothing gets pushed off the edge and the bar stays short. -->
-		<div class="flex items-center gap-2">
-			<div class="flex shrink-0 items-center gap-2">
-				<div
-					class="chip whitespace-nowrap"
-					title={t.phaseBanner.roomCode}
-					aria-label="{t.phaseBanner.roomCode} {room.roomCode}"
-				>
-					#{room.roomCode}
-				</div>
-				<!-- Only the host's phone makes any sound (judge voice + night forest). -->
-				{#if isHost}
-					<AudioToggleButtons />
-				{/if}
-				<LanguageToggle />
-			</div>
-			<div class="ml-auto flex min-w-0 items-center justify-end gap-2">
-				<!-- Mid-game the host's strip also carries the stop button; on the
-				     narrowest phones there's no room left for a readable name. -->
-				<div class="chip min-w-0 truncate {canStop ? 'max-[359px]:hidden' : ''}">{username}</div>
-				{#if canStop}
-					<!-- A small, tucked-away header control - deliberately not a full-width
-					     button in the main content flow, so it never sits next to (or
-					     reads as related to) whatever the primary phase action button is
-					     (公布夜晚结果/开始游戏/继续/etc). -->
-					<button
-						onclick={stopGame}
-						aria-label={t.phaseBanner.stopGameAria}
-						title={t.phaseBanner.stopGameAria}
-						class="shrink-0 rounded-full border border-wolf/40 p-1.5 text-wolf transition hover:border-wolf/70 hover:bg-wolf/10"
-					>
-						<svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-							<rect x="5" y="5" width="10" height="10" rx="1.5" />
-						</svg>
-					</button>
-				{/if}
-				<LeaveRoomButton />
-			</div>
+			<button
+				onclick={() => {
+					menuOpen = !menuOpen;
+					godToolsOpen = false;
+				}}
+				aria-expanded={menuOpen}
+				aria-label={t.phaseBanner.menu}
+				title={t.phaseBanner.menu}
+				class="shrink-0 rounded-full border px-2.5 py-1.5 text-sm leading-none transition {menuOpen
+					? 'border-ember bg-ember/15 text-ember'
+					: 'border-line text-zinc-300 hover:border-ember/60 hover:text-ember'}"
+			>
+				☰
+			</button>
 		</div>
 
 		<!-- Always there for the host: the voice test is useful before the game
 		     too. The panel itself only offers kill/revive/改变身份 once a game
 		     is actually running (no cards exist before that). -->
+		{#if menuOpen}
+			<!-- A sheet over the bottom, like 上帝之手; a tap outside closes it. -->
+			<button
+				class="fixed inset-0 z-30 cursor-default bg-black/50"
+				aria-label={t.phaseBanner.menuClose}
+				onclick={() => (menuOpen = false)}
+			></button>
+			<div
+				class="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg px-2"
+				style="padding-bottom: env(safe-area-inset-bottom)"
+			>
+				<div
+					class="panel space-y-3 border-ember/60 p-4 text-sm shadow-[0_-8px_24px_rgba(0,0,0,0.6)]"
+				>
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-zinc-400">{t.phaseBanner.roomCode}</span>
+						<span class="font-display text-lg font-bold tracking-widest text-ember"
+							>{room.roomCode}</span
+						>
+					</div>
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-zinc-400">{t.phaseBanner.menuName}</span>
+						<span class="chip min-w-0 truncate">{username}</span>
+					</div>
+					<!-- Only the host's phone makes any sound (judge voice + night forest). -->
+					{#if isHost}
+						<div class="flex items-center justify-between gap-2">
+							<span class="text-zinc-400">{t.phaseBanner.menuSound}</span>
+							<span class="flex gap-2"><AudioToggleButtons /></span>
+						</div>
+					{/if}
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-zinc-400">{t.phaseBanner.menuLanguage}</span>
+						<LanguageToggle />
+					</div>
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-zinc-400">{t.phaseBanner.menuLeave}</span>
+						<LeaveRoomButton />
+					</div>
+					{#if canStop}
+						<!-- Here, not in the footer: never next to (or read as related
+						     to) the phase's own next move. -->
+						<button
+							onclick={stopGame}
+							class="btn-ghost w-full border-wolf/50 py-2 text-sm text-wolf hover:bg-wolf/10"
+						>
+							■ {t.phaseBanner.stopGameAria}
+						</button>
+					{/if}
+					<button onclick={() => (menuOpen = false)} class="btn-ghost w-full py-2 text-sm">
+						{t.phaseBanner.menuClose}
+					</button>
+				</div>
+			</div>
+		{/if}
+
 		{#if isHost}
 			<HostOverridePanel
 				open={godToolsOpen}
