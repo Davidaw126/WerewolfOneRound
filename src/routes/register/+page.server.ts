@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { createSession } from '$lib/server/session';
+import { createSession, sessionCookieOptions } from '$lib/server/session';
 import { SESSION_COOKIE_NAME } from '$lib/server/cookieName';
 import { checkRegisterRateLimit } from '$lib/server/socket/rateLimit';
 import { strings, type Lang } from '$lib/shared/i18n';
@@ -40,13 +40,7 @@ export const actions: Actions = {
 			return fail(400, { error: t.errorNameTaken });
 		}
 		const { cookieValue } = created;
-		cookies.set(SESSION_COOKIE_NAME, cookieValue, {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
-			maxAge: 60 * 60 * 6
-		});
+		cookies.set(SESSION_COOKIE_NAME, cookieValue, sessionCookieOptions());
 
 		redirect(303, '/lobby');
 	}

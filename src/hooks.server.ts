@@ -1,5 +1,10 @@
 import type { Handle } from '@sveltejs/kit';
-import { decodeCookieValue, getSession, touchSession } from '$lib/server/session';
+import {
+	decodeCookieValue,
+	getSession,
+	touchSession,
+	sessionCookieOptions
+} from '$lib/server/session';
 import { SESSION_COOKIE_NAME } from '$lib/server/cookieName';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -16,6 +21,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 			};
 			// Fire-and-forget: don't block the request on refreshing the TTL.
 			touchSession(sessionId).catch(() => {});
+			// The cookie's own life is renewed with it: set once at registration,
+			// it ran out mid-evening however active the player was.
+			if (cookieValue) event.cookies.set(SESSION_COOKIE_NAME, cookieValue, sessionCookieOptions());
 		}
 	}
 

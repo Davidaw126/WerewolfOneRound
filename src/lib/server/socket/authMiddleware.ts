@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io';
-import { decodeCookieValue, getSession } from '../session';
+import { decodeCookieValue, getSession, touchSession } from '../session';
 import { SESSION_COOKIE_NAME } from '../cookieName';
 import { roomChannel, sessionChannel } from './emit';
 import type { SocketData } from './types';
@@ -52,6 +52,10 @@ export function authMiddleware(
 			next(new Error('unauthorized'));
 			return;
 		}
+
+		// A phone that only ever talks over the socket (a whole evening on the
+		// room page) must still keep its login alive.
+		touchSession(sessionId).catch(() => {});
 
 		socket.data.sessionId = sessionId;
 		socket.data.username = session.username;

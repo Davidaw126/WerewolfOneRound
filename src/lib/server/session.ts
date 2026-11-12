@@ -3,7 +3,24 @@ import { nanoid } from 'nanoid';
 import { requireSessionSecret } from './env';
 import { redis } from './redis';
 
-const SESSION_TTL_SECONDS = 6 * 60 * 60; // 6h, matches room TTL
+// Longer than any evening of play. It was 6h, the same as a room - but a
+// room's life is renewed by every game action and a login's wasn't, so 6h
+// after registering a phone that locked and reconnected was turned away
+// mid-game. The cookie carries the same life and is renewed on every page
+// request (hooks.server.ts); the record is also renewed whenever a phone
+// connects or catches up.
+export const SESSION_TTL_SECONDS = 12 * 60 * 60;
+
+/** How the session cookie is set - at registration and on every renewal. */
+export function sessionCookieOptions() {
+	return {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax' as const,
+		secure: process.env.NODE_ENV === 'production',
+		maxAge: SESSION_TTL_SECONDS
+	};
+}
 
 function sign(sessionId: string): string {
 	return createHmac('sha256', requireSessionSecret()).update(sessionId).digest('hex');

@@ -23,7 +23,7 @@ import {
 	getPublicState,
 	getRevealedRoleIfAny
 } from './roomRepo';
-import { setSessionRoom } from '../session';
+import { setSessionRoom, touchSession } from '../session';
 import { emitToRoom, emitToSession, removeSessionFromRoom } from '../socket/emit';
 import { startGameAndBroadcast } from '../game/gameSync';
 import { replayGameInfo } from '../game/turnReplay';
@@ -66,6 +66,8 @@ export async function catchUp(
 	code: string,
 	sessionId: string
 ): Promise<{ ok: true; state: RoomPublicState } | Refusal> {
+	// Still here: keep the login alive (a socket never renews it otherwise).
+	touchSession(sessionId).catch(() => {});
 	// Under the room lock, so the state and what's replayed are one moment
 	// of the room - never half a stop, a Re-deal or a stage change.
 	return withRoomLock(code, async () => {
