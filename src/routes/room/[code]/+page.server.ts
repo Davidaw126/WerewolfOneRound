@@ -1,11 +1,14 @@
 import { redirect } from '@sveltejs/kit';
 import { roomExists } from '$lib/server/rooms/roomRepo';
 import { setSessionRoom } from '$lib/server/session';
+import { roomPath, roomPathFrom } from '$lib/shared/roomLink';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
 	if (!locals.session) {
-		redirect(307, '/register');
+		// A shared link or QR code: pick a name first, then come back here.
+		const back = roomPathFrom(roomPath(params.code));
+		redirect(307, back ? `/register?next=${encodeURIComponent(back)}` : '/register');
 	}
 	if (!(await roomExists(params.code))) {
 		// If the session was still pointing at this now-gone room, clear it -

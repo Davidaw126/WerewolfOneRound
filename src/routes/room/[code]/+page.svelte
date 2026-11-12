@@ -29,6 +29,7 @@
 	import RoomLogButton from '$lib/components/RoomLogButton.svelte';
 	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
 	import ScrollArea from '$lib/components/ScrollArea.svelte';
+	import ShareRoom from '$lib/components/ShareRoom.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -235,14 +236,7 @@
 				{/if}
 
 				{#if roomState.phase === 'LOBBY'}
-					<div class="flex items-center justify-center gap-3">
-						<p class="text-xs text-zinc-500">{t.room.shareCode}</p>
-						<p
-							class="selectable title-glow font-display text-2xl font-black tracking-[0.2em] text-ember"
-						>
-							{data.roomCode}
-						</p>
-					</div>
+					<ShareRoom code={data.roomCode} />
 					{#if isHost}
 						<!-- hostSessionId is assigned at RoomCreate time (see
 						     createRoom), not to whoever submits config first - so
@@ -258,6 +252,9 @@
 						</p>
 					{/if}
 				{:else if roomState.phase === 'SEATING'}
+					{#if !roomState.lockStatus}
+						<ShareRoom code={data.roomCode} />
+					{/if}
 					<!-- Anchored to the top (not vertically centered) of whatever
 					     space is left after the room-code/result blocks above it -
 					     centering here would let an oversized seat circle overflow

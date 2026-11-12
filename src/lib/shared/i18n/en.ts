@@ -35,7 +35,11 @@ export const en: Strings = {
 	room: {
 		loading: 'Loading…',
 		scrollMore: 'Scroll for more',
-		shareCode: 'Share this code to invite friends',
+		invite: 'Invite',
+		scanToJoin: 'Scan to join, or enter the room code',
+		shareLink: 'Share link',
+		linkCopied: 'Link copied',
+		closeInvite: 'Close',
 		waitingHostConfig: (hostUsername) => `Waiting for host ${hostUsername} to set up the room…`,
 		announceButton: "Announce Last Night's Results",
 		dawnExplodeButton: 'A player self-exploded',

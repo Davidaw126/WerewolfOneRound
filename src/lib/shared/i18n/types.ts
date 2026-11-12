@@ -47,7 +47,11 @@ export interface Strings {
 	room: {
 		loading: string;
 		scrollMore: string;
-		shareCode: string;
+		invite: string;
+		scanToJoin: string;
+		shareLink: string;
+		linkCopied: string;
+		closeInvite: string;
 		waitingHostConfig: (hostUsername: string) => string;
 		announceButton: string;
 		dawnExplodeButton: string;

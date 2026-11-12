@@ -3,16 +3,21 @@ import { createSession, sessionCookieOptions } from '$lib/server/session';
 import { SESSION_COOKIE_NAME } from '$lib/server/cookieName';
 import { checkRegisterRateLimit } from '$lib/server/socket/rateLimit';
 import { strings, type Lang } from '$lib/shared/i18n';
+import { roomPathFrom } from '$lib/shared/roomLink';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals }) => {
+/** Where to go once there's a name: the room whose link brought them here
+ * (`?next=`, room paths only), or the lobby. */
+const afterRegistering = (url: URL) => roomPathFrom(url.searchParams.get('next')) ?? '/lobby';
+
+export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.session) {
-		redirect(307, '/lobby');
+		redirect(307, afterRegistering(url));
 	}
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, cookies, getClientAddress, url }) => {
 		const form = await request.formData();
 		// The client's chosen UI language rides along as a hidden field
 		// (LanguageToggle keeps it synced) - register is a plain form POST
@@ -42,6 +47,6 @@ export const actions: Actions = {
 		const { cookieValue } = created;
 		cookies.set(SESSION_COOKIE_NAME, cookieValue, sessionCookieOptions());
 
-		redirect(303, '/lobby');
+		redirect(303, afterRegistering(url));
 	}
 };

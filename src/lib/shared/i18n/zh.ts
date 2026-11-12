@@ -38,7 +38,11 @@ export const zh: Strings = {
 	room: {
 		loading: '加载中…',
 		scrollMore: '下滑查看更多',
-		shareCode: '分享房间号邀请好友',
+		invite: '邀请',
+		scanToJoin: '扫码，或输入房间号加入',
+		shareLink: '分享链接',
+		linkCopied: '链接已复制',
+		closeInvite: '关闭',
 		waitingHostConfig: (hostUsername) => `等待房主 ${hostUsername} 设置房间中…`,
 		announceButton: '公布昨晚信息',
 		dawnExplodeButton: '有玩家自爆',
