@@ -179,6 +179,10 @@ export class RoomSession {
 		if (this.listeners.length > 0) return;
 		this.listeners.push(
 			this.transport.onServerEvent((event) => {
+				// Another room's news - one this phone walked away from without
+				// leaving - must not take over this room's page.
+				if (event.kind === 'StateSnapshot' && this.code && event.state.roomCode !== this.code)
+					return;
 				this.dropOutdatedHeld(event);
 				this.store.applyServerEvent(event);
 				if (event.kind === 'RoomClosed') this.goOut('host_left');

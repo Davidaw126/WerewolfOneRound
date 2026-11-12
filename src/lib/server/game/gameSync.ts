@@ -25,6 +25,7 @@ import type { ActionErrorCode } from '../../shared/actionErrors';
 import { STATUS_STAGE_ROLES } from '../../game/roleMeta';
 import type { StartGameParams } from '../../game/engine';
 import {
+	currentStage,
 	currentStageRole,
 	isNightPhase,
 	roleHasLivingHolder,
@@ -72,6 +73,17 @@ function fakeStageDurationMs(role: RoleId): number {
  * call on every sync: a redundant/stale timer's expectedStepKey simply won't
  * match by the time it fires if the stage already moved on. */
 function maybeScheduleFakeStageAdvance(code: string, state: GameState): void {
+	const stage = currentStage(state);
+	// 情侣相认 with nobody to recognise (the Host forced past 丘比特 before
+	// any link was made): no lover will ever tap 确认, so it's timed like a
+	// status glance too.
+	if (stage?.kind === 'COUPLE_REVEAL') {
+		const lovers = (state.lovers ?? []).filter((seat) => !state.players[seat]?.isDead);
+		if (lovers.length === 0) {
+			scheduleAdvance(code, state, randomMs(3000, 5000) + postActionPauseMs());
+		}
+		return;
+	}
 	const role = currentStageRole(state);
 	if (!role) return;
 	// Not only the always-announced roles: any stage can lose its last holder

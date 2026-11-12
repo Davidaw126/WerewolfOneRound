@@ -2,13 +2,18 @@
 // What each operation changes and who hears about it is roomOps.ts.
 
 import * as ops from '../../rooms/roomOps';
-import { roomChannel } from '../emit';
+import { roomChannel, removeSessionFromRoom } from '../emit';
 import type { RuleConfigOverrides } from '../../../game/ruleSwitches';
 import type { RoleId } from '../../../game/types';
 import type { AckResponse, ActionReply } from '../../../shared/events';
 import { requireRoomCode, type GameSocket } from './helpers';
 
 function enterChannel(socket: GameSocket, code: string): void {
+	// Into another room without leaving the last one (back to the lobby from
+	// a finished game): stop hearing the old room, on every phone of this
+	// session. Their seat there stays theirs until they Leave it.
+	const previous = socket.data.roomCode;
+	if (previous && previous !== code) removeSessionFromRoom(socket.data.sessionId, previous);
 	socket.data.roomCode = code;
 	socket.join(roomChannel(code));
 }

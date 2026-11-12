@@ -356,6 +356,16 @@ describe('staying in step', () => {
 		expect(kinds(transport)).toEqual(['RoomJoin', 'ResyncRequest', 'ResyncRequest']);
 	});
 
+	it('ignores another room’s news (a room this phone walked away from)', async () => {
+		await room.open('123456', 's1');
+		transport.broadcast({
+			kind: 'StateSnapshot',
+			state: { ...state('GAME_OVER'), roomCode: '999999' }
+		});
+		expect(store.state?.roomCode).toBe('123456');
+		expect(store.state?.phase).toBe('SEATING');
+	});
+
 	it('stops listening when the room page goes away', async () => {
 		await room.open('123456', 's1');
 		room.close();

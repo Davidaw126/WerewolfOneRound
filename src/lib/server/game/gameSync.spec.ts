@@ -138,6 +138,28 @@ describe('a night turn nobody alive can take (假环节)', () => {
 	});
 });
 
+describe('情侣相认 with no couple (the Host forced past 丘比特)', () => {
+	it('moves on by itself instead of waiting for a second 强制继续', async () => {
+		const code = await room.createRoom(HOST);
+		const roles = { '1': 'CUPID', '2': 'WEREWOLF', '3': 'SEER', '4': 'VILLAGER' } as const;
+		await startGameAndBroadcast(code, async () => ({
+			roomCode: code,
+			ruleConfig: defaultRuleConfig(),
+			setup: buildSetup({ CUPID: 1, WEREWOLF: 1, SEER: 1, VILLAGER: 1 }),
+			deal: { identities: { ...roles }, buried: null },
+			players: [1, 2, 3, 4].map((seat) => ({ seat, sessionId: `s${seat}`, nickname: `P${seat}` })),
+			now: 1000
+		}));
+		expect(await step(code)).toBe('role:CUPID');
+		await runGameAction(code, { type: 'ADVANCE_STAGE' });
+		expect(await step(code)).toBe('couple_reveal');
+		await elapse(5900);
+		expect(await step(code)).toBe('couple_reveal');
+		await elapse(10_000);
+		expect(await step(code)).toBe('role:WEREWOLF');
+	});
+});
+
 describe('a real night turn', () => {
 	it('answers ok, then waits the pause before calling the next role', async () => {
 		const code = await startedGame();
