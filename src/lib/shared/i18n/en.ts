@@ -67,7 +67,8 @@ export const en: Strings = {
 		startGame: 'Start Game',
 		voteWaitAnnounceHost: 'Announce last night’s results to start the vote',
 		voteWaitAnnouncePlayer:
-			"Waiting for the host to announce last night's results — voting hasn't started…"
+			"Waiting for the host to announce last night's results — voting hasn't started…",
+		dawnWaitPlayer: "It's morning. Waiting for the host to announce last night's news…"
 	},
 	phaseBanner: {
 		lobby: 'Host is configuring roles',
@@ -132,6 +133,8 @@ export const en: Strings = {
 		roleChangedForYou: 'The host changed your role with God Mode — check your card',
 		wildChildConverted:
 			'Your idol is dead. You are a werewolf from now on — wake with the wolves at night',
+		tapSeatAbove: '👆 Tap a seat above',
+		pickedSeats: (seats) => `Picked: ${seats}`,
 		fearedTonight: 'The Nightmare has filled you with fear - you cannot use your skill tonight',
 		fearedPass: 'OK, skip my turn',
 		descFearedPassed: 'Feared - did not act tonight',

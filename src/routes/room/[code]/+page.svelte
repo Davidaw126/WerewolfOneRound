@@ -76,6 +76,18 @@
 	} as const;
 	const phaseBg = $derived(PHASE_BG[gameStore.timeOfDay]);
 
+	// The latest news - last night's dead, today's exile - outlined on the
+	// circle too, so the table sees whose seat it is at a glance. Over once
+	// the game is: the reveal takes its place.
+	const showNews = $derived(roomState?.phase !== 'GAME_OVER');
+	const newsSeats = $derived.by(() => {
+		const day = roomState?.lastDayResult;
+		return [
+			...(roomState?.lastNightDeaths ?? []),
+			...(day?.idiotRevealed ? [] : [day?.eliminatedSeat, day?.followDeathSeat])
+		].filter((n): n is number => typeof n === 'number');
+	});
+
 	async function takeSeat(seatNumber: number) {
 		// A failure (seat taken, name clash) pops up via the global handler.
 		await sendAction({ kind: 'SeatTake', seatNumber });
@@ -111,11 +123,6 @@
 	}
 	async function announceNightResults() {
 		await hostAction({ kind: 'NightAnnounceResults' });
-	}
-
-	async function enterNightNow() {
-		if (!(await askConfirm(t.discussion.confirmEnterNightPlain))) return;
-		await hostAction({ kind: 'DayEndDay' });
 	}
 
 	let leavingAfterGameOver = $state(false);
@@ -174,23 +181,6 @@
 		     scrolling content below gets. -->
 		<div class="mx-auto w-full max-w-lg shrink-0 space-y-2 px-4 pt-4">
 			<PhaseBanner username={data.username} />
-
-			{#if isHost && gameStore.awaitingNightAnnounce}
-				<!-- Purely a reveal broadcast, additive to whatever the phase's own
-				     content below is showing - dead seats/voting/etc. are never
-				     blocked on this, so the host can tap it whenever during the day,
-				     not just at one forced moment. -->
-				<button onclick={announceNightResults} disabled={hostBusy} class="btn-primary w-full">
-					{t.room.announceButton}
-				</button>
-				<DawnSelfExplode />
-			{:else if isHost && roomState?.phase === 'DISCUSSION' && roomState.dayDecided}
-				<!-- The day is settled, so this is the Host's one next move: pinned
-				     here rather than below the seats, off-screen at a big table. -->
-				<button onclick={enterNightNow} disabled={hostBusy} class="btn-primary w-full">
-					{t.discussion.enterNight}
-				</button>
-			{/if}
 		</div>
 
 		<!-- Middle: the only region that scrolls - everything else (header,
@@ -211,14 +201,23 @@
 				wrapClass="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col"
 				class="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4"
 			>
-				{#if gameStore.state?.lastNightDeaths}
-					<div class="panel px-4 py-2 text-sm text-zinc-400">
+				{#if showNews && gameStore.state?.lastNightDeaths}
+					<div
+						class="panel flex items-center gap-2 px-4 py-3 text-base font-semibold {gameStore.state
+							.lastNightDeaths.length > 0
+							? 'border-wolf/60 text-bone'
+							: 'border-village/50 text-village'}"
+					>
+						<span aria-hidden="true">📢</span>
 						{formatNightDeaths(gameStore.state.lastNightDeaths, i18n.lang)}
 					</div>
 				{/if}
 
-				{#if gameStore.state?.lastDayResult}
-					<div class="panel px-4 py-2 text-sm text-zinc-400">
+				{#if showNews && gameStore.state?.lastDayResult}
+					<div
+						class="panel flex items-center gap-2 border-wolf/60 px-4 py-3 text-base font-semibold text-bone"
+					>
+						<span aria-hidden="true">📢</span>
 						{formatDayResult({ ...gameStore.state.lastDayResult, lang: i18n.lang })}
 					</div>
 				{/if}
@@ -274,14 +273,15 @@
 					     itself now lives in the pinned footer below (see there),
 					     so the circle stays fully visible instead of sharing this
 					     space with whatever the prompt's own content height is. -->
-					<div class="flex min-h-0 flex-1 items-start justify-center">
+					<div class="[container-type:size] flex min-h-0 flex-1 items-start justify-center">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
-							onTake={() => {}}
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
+							highlight={newsSeats}
 							myTurnRole={gameStore.myTurnRole}
+							fit
 						/>
 					</div>
 				{:else if group === 'hunter'}
@@ -289,35 +289,35 @@
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
-							onTake={() => {}}
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
+							highlight={newsSeats}
 						/>
 						<div class="w-full">
 							<HunterShotPrompt />
 						</div>
 					</div>
 				{:else if group === 'speech'}
-					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
+					<!-- The day panel is in the pinned footer, like the night prompt:
+					     the circle takes what's left, and the Host taps seats there. -->
+					<div class="[container-type:size] flex min-h-0 flex-1 items-start justify-center">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
-							onTake={() => {}}
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
+							highlight={newsSeats}
+							fit
 						/>
-						<div class="w-full">
-							<DiscussionPanel />
-						</div>
 					</div>
 				{:else if group === 'vote'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
-							onTake={() => {}}
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
+							highlight={newsSeats}
 						/>
 						<div class="w-full">
 							{#if gameStore.awaitingNightAnnounce}
@@ -374,6 +374,22 @@
 							{leavingAfterGameOver ? t.room.leavingBack : t.room.backToLobby}
 						</button>
 					</div>
+				{:else if roomState.phase === 'DAWN'}
+					<!-- The Host's one next move, where every next move lives. The
+					     news can be held while the table elects its 警长 (a wolf may
+					     explode then), so 自爆 sits with it. -->
+					{#if isHost}
+						<button onclick={announceNightResults} disabled={hostBusy} class="btn-primary w-full">
+							{t.room.announceButton}
+						</button>
+						<DawnSelfExplode />
+					{:else}
+						<p class="text-center text-sm text-zinc-400">{t.room.dawnWaitPlayer}</p>
+					{/if}
+				{:else if group === 'speech'}
+					<ScrollArea class="max-h-[55vh] overflow-y-auto">
+						<DiscussionPanel />
+					</ScrollArea>
 				{:else if group === 'night'}
 					<!-- max-h + its own scroll cap: NightActionPrompt's content
 					     height varies a lot by role (a single confirm button vs. a

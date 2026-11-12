@@ -4,6 +4,7 @@
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { strings, seatLabel } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
+	import { seatPick } from '$lib/client/seatPick.svelte';
 
 	const isHost = $derived(gameStore.isHost);
 
@@ -69,9 +70,10 @@
 	async function enterNight() {
 		// Night can't be undone, so always one confirm - worded more firmly
 		// when nobody has left the table today.
-		const prompt = markedToday
-			? t.discussion.confirmEnterNightPlain
-			: t.discussion.confirmEnterNight;
+		const prompt =
+			markedToday || dayDecided
+				? t.discussion.confirmEnterNightPlain
+				: t.discussion.confirmEnterNight;
 		if (!(await askConfirm(prompt))) return;
 		if (await run({ kind: 'DayEndDay' })) markedToday = false;
 	}
@@ -87,8 +89,41 @@
 			: [...outSeats, seatNumber];
 	}
 
-	const isPicked = (seatNumber: number) =>
-		mode === 'out' ? outSeats.includes(seatNumber) : duelTarget === seatNumber;
+	// The Host taps the seats on the circle (seatPick.svelte.ts).
+	$effect(() => {
+		if (!isHost || phase === 'LAST_WORDS') return;
+		return seatPick.claim({
+			pickable: (n) =>
+				!busy &&
+				livingSeats.some((s) => s.seatNumber === n) &&
+				!(mode === 'duel' && duelKnightSeat === n),
+			picked: (n) =>
+				mode === 'out'
+					? outSeats.includes(n)
+						? 'wolf'
+						: null
+					: duelKnightSeat === n
+						? 'ember'
+						: duelTarget === n
+							? 'wolf'
+							: null,
+			tap: tapSeat
+		});
+	});
+
+	const pickedLine = $derived.by(() => {
+		const picked =
+			mode === 'out'
+				? [...outSeats].sort((a, b) => a - b)
+				: duelKnightSeat === null
+					? []
+					: [duelKnightSeat, ...(duelTarget === null ? [] : [duelTarget])];
+		return picked.length > 0
+			? t.nightPrompt.pickedSeats(
+					picked.map((n) => seatLabel(n, i18n.lang)).join(mode === 'out' ? '、' : ' ⚔ ')
+				)
+			: t.nightPrompt.tapSeatAbove;
+	});
 
 	const prompt = $derived(
 		mode === 'out'
@@ -109,9 +144,13 @@
 </script>
 
 <div class="panel space-y-3 p-4">
-	<h3 class="font-display text-lg font-semibold text-ember">
-		{phase === 'LAST_WORDS' ? t.discussion.lastWordsTitle : t.discussion.dayTitle}
-	</h3>
+	<!-- The Host's day console sits under the circle with the header already
+	     saying which day it is: its question is the title. -->
+	{#if !isHost || phase === 'LAST_WORDS'}
+		<h3 class="font-display text-lg font-semibold text-ember">
+			{phase === 'LAST_WORDS' ? t.discussion.lastWordsTitle : t.discussion.dayTitle}
+		</h3>
+	{/if}
 
 	{#if phase === 'LAST_WORDS'}
 		<!-- Only reachable with a 遗言 rule switched back on. -->
@@ -134,26 +173,11 @@
 			{dayDecided ? t.discussion.dayDecided : t.discussion.playerWaiting}
 		</p>
 	{:else}
-		<p class="text-xs text-zinc-400">{prompt}</p>
+		<p class="font-display text-base font-semibold text-ember">{prompt}</p>
 		{#if mode === 'out'}
 			<p class="text-[11px] leading-snug text-zinc-500">{t.discussion.outHint}</p>
 		{/if}
-		<div class="grid grid-cols-4 gap-2">
-			{#each livingSeats as seat (seat.seatNumber)}
-				{@const isKnight = mode === 'duel' && duelKnightSeat === seat.seatNumber}
-				<button
-					onclick={() => tapSeat(seat.seatNumber)}
-					disabled={busy || isKnight}
-					class="seat-btn {isPicked(seat.seatNumber)
-						? 'border-wolf bg-wolf/20 text-wolf'
-						: isKnight
-							? 'border-ember bg-ember/20 text-ember'
-							: ''}"
-				>
-					{seatLabel(seat.seatNumber, i18n.lang)}
-				</button>
-			{/each}
-		</div>
+		<p class="text-base font-semibold text-bone">{pickedLine}</p>
 		<div class="flex gap-2">
 			<button
 				onclick={confirmPick}
@@ -172,14 +196,12 @@
 			</button>
 		{/if}
 
-		<!-- Once the day is settled the room page pins this at the top instead. -->
-		{#if !dayDecided}
-			<button
-				onclick={enterNight}
-				disabled={busy}
-				class="{markedToday ? 'btn-primary' : 'btn-ghost'} w-full py-2 text-sm"
-				>{t.discussion.enterNight}</button
-			>
-		{/if}
+		<!-- The Host's next move once the day is settled: lit then. -->
+		<button
+			onclick={enterNight}
+			disabled={busy}
+			class="{markedToday || dayDecided ? 'btn-primary' : 'btn-ghost'} w-full py-2 text-sm"
+			>{t.discussion.enterNight}</button
+		>
 	{/if}
 </div>

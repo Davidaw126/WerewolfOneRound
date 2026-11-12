@@ -68,7 +68,8 @@ export const zh: Strings = {
 		reroll: '重新分配角色',
 		startGame: '开始游戏',
 		voteWaitAnnounceHost: '公布昨晚结果后即可开始投票',
-		voteWaitAnnouncePlayer: '等待房主公布昨晚结果，投票尚未开始…'
+		voteWaitAnnouncePlayer: '等待房主公布昨晚结果，投票尚未开始…',
+		dawnWaitPlayer: '天亮了，等待房主公布昨晚信息…'
 	},
 	phaseBanner: {
 		lobby: '房主配置角色中',
@@ -130,6 +131,8 @@ export const zh: Strings = {
 		roleDoneByOther: '这个身份今晚已经有人行动过了，请闭眼',
 		roleChangedForYou: '房主用上帝之手更改了你的身份，请查看身份牌',
 		wildChildConverted: '你的榜样死了。从现在起你是狼人，夜里和狼人一起睁眼',
+		tapSeatAbove: '👆 点上方的座位选择',
+		pickedSeats: (seats) => `已选：${seats}`,
 		fearedTonight: '你今晚被恶灵骑士恐惧，无法使用技能',
 		fearedPass: '知道了，跳过本回合',
 		descFearedPassed: '被恐惧，今晚未行动',

@@ -5,8 +5,9 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
-	import { strings, seatLabel } from '$lib/shared/i18n';
+	import { strings } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
+	import { seatPick } from '$lib/client/seatPick.svelte';
 
 	const t = $derived(strings(i18n.lang).room);
 	const seats = $derived(
@@ -14,6 +15,16 @@
 	);
 	let picking = $state(false);
 	let busy = $state(false);
+
+	// The exploding wolf is tapped on the seat circle (seatPick.svelte.ts).
+	$effect(() => {
+		if (!picking) return;
+		return seatPick.claim({
+			pickable: (n) => !busy && seats.some((s) => s.seatNumber === n),
+			picked: () => null,
+			tap: (n) => void pick(n)
+		});
+	});
 
 	async function pick(seat: number) {
 		if (!(await askConfirm(t.dawnExplodeConfirm(seat)))) return;
@@ -29,13 +40,9 @@
 {:else if picking}
 	<div class="panel space-y-2 p-3">
 		<p class="text-xs text-zinc-400">{t.dawnExplodePick}</p>
-		<div class="grid grid-cols-4 gap-2">
-			{#each seats as seat (seat.seatNumber)}
-				<button onclick={() => pick(seat.seatNumber)} disabled={busy} class="seat-btn">
-					{seatLabel(seat.seatNumber, i18n.lang)}
-				</button>
-			{/each}
-		</div>
+		<p class="text-base font-semibold text-bone">
+			{strings(i18n.lang).nightPrompt.tapSeatAbove}
+		</p>
 		<button onclick={() => (picking = false)} class="btn-ghost w-full py-2 text-xs">
 			{strings(i18n.lang).discussion.cancel}
 		</button>

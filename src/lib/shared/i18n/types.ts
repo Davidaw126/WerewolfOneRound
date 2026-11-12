@@ -77,6 +77,7 @@ export interface Strings {
 		startGame: string;
 		voteWaitAnnounceHost: string;
 		voteWaitAnnouncePlayer: string;
+		dawnWaitPlayer: string;
 	};
 	phaseBanner: {
 		lobby: string;
@@ -105,6 +106,8 @@ export interface Strings {
 		roleDoneByOther: string;
 		roleChangedForYou: string;
 		wildChildConverted: string;
+		tapSeatAbove: string;
+		pickedSeats: (seats: string) => string;
 		fearedTonight: string;
 		fearedPass: string;
 		descFearedPassed: string;

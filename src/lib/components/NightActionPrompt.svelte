@@ -10,6 +10,7 @@
 	import { NightDraft, PickDraft, type Submission } from '$lib/client/turnDraft.svelte';
 	import { promptFor, selectLabelFor, statusLabelFor } from '$lib/client/roleNight';
 	import { PACK_MEMBER_ROLES } from '$lib/game/roleMeta';
+	import { seatPick, type SeatPicking } from '$lib/client/seatPick.svelte';
 
 	const t = $derived(strings(i18n.lang).nightPrompt);
 
@@ -39,6 +40,46 @@
 		void role;
 		return new NightDraft(() => gameStore.turnRules);
 	});
+
+	// Targets are tapped on the seat circle (seatPick.svelte.ts); this prompt
+	// says which seats may be tapped and what a tap does.
+	const isLiving = (n: number) => livingSeats.some((s) => s.seatNumber === n);
+	$effect(() => {
+		const d = draft;
+		if (!role || d.sent || gameStore.packKill || gameStore.roleDoneByOther) return;
+		if (ctx?.feared && role !== 'NIGHTMARE') return;
+		let picking: SeatPicking | null = null;
+		if (prompt === 'pick') {
+			picking = {
+				pickable: (n) =>
+					isLiving(n) &&
+					!(noSelfPick && n === ctx?.seat) &&
+					!(role === 'GUARD' && n === guardLastSeat),
+				picked: (n) => (d.pick.target === n ? 'ember' : null),
+				tap: (n) => d.pick.tap(n)
+			};
+		} else if (prompt === 'potions' && witch?.poisonAvailable) {
+			picking = {
+				pickable: (n) => isLiving(n) && !d.potions.poisonBlocked,
+				picked: (n) => (d.potions.poison === n ? 'wolf' : null),
+				tap: (n) => d.potions.tapPoison(n)
+			};
+		} else if (prompt === 'link') {
+			picking = {
+				pickable: (n) => isLiving(n) && (d.link.first === null || d.link.second === null),
+				picked: (n) => (d.link.has(n) ? 'ember' : null),
+				tap: (n) => d.link.tap(n)
+			};
+		}
+		return picking ? seatPick.claim(picking) : undefined;
+	});
+
+	const pickedLine = (seats: (number | null)[]) => {
+		const picked = seats.filter((n): n is number => n !== null);
+		return picked.length > 0
+			? t.pickedSeats(picked.map((n) => seatLabel(n, i18n.lang)).join('、'))
+			: t.tapSeatAbove;
+	};
 
 	async function submit(submission: Submission | null) {
 		if (!submission) return;
@@ -147,28 +188,7 @@
 			<p class="text-sm text-zinc-400">
 				{#if selectLabel}{t[selectLabel]}{/if}
 			</p>
-			<div class="grid grid-cols-4 gap-2">
-				{#each livingSeats.filter((s) => !(noSelfPick && s.seatNumber === ctx?.seat)) as seat (seat.seatNumber)}
-					{@const blocked = role === 'GUARD' && seat.seatNumber === guardLastSeat}
-					<button
-						disabled={blocked}
-						onclick={() => draft.pick.tap(seat.seatNumber)}
-						class="seat-btn relative {draft.pick.target === seat.seatNumber
-							? 'border-ember bg-ember/20 text-ember'
-							: ''}"
-					>
-						{seatLabel(seat.seatNumber, i18n.lang)}
-						{seat.username}
-						{#if draft.pick.target === seat.seatNumber}
-							<span
-								class="absolute -top-1.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-line bg-ember text-[9px] text-black"
-							>
-								✓
-							</span>
-						{/if}
-					</button>
-				{/each}
-			</div>
+			<p class="text-base font-semibold text-bone">{pickedLine([draft.pick.target])}</p>
 			<button
 				onclick={() => submit(draft.pick.submission(role))}
 				disabled={draft.pick.target === null}
@@ -242,52 +262,18 @@
 				{#if draft.potions.poisonBlocked}
 					<p class="text-sm text-zinc-400">{t.witchAntidoteChosenAlready}</p>
 				{/if}
-				<div class="grid grid-cols-4 gap-2">
-					{#each livingSeats as seat (seat.seatNumber)}
-						<button
-							disabled={draft.potions.poisonBlocked}
-							onclick={() => draft.potions.tapPoison(seat.seatNumber)}
-							class="seat-btn relative {draft.potions.poison === seat.seatNumber
-								? 'border-wolf bg-wolf/20 text-wolf'
-								: 'hover:border-wolf/60'}"
-						>
-							{seatLabel(seat.seatNumber, i18n.lang)}
-							{seat.username}
-							{#if draft.potions.poison === seat.seatNumber}
-								<span
-									class="absolute -top-1.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-line bg-wolf text-[9px] text-bone"
-								>
-									✓
-								</span>
-							{/if}
-						</button>
-					{/each}
-				</div>
+				{#if !draft.potions.poisonBlocked}
+					<p class="text-base font-semibold text-bone">{pickedLine([draft.potions.poison])}</p>
+				{/if}
 			{/if}
 			<button onclick={() => submit(draft.potions.submission())} class="btn-primary w-full">
 				{t.confirm}
 			</button>
 		{:else if prompt === 'link'}
 			<p class="text-sm text-zinc-400">{t.cupidSelectTwo}</p>
-			<div class="grid grid-cols-4 gap-2">
-				{#each livingSeats as seat (seat.seatNumber)}
-					{@const picked = draft.link.has(seat.seatNumber)}
-					<button
-						onclick={() => draft.link.tap(seat.seatNumber)}
-						class="seat-btn relative {picked ? 'border-ember bg-ember/20 text-ember' : ''}"
-					>
-						{seatLabel(seat.seatNumber, i18n.lang)}
-						{seat.username}
-						{#if picked}
-							<span
-								class="absolute -top-1.5 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-line bg-ember text-[9px] text-black"
-							>
-								✓
-							</span>
-						{/if}
-					</button>
-				{/each}
-			</div>
+			<p class="text-base font-semibold text-bone">
+				{pickedLine([draft.link.first, draft.link.second])}
+			</p>
 			<button
 				onclick={() => submit(draft.link.submission())}
 				disabled={draft.link.second === null || draft.link.first === null}
