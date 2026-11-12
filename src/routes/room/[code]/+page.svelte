@@ -31,6 +31,7 @@
 	import ScrollArea from '$lib/components/ScrollArea.svelte';
 	import ShareRoom from '$lib/components/ShareRoom.svelte';
 	import HostNightStrip from '$lib/components/HostNightStrip.svelte';
+	import HostOverridePanel from '$lib/components/HostOverridePanel.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -80,6 +81,14 @@
 	// The latest news - last night's dead, today's exile - outlined on the
 	// circle too, so the table sees whose seat it is at a glance. Over once
 	// the game is: the reveal takes its place.
+	// 上帝之手: a Host tool once a game is running, opened from the bottom bar.
+	let godToolsOpen = $state(false);
+	const gameRunning = $derived(
+		!!roomState && !['LOBBY', 'SEATING', 'GAME_OVER'].includes(roomState.phase)
+	);
+	$effect(() => {
+		if (!gameRunning) godToolsOpen = false;
+	});
 	const seatedCount = $derived(roomState?.seats.filter((s) => s.sessionId !== null).length ?? 0);
 	const showNews = $derived(roomState?.phase !== 'GAME_OVER');
 	const newsSeats = $derived.by(() => {
@@ -448,12 +457,29 @@
 					</ScrollArea>
 				{/if}
 				<div class="flex gap-2">
+					{#if isHost && gameRunning}
+						<button
+							onclick={() => (godToolsOpen = !godToolsOpen)}
+							aria-expanded={godToolsOpen}
+							aria-controls="host-override-panel"
+							class="btn-ghost btn-bar"
+						>
+							<span>{t.hostOverride.toggle}</span>
+						</button>
+					{/if}
 					<ActivityLogButton />
 					<RoomLogButton />
 					{#if mySeat !== null && roomState.phase !== 'GAME_OVER'}
 						<RoleRevealCard />
 					{/if}
 				</div>
+				{#if isHost}
+					<HostOverridePanel
+						open={godToolsOpen}
+						{gameRunning}
+						onClose={() => (godToolsOpen = false)}
+					/>
+				{/if}
 			</div>
 		{/if}
 	{/if}

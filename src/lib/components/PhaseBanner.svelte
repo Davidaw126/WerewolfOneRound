@@ -8,7 +8,7 @@
 	import { i18n } from '$lib/client/i18n.svelte';
 	import LeaveRoomButton from './LeaveRoomButton.svelte';
 	import AudioToggleButtons from './AudioToggleButtons.svelte';
-	import HostOverridePanel from './HostOverridePanel.svelte';
+	import { hostVoice } from '$lib/client/hostVoice';
 	import LanguageToggle from './LanguageToggle.svelte';
 
 	let { username }: { username: string } = $props();
@@ -16,7 +16,6 @@
 
 	const t = $derived(strings(i18n.lang));
 	const room = $derived(gameStore.state);
-	let godToolsOpen = $state(false);
 	/** The menu sheet: room code, sound, language, name, stop, leave - kept
 	 * out of the header so it carries only the phase and 上帝之手. */
 	let menuOpen = $state(false);
@@ -70,6 +69,14 @@
 		}
 	});
 
+	const voiceSupported = hostVoice.supported;
+	/** Manual voice check/unlock - a tap here is itself the gesture iOS wants
+	 * before speech may play (normally any tap on the page does it). */
+	function testVoice() {
+		hostVoice.prime();
+		hostVoice.say({ text: t.hostOverride.voiceTestLine, lang: i18n.lang });
+	}
+
 	async function stopGame() {
 		menuOpen = false;
 		if (!(await askConfirm(t.phaseBanner.stopGameConfirm))) return;
@@ -97,31 +104,9 @@
 					<div class="text-xs text-zinc-500">{stageLabel}</div>
 				{/if}
 			</div>
-			{#if isHost}
-				<!-- Top-right, out of the way of the phase actions; while open it
-				     turns ember and says 收起 so it reads as the way to close it. -->
-				<button
-					onclick={() => {
-						godToolsOpen = !godToolsOpen;
-						menuOpen = false;
-					}}
-					aria-expanded={godToolsOpen}
-					aria-controls="host-override-panel"
-					class="shrink-0 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition {godToolsOpen
-						? 'border-ember bg-ember/15 text-ember'
-						: 'border-line text-zinc-400 hover:border-ember/60 hover:text-ember'}"
-				>
-					{#if godToolsOpen}
-						🔧 {t.hostOverride.close} ▲
-					{:else}
-						{t.hostOverride.toggle} ▾
-					{/if}
-				</button>
-			{/if}
 			<button
 				onclick={() => {
 					menuOpen = !menuOpen;
-					godToolsOpen = false;
 				}}
 				aria-expanded={menuOpen}
 				aria-label={t.phaseBanner.menu}
@@ -159,6 +144,13 @@
 						<span class="text-zinc-400">{t.phaseBanner.menuSound}</span>
 						<span class="flex gap-2"><AudioToggleButtons /></span>
 					</div>
+					{#if voiceSupported}
+						<button onclick={testVoice} class="btn-ghost w-full py-2 text-sm">
+							{t.hostOverride.voiceTest}
+						</button>
+					{:else}
+						<p class="text-xs text-wolf">{t.hostOverride.voiceUnsupported}</p>
+					{/if}
 				{/if}
 				<div class="flex items-center justify-between gap-2">
 					<span class="text-zinc-400">{t.phaseBanner.menuLanguage}</span>
@@ -189,15 +181,6 @@
 					</button>
 				{/if}
 			</div>
-		{/if}
-
-		{#if isHost}
-			<HostOverridePanel
-				open={godToolsOpen}
-				gameRunning={room.phase !== 'LOBBY' &&
-					room.phase !== 'SEATING' &&
-					room.phase !== 'GAME_OVER'}
-			/>
 		{/if}
 	</div>
 {/if}

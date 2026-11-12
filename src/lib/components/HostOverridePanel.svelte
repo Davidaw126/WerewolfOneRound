@@ -3,15 +3,17 @@
 	import { sendAction } from '$lib/client/socket';
 	import { askConfirm } from '$lib/client/confirmDialog.svelte';
 	import { PICKABLE_ROLES } from '$lib/shared/roles';
-	import { hostVoice } from '$lib/client/hostVoice';
 	import { strings, roleName } from '$lib/shared/i18n';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import type { RoleId } from '$lib/game/types';
 	import ScrollArea from './ScrollArea.svelte';
 	import { seatPick } from '$lib/client/seatPick.svelte';
 
-	/** `open` is owned by PhaseBanner, whose top-right button toggles it. */
-	let { gameRunning, open }: { gameRunning: boolean; open: boolean } = $props();
+	/** `open` is owned by the room page, whose bottom-bar 上帝之手 button
+	 * toggles it - the whole flow (open, tap a seat, act, close) stays in the
+	 * lower half of the screen. */
+	let { gameRunning, open, onClose }: { gameRunning: boolean; open: boolean; onClose: () => void } =
+		$props();
 
 	const t = $derived(strings(i18n.lang));
 	let seat = $state<number | null>(null);
@@ -33,14 +35,6 @@
 			tap: (n) => (seat = seat === n ? null : n)
 		});
 	});
-
-	const voiceSupported = hostVoice.supported;
-	/** Manual voice check/unlock - a tap here is itself the gesture iOS wants
-	 * before speech may play (normally any tap on the page does it). */
-	function testVoice() {
-		hostVoice.prime();
-		hostVoice.say({ text: t.hostOverride.voiceTestLine, lang: i18n.lang });
-	}
 
 	async function override(overrideKind: 'KILL' | 'REVIVE' | 'SET_ROLE') {
 		if (seat === null) return;
@@ -73,14 +67,6 @@
 				class="panel max-h-[50dvh] space-y-3 overflow-y-auto border-ember/60 p-4 shadow-[0_-8px_24px_rgba(0,0,0,0.6)]"
 			>
 				<p class="text-xs text-zinc-500">{t.hostOverride.warning}</p>
-
-				{#if voiceSupported}
-					<button onclick={testVoice} class="btn-ghost w-full py-2 text-xs">
-						{t.hostOverride.voiceTest}
-					</button>
-				{:else}
-					<p class="text-xs text-wolf">{t.hostOverride.voiceUnsupported}</p>
-				{/if}
 
 				{#if !gameRunning}
 					<p class="text-xs text-zinc-500">{t.hostOverride.gameToolsLater}</p>
@@ -130,6 +116,9 @@
 						</button>
 					</div>
 				{/if}
+				<button onclick={onClose} class="btn-ghost w-full py-2 text-sm">
+					{t.hostOverride.close}
+				</button>
 			</ScrollArea>
 		</div>
 	{/if}
