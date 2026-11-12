@@ -125,11 +125,14 @@
 				aria-expanded={menuOpen}
 				aria-label={t.phaseBanner.menu}
 				title={t.phaseBanner.menu}
-				class="shrink-0 rounded-full border px-2.5 py-1.5 text-sm leading-none transition {menuOpen
+				class="grid h-8 w-8 shrink-0 place-items-center rounded-full border transition {menuOpen
 					? 'border-ember bg-ember/15 text-ember'
 					: 'border-line text-zinc-300 hover:border-ember/60 hover:text-ember'}"
 			>
-				☰
+				<!-- Drawn, not the ☰ character: a font's glyph sits off-centre. -->
+				<svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" d="M3 4h10M3 8h10M3 12h10" />
+				</svg>
 			</button>
 		</div>
 
