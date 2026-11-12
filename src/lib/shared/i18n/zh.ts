@@ -362,6 +362,7 @@ export const zh: Strings = {
 		nightBegins: '天黑请闭眼',
 		dawnBreaks: '天亮了',
 		allEyesClosed: '所有人闭眼',
+		hurryUp: '时间有点久了，请尽快操作',
 		enableVoice: '🔊 点击开启语音播报',
 		voiceBlocked: '🔇 手机阻止了法官语音，请点一下屏幕恢复',
 		voiceUnsupported: '此浏览器不支持语音播报，请换用 Safari 或 Chrome'

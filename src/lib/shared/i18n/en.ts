@@ -369,6 +369,7 @@ export const en: Strings = {
 		coupleReveal: 'Everyone, open your eyes and confirm whether you’ve been linked as lovers.',
 		nightBegins: 'Night falls. Everyone, close your eyes.',
 		dawnBreaks: 'Dawn breaks.',
+		hurryUp: 'This is taking a while. Please finish your turn.',
 		allEyesClosed: 'Everyone, close your eyes.',
 		enableVoice: '🔊 Tap to enable voice narration',
 		voiceBlocked: "🔇 The phone blocked the judge's voice — tap the screen once to restore it",

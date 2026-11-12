@@ -38,6 +38,32 @@
 		};
 	});
 
+	// A turn that drags: the Host's eyes are shut too, so nobody would think
+	// to tap 强制继续 while a player has dozed off. One neutral reminder, the
+	// same words whatever the turn - it says no more than the wait itself
+	// does. A 假环节 is over long before this.
+	const NUDGE_AFTER_MS = 60_000;
+	const stageKey = $derived(
+		gameStore.hostStage
+			? gameStore.hostStage.kind === 'ROLE_TURN'
+				? gameStore.hostStage.role
+				: 'COUPLE_REVEAL'
+			: null
+	);
+	$effect(() => {
+		if (!stageKey) return;
+		const timer = setTimeout(
+			() =>
+				hostVoice.say({
+					text: strings(i18n.lang).narration.hurryUp,
+					lang: i18n.lang,
+					tag: 'stage'
+				}),
+			NUDGE_AFTER_MS
+		);
+		return () => clearTimeout(timer);
+	});
+
 	$effect(() => {
 		const now: VoiceView = {
 			phase: gameStore.state?.phase ?? null,

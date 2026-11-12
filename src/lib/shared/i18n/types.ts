@@ -317,6 +317,7 @@ export interface Strings {
 		nightBegins: string;
 		dawnBreaks: string;
 		allEyesClosed: string;
+		hurryUp: string;
 		voiceBlocked: string;
 		/** Host-only button shown while narration isn't enabled on this device. */
 		enableVoice: string;
