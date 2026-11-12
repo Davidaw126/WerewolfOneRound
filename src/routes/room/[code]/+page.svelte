@@ -79,6 +79,16 @@
 	// The latest news - last night's dead, today's exile - outlined on the
 	// circle too, so the table sees whose seat it is at a glance. Over once
 	// the game is: the reveal takes its place.
+	// A player with nothing to do tonight: the table dims and says so. The
+	// Host keeps the full view (强制继续 needs it); 情侣相认 and dawn have
+	// something for everyone.
+	const eyesClosed = $derived(
+		roomState?.phase !== 'DAWN' &&
+			group === 'night' &&
+			!isHost &&
+			!gameStore.myTurnRole &&
+			stage?.kind !== 'COUPLE_REVEAL'
+	);
 	const showNews = $derived(roomState?.phase !== 'GAME_OVER');
 	const newsSeats = $derived.by(() => {
 		const day = roomState?.lastDayResult;
@@ -273,16 +283,27 @@
 					     itself now lives in the pinned footer below (see there),
 					     so the circle stays fully visible instead of sharing this
 					     space with whatever the prompt's own content height is. -->
-					<div class="[container-type:size] flex min-h-0 flex-1 items-start justify-center">
-						<SeatCircle
-							seats={roomState.seats}
-							{mySeat}
-							disabled={true}
-							hostSessionId={roomState.hostSessionId}
-							highlight={newsSeats}
-							myTurnRole={gameStore.myTurnRole}
-							fit
-						/>
+					<div
+						class="[container-type:size] relative flex min-h-0 flex-1 items-start justify-center"
+					>
+						<div class="contents {eyesClosed ? '*:opacity-20' : ''}">
+							<SeatCircle
+								seats={roomState.seats}
+								{mySeat}
+								disabled={true}
+								hostSessionId={roomState.hostSessionId}
+								highlight={newsSeats}
+								myTurnRole={gameStore.myTurnRole}
+								fit
+							/>
+						</div>
+						{#if eyesClosed}
+							<p
+								class="pointer-events-none absolute inset-x-0 top-1/3 text-center font-display text-2xl font-bold text-zinc-400"
+							>
+								🌙 {t.room.eyesClosed}
+							</p>
+						{/if}
 					</div>
 				{:else if group === 'hunter'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">

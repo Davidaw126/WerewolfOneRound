@@ -69,7 +69,8 @@ export const zh: Strings = {
 		startGame: '开始游戏',
 		voteWaitAnnounceHost: '公布昨晚结果后即可开始投票',
 		voteWaitAnnouncePlayer: '等待房主公布昨晚结果，投票尚未开始…',
-		dawnWaitPlayer: '天亮了，等待房主公布昨晚信息…'
+		dawnWaitPlayer: '天亮了，等待房主公布昨晚信息…',
+		eyesClosed: '天黑请闭眼'
 	},
 	phaseBanner: {
 		lobby: '房主配置角色中',
