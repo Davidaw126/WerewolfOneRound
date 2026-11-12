@@ -68,8 +68,7 @@ export const en: Strings = {
 		voteWaitAnnounceHost: 'Announce last night’s results to start the vote',
 		voteWaitAnnouncePlayer:
 			"Waiting for the host to announce last night's results — voting hasn't started…",
-		dawnWaitPlayer: "It's morning. Waiting for the host to announce last night's news…",
-		eyesClosed: 'Night falls — close your eyes'
+		dawnWaitPlayer: "It's morning. Waiting for the host to announce last night's news…"
 	},
 	phaseBanner: {
 		lobby: 'Host is configuring roles',

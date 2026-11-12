@@ -78,7 +78,6 @@ export interface Strings {
 		voteWaitAnnounceHost: string;
 		voteWaitAnnouncePlayer: string;
 		dawnWaitPlayer: string;
-		eyesClosed: string;
 	};
 	phaseBanner: {
 		lobby: string;
