@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import { PICKABLE_ROLES, roleTeam } from '$lib/shared/roles';
-	import { ALL_ROLE_IDS } from '$lib/game/roleMeta';
+	import { ALL_ROLE_IDS, ROLE_META } from '$lib/game/roleMeta';
 	import { PRESET_BOARDS } from '$lib/game/rules/presets';
 	import { defaultRuleConfig } from '$lib/game/defaultRuleConfig';
 	import { switchesOf } from '$lib/game/ruleSwitchValues';
@@ -30,6 +30,17 @@
 	const total = $derived(Object.values(counts).reduce((s: number, n) => s + (n ?? 0), 0));
 	const goodTotal = $derived(goodRoles.reduce((s, r) => s + (counts[r] ?? 0), 0));
 	const wolfTotal = $derived(wolfRoles.reduce((s, r) => s + (counts[r] ?? 0), 0));
+
+	// 神 / 民 for the summary: 神 are the good roles with a skill that counts
+	// for SIDE_KILL (ROLE_META.isGod), 民 the rest of the good side.
+	const godTotal = $derived(
+		goodRoles.reduce((s, r) => s + (ROLE_META[r].isGod ? (counts[r] ?? 0) : 0), 0)
+	);
+	const onBoard = (...roles: RoleId[]) => roles.every((r) => (counts[r] ?? 0) > 0);
+
+	/** Only 狼人 and 村民 come in numbers; every other card is one per board,
+	 * so it's a tap on or off, not a −/+. */
+	const counted = (role: RoleId) => role === 'WEREWOLF' || role === 'VILLAGER';
 
 	function inc(role: RoleId, delta: number) {
 		counts[role] = Math.max(0, (counts[role] ?? 0) + delta);
@@ -90,38 +101,63 @@
 			<span class="tabular-nums">{count}</span>
 		</div>
 		<div class="grid grid-cols-2 gap-2">
-			{#each roles as role, i (role)}
-				<!-- Sprite + name on top, the −/+ row underneath at the card's full
-				     width: beside the sprite it only gets ~69px on a 320px phone and
-				     the 32px buttons get squeezed. -->
-				<div
-					in:fly={{ y: 10, duration: 200, delay: i * 25 }}
-					class="border-[3px] border-line p-1.5 {(counts[role] ?? 0) > 0
-						? 'bg-surface-2'
-						: 'bg-surface'}"
-				>
-					<div class="flex items-center gap-2">
-						<PixelSprite {role} px={30} idle={(counts[role] ?? 0) > 0} />
-						<div class="min-w-0 flex-1 truncate text-xs text-bone">{roleName(role, i18n.lang)}</div>
+			<!-- 狼人 / 村民 (counted) first: their taller −/+ card leads the grid. -->
+			{#each [...roles].sort((a, b) => Number(counted(b)) - Number(counted(a))) as role, i (role)}
+				{@const n = counts[role] ?? 0}
+				{#if counted(role)}
+					<!-- Sprite + name on top, the −/+ row underneath at the card's full
+					     width: beside the sprite it only gets ~69px on a 320px phone and
+					     the 32px buttons get squeezed. -->
+					<div
+						in:fly={{ y: 10, duration: 200, delay: i * 25 }}
+						class="border-[3px] p-1.5 {n > 0
+							? 'border-ember/70 bg-surface-2'
+							: 'border-line bg-surface'}"
+					>
+						<div class="flex items-center gap-2">
+							<PixelSprite {role} px={30} idle={n > 0} />
+							<div class="min-w-0 flex-1 truncate text-sm text-bone">
+								{roleName(role, i18n.lang)}
+							</div>
+						</div>
+						<div class="mt-1 flex items-center justify-center gap-1">
+							<button
+								onclick={() => inc(role, -1)}
+								aria-label={t.roleConfig.decrease}
+								class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+								>−</button
+							>
+							<span class="w-6 text-center text-base text-village tabular-nums">{n}</span>
+							<button
+								onclick={() => inc(role, 1)}
+								aria-label={t.roleConfig.increase}
+								class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
+								>+</button
+							>
+						</div>
 					</div>
-					<div class="mt-1 flex items-center justify-center gap-1">
-						<button
-							onclick={() => inc(role, -1)}
-							aria-label={t.roleConfig.decrease}
-							class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-							>−</button
+				{:else}
+					<button
+						type="button"
+						in:fly={{ y: 10, duration: 200, delay: i * 25 }}
+						onclick={() => (counts[role] = n > 0 ? 0 : 1)}
+						aria-pressed={n > 0}
+						class="relative flex items-center gap-2 border-[3px] p-1.5 text-left {n > 0
+							? 'border-ember bg-ember/15'
+							: 'border-line bg-surface opacity-70'}"
+					>
+						<PixelSprite {role} px={30} idle={n > 0} />
+						<span class="min-w-0 flex-1 truncate text-sm {n > 0 ? 'text-ember' : 'text-bone'}"
+							>{roleName(role, i18n.lang)}</span
 						>
-						<span class="w-5 text-center text-sm text-village tabular-nums"
-							>{counts[role] ?? 0}</span
+						<span
+							class="flex h-6 w-6 flex-none items-center justify-center border-2 border-line text-sm {n >
+							0
+								? 'bg-ember text-black'
+								: 'bg-line text-transparent'}">✓</span
 						>
-						<button
-							onclick={() => inc(role, 1)}
-							aria-label={t.roleConfig.increase}
-							class="h-8 w-8 shrink-0 border-2 border-line bg-line text-bone active:bg-ember active:text-black"
-							>+</button
-						>
-					</div>
-				</div>
+					</button>
+				{/if}
 			{/each}
 		</div>
 	</div>
@@ -140,7 +176,7 @@
 				? 'bg-ember text-black'
 				: 'bg-line text-transparent'}">✓</span
 		>
-		<span class="text-[11px] leading-snug text-bone">{label}</span>
+		<span class="text-[13px] leading-snug text-bone">{label}</span>
 	</button>
 {/snippet}
 
@@ -162,7 +198,7 @@
 					<button
 						type="button"
 						onclick={() => applyPreset(board.roleConfig)}
-						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone active:bg-ember active:text-black"
+						class="border-2 border-line bg-surface px-2 py-1 text-[13px] text-bone active:bg-ember active:text-black"
 					>
 						{presetName(board.name, i18n.lang)}
 					</button>
@@ -178,18 +214,20 @@
 				{t.roleConfig.houseRuleHeader}
 			</div>
 
-			{@render toggle(
-				t.roleConfig.cupidPoisonBlocksHunter,
-				rules.cupidPoisonBlocksHunter,
-				() => (rules.cupidPoisonBlocksHunter = !rules.cupidPoisonBlocksHunter)
-			)}
+			{#if onBoard('CUPID', 'HUNTER', 'WITCH')}
+				{@render toggle(
+					t.roleConfig.cupidPoisonBlocksHunter,
+					rules.cupidPoisonBlocksHunter,
+					() => (rules.cupidPoisonBlocksHunter = !rules.cupidPoisonBlocksHunter)
+				)}
+			{/if}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
+				<label class="flex items-center justify-between gap-2 text-[13px] text-bone">
 					<span>{t.roleConfig.winConditionLabel}</span>
 					<select
 						bind:value={rules.winCondition}
-						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
+						class="border-2 border-line bg-surface px-2 py-1 text-[13px] text-bone"
 					>
 						<option value="SIDE_KILL">{t.roleConfig.winConditionSideKill}</option>
 						<option value="TOTAL_KILL">{t.roleConfig.winConditionTotalKill}</option>
@@ -203,75 +241,81 @@
 				() => (rules.wolf.allowEmptyKill = !rules.wolf.allowEmptyKill)
 			)}
 
-			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
-					<span>{t.roleConfig.sameGuardSameSaveLabel}</span>
-					<select
-						bind:value={rules.guard.sameGuardSameSave}
-						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
-					>
-						<option value="TARGET_DIES">{t.roleConfig.sameGuardSameSaveDies}</option>
-						<option value="TARGET_LIVES">{t.roleConfig.sameGuardSameSaveLives}</option>
-					</select>
-				</label>
-				{@render toggle(
-					t.roleConfig.guardAllowEmptyGuard,
-					rules.guard.allowEmptyGuard,
-					() => (rules.guard.allowEmptyGuard = !rules.guard.allowEmptyGuard)
-				)}
-			</div>
-
-			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-					{t.roleConfig.witchHeader}
+			{#if onBoard('GUARD')}
+				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
+					<label class="flex items-center justify-between gap-2 text-[13px] text-bone">
+						<span>{t.roleConfig.sameGuardSameSaveLabel}</span>
+						<select
+							bind:value={rules.guard.sameGuardSameSave}
+							class="border-2 border-line bg-surface px-2 py-1 text-[13px] text-bone"
+						>
+							<option value="TARGET_DIES">{t.roleConfig.sameGuardSameSaveDies}</option>
+							<option value="TARGET_LIVES">{t.roleConfig.sameGuardSameSaveLives}</option>
+						</select>
+					</label>
+					{@render toggle(
+						t.roleConfig.guardAllowEmptyGuard,
+						rules.guard.allowEmptyGuard,
+						() => (rules.guard.allowEmptyGuard = !rules.guard.allowEmptyGuard)
+					)}
 				</div>
-				<label class="flex items-center justify-between gap-2 text-[11px] text-bone">
-					<span>{t.roleConfig.witchSelfRescueLabel}</span>
-					<select
-						bind:value={rules.witch.selfRescue}
-						class="border-2 border-line bg-surface px-2 py-1 text-[11px] text-bone"
-					>
-						<option value="FIRST_NIGHT_ONLY">{t.roleConfig.witchSelfRescueFirstNightOnly}</option>
-						<option value="NEVER">{t.roleConfig.witchSelfRescueNever}</option>
-						<option value="ALWAYS">{t.roleConfig.witchSelfRescueAlways}</option>
-					</select>
-				</label>
-				{@render toggle(
-					t.roleConfig.witchCanPoisonSelf,
-					rules.witch.canPoisonSelf,
-					() => (rules.witch.canPoisonSelf = !rules.witch.canPoisonSelf)
-				)}
-				{@render toggle(
-					t.roleConfig.witchBothPotionsSameNight,
-					rules.witch.bothPotionsSameNight,
-					() => (rules.witch.bothPotionsSameNight = !rules.witch.bothPotionsSameNight)
-				)}
-			</div>
+			{/if}
 
-			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-				<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-					{t.roleConfig.hunterHeader}
+			{#if onBoard('WITCH')}
+				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
+					<div class="text-xs font-bold tracking-widest text-zinc-500 uppercase">
+						{t.roleConfig.witchHeader}
+					</div>
+					<label class="flex items-center justify-between gap-2 text-[13px] text-bone">
+						<span>{t.roleConfig.witchSelfRescueLabel}</span>
+						<select
+							bind:value={rules.witch.selfRescue}
+							class="border-2 border-line bg-surface px-2 py-1 text-[13px] text-bone"
+						>
+							<option value="FIRST_NIGHT_ONLY">{t.roleConfig.witchSelfRescueFirstNightOnly}</option>
+							<option value="NEVER">{t.roleConfig.witchSelfRescueNever}</option>
+							<option value="ALWAYS">{t.roleConfig.witchSelfRescueAlways}</option>
+						</select>
+					</label>
+					{@render toggle(
+						t.roleConfig.witchCanPoisonSelf,
+						rules.witch.canPoisonSelf,
+						() => (rules.witch.canPoisonSelf = !rules.witch.canPoisonSelf)
+					)}
+					{@render toggle(
+						t.roleConfig.witchBothPotionsSameNight,
+						rules.witch.bothPotionsSameNight,
+						() => (rules.witch.bothPotionsSameNight = !rules.witch.bothPotionsSameNight)
+					)}
 				</div>
-				{@render toggle(
-					t.roleConfig.hunterCanShootWhenPoisoned,
-					rules.hunter.canShootWhenPoisoned,
-					() => (rules.hunter.canShootWhenPoisoned = !rules.hunter.canShootWhenPoisoned)
-				)}
-				{@render toggle(
-					t.roleConfig.hunterCanShootWhenWolfKilled,
-					rules.hunter.canShootWhenWolfKilled,
-					() => (rules.hunter.canShootWhenWolfKilled = !rules.hunter.canShootWhenWolfKilled)
-				)}
-				{@render toggle(
-					t.roleConfig.hunterCanShootWhenLoverSuicide,
-					rules.hunter.canShootWhenLoverSuicide,
-					() => (rules.hunter.canShootWhenLoverSuicide = !rules.hunter.canShootWhenLoverSuicide)
-				)}
-			</div>
+			{/if}
+
+			{#if onBoard('HUNTER')}
+				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
+					<div class="text-xs font-bold tracking-widest text-zinc-500 uppercase">
+						{t.roleConfig.hunterHeader}
+					</div>
+					{@render toggle(
+						t.roleConfig.hunterCanShootWhenPoisoned,
+						rules.hunter.canShootWhenPoisoned,
+						() => (rules.hunter.canShootWhenPoisoned = !rules.hunter.canShootWhenPoisoned)
+					)}
+					{@render toggle(
+						t.roleConfig.hunterCanShootWhenWolfKilled,
+						rules.hunter.canShootWhenWolfKilled,
+						() => (rules.hunter.canShootWhenWolfKilled = !rules.hunter.canShootWhenWolfKilled)
+					)}
+					{@render toggle(
+						t.roleConfig.hunterCanShootWhenLoverSuicide,
+						rules.hunter.canShootWhenLoverSuicide,
+						() => (rules.hunter.canShootWhenLoverSuicide = !rules.hunter.canShootWhenLoverSuicide)
+					)}
+				</div>
+			{/if}
 
 			{#if (counts['BLACK_WOLF_KING'] ?? 0) > 0}
 				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-					<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+					<div class="text-xs font-bold tracking-widest text-zinc-500 uppercase">
 						{t.roleConfig.blackWolfKingHeader}
 					</div>
 					{@render toggle(
@@ -286,7 +330,7 @@
 
 			{#if (counts['WILD_CHILD'] ?? 0) > 0}
 				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
-					<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+					<div class="text-xs font-bold tracking-widest text-zinc-500 uppercase">
 						{t.roleConfig.wildChildHeader}
 					</div>
 					{@render toggle(
@@ -301,7 +345,7 @@
 		{#if issues.length > 0}
 			<div class="panel space-y-1 p-3">
 				{#each issues as msg (msg)}
-					<p class="text-[11px] text-zinc-400">{msg}</p>
+					<p class="text-[13px] text-zinc-400">{msg}</p>
 				{/each}
 			</div>
 		{/if}
@@ -318,6 +362,9 @@
 		<!-- One row (count beside the button) to leave the role list more height. -->
 		<div class="flex items-center gap-3">
 			<p class="min-w-0 flex-1 text-xs leading-snug text-zinc-500">
+				<span class="block text-sm font-semibold text-bone"
+					>{t.roleConfig.campSummary(wolfTotal, godTotal, goodTotal - godTotal)}</span
+				>
 				{(counts['THIEF'] ?? 0) > 0
 					? t.roleConfig.cardCountWithThief(total, total - 2)
 					: t.roleConfig.cardCountSummary(total)}

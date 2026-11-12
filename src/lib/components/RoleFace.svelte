@@ -38,7 +38,7 @@
 			『{roleFlavor(role, i18n.lang)}』
 		</div>
 	{:else if showTeam}
-		<div class="text-[10px] tracking-wide text-zinc-500 uppercase">
+		<div class="text-xs tracking-wide text-zinc-500 uppercase">
 			{campNameShort(team, i18n.lang)}
 		</div>
 	{/if}

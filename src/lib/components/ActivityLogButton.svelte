@@ -46,7 +46,7 @@
 							<div class="mb-1 flex items-center justify-between">
 								<span class="text-ember">{renderRound(entry.round, i18n.lang)}</span>
 								{#if entry.public}
-									<span class="chip !px-1.5 !py-0.5 text-[10px]">{t.activityLog.publicChip}</span>
+									<span class="chip !px-1.5 !py-0.5 text-xs">{t.activityLog.publicChip}</span>
 								{/if}
 							</div>
 							<div class="text-bone">{renderLine(entry.line, i18n.lang)}</div>

@@ -199,6 +199,7 @@ export interface Strings {
 		blackWolfKingHeader: string;
 		blackWolfKingCanShootWhenLoverSuicide: string;
 		wildChildHeader: string;
+		campSummary: (wolves: number, gods: number, villagers: number) => string;
 		wildChildJoinsPack: string;
 		hunterCanShootWhenPoisoned: string;
 		hunterCanShootWhenWolfKilled: string;

@@ -248,6 +248,7 @@ export const en: Strings = {
 		blackWolfKingHeader: 'Black Wolf King',
 		blackWolfKingCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide",
 		wildChildHeader: 'Wild Child',
+		campSummary: (w, g, v) => `Wolves ${w} · Gods ${g} · Villagers ${v}`,
 		wildChildJoinsPack:
 			'When the role model dies, tell the Wild Child and wake them with the wolves',
 		hunterCanShootWhenPoisoned: 'Can shoot even when poisoned',

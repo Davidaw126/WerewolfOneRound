@@ -242,6 +242,7 @@ export const zh: Strings = {
 		blackWolfKingHeader: '黑狼王',
 		blackWolfKingCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪',
 		wildChildHeader: '野孩子',
+		campSummary: (w, g, v) => `狼 ${w} · 神 ${g} · 民 ${v}`,
 		wildChildJoinsPack: '榜样死后告知野孩子，并与狼人一起睁眼',
 		hunterCanShootWhenPoisoned: '被毒死仍可开枪',
 		hunterCanShootWhenWolfKilled: '被狼人刀死可开枪',
