@@ -19,7 +19,10 @@ export interface SeatPicking {
 }
 
 class SeatPick {
-	private claims = $state<SeatPicking[]>([]);
+	// Raw, not deep: a deep $state array wraps each claim in a proxy, and the
+	// release below (which compares by identity) would never find it - the
+	// last picks would stay lit on the table after the turn.
+	private claims = $state.raw<SeatPicking[]>([]);
 
 	/** The panel currently picking on the circle, if any. */
 	get current(): SeatPicking | null {
