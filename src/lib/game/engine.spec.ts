@@ -1022,7 +1022,7 @@ describe('M7: WILD_CHILD conversion (T3, UT-23)', () => {
 	});
 });
 
-describe('野孩子 whose idol dies joins the pack', () => {
+describe('野孩子 whose idol dies (joinsPack switch)', () => {
 	const board = {
 		1: 'WEREWOLF',
 		2: 'VILLAGER',
@@ -1034,8 +1034,12 @@ describe('野孩子 whose idol dies joins the pack', () => {
 	} as const;
 
 	/** Night 1 with seat 3 idolising seat 2 and the wolves killing `victim`. */
-	function toDawn(victim: number) {
+	function toDawn(victim: number, joinsPack = true) {
 		let { state } = start(board);
+		state = {
+			...state,
+			ruleConfig: { ...state.ruleConfig, wildChild: { ...state.ruleConfig.wildChild, joinsPack } }
+		};
 		({ state } = reduce(state, {
 			type: 'SUBMIT_NIGHT_ACTION',
 			seat: 3,
@@ -1059,7 +1063,18 @@ describe('野孩子 whose idol dies joins the pack', () => {
 		return state;
 	}
 
-	it('is told only once the idol’s death is announced, then wakes with the wolves', () => {
+	it('by default only changes camp: never told, keeps the 野孩子 card, sleeps through the wolves', () => {
+		const announced = reduce(toDawn(2, false), { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		expect(effectsOfKind(announced.effects, 'WildChildConverted')).toHaveLength(0);
+		expect(announced.state.players[3].role).toBe('WILD_CHILD');
+		expect(announced.state.players[3].convertedToWolf).toBe(true);
+
+		const night2 = reduce(pastLastWords(announced.state), { type: 'END_DAY' });
+		const prompts = effectsOfKind(night2.effects, 'YourTurnPrompt');
+		expect(prompts.map((e) => e.seat)).toEqual([1]);
+	});
+
+	it('when on, is told only once the idol’s death is announced, then wakes with the wolves', () => {
 		const dawn = toDawn(2);
 		// Held back with the night's news: telling them now would leak it.
 		const early = reduce(dawn, { type: 'HOST_OVERRIDE', kind: 'REVIVE', seat: 6 });

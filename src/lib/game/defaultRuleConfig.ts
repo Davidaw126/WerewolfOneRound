@@ -93,7 +93,8 @@ export function defaultRuleConfig(): RuleConfig {
 		},
 		wildChild: {
 			wolvesSeeConvertedChild: true,
-			childSeesWolvesAfterConvert: true
+			childSeesWolvesAfterConvert: true,
+			joinsPack: false
 		},
 
 		cupidPoisonBlocksHunter: false,

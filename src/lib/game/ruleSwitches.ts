@@ -39,6 +39,9 @@ const GROUPS = {
 		canRunForSheriffAfterReveal: z.boolean(),
 		tearsBadgeIfSheriff: z.boolean(),
 		diesNormallyAtNight: z.boolean()
+	}),
+	wildChild: z.object({
+		joinsPack: z.boolean()
 	})
 };
 
@@ -62,7 +65,8 @@ export const RuleConfigOverridesSchema = z
 		guard: GROUPS.guard.partial(),
 		witch: GROUPS.witch.partial(),
 		hunter: GROUPS.hunter.partial(),
-		idiot: GROUPS.idiot.partial()
+		idiot: GROUPS.idiot.partial(),
+		wildChild: GROUPS.wildChild.partial()
 	})
 	.partial();
 export type RuleConfigOverrides = z.infer<typeof RuleConfigOverridesSchema>;

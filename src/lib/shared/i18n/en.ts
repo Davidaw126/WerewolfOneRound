@@ -238,6 +238,9 @@ export const en: Strings = {
 		hunterHeader: 'Hunter',
 		blackWolfKingHeader: 'Black Wolf King',
 		blackWolfKingCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide",
+		wildChildHeader: 'Wild Child',
+		wildChildJoinsPack:
+			'When the role model dies, tell the Wild Child and wake them with the wolves',
 		hunterCanShootWhenPoisoned: 'Can shoot even when poisoned',
 		hunterCanShootWhenWolfKilled: 'Can shoot when killed by wolves',
 		hunterCanShootWhenLoverSuicide: "Can shoot even when dying from lover's suicide"
@@ -348,7 +351,9 @@ export const en: Strings = {
 	},
 	audioToggle: {
 		sfxOn: "Mute the judge's voice",
-		sfxOff: "Unmute the judge's voice"
+		sfxOff: "Unmute the judge's voice",
+		nudgeOn: 'Turn off the slow-turn reminder (after a minute on one night turn)',
+		nudgeOff: 'Turn on the slow-turn reminder (after a minute on one night turn)'
 	},
 	roleReveal: {
 		revealing: 'Revealing…',

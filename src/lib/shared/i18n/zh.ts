@@ -232,6 +232,8 @@ export const zh: Strings = {
 		hunterHeader: '猎人',
 		blackWolfKingHeader: '黑狼王',
 		blackWolfKingCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪',
+		wildChildHeader: '野孩子',
+		wildChildJoinsPack: '榜样死后告知野孩子，并与狼人一起睁眼',
 		hunterCanShootWhenPoisoned: '被毒死仍可开枪',
 		hunterCanShootWhenWolfKilled: '被狼人刀死可开枪',
 		hunterCanShootWhenLoverSuicide: '因情侣殉情死亡仍可开枪'
@@ -340,7 +342,9 @@ export const zh: Strings = {
 	},
 	audioToggle: {
 		sfxOn: '关闭法官语音',
-		sfxOff: '开启法官语音'
+		sfxOff: '开启法官语音',
+		nudgeOn: '关闭超时提醒（夜里一分钟未操作时提醒）',
+		nudgeOff: '开启超时提醒（夜里一分钟未操作时提醒）'
 	},
 	roleReveal: {
 		revealing: '翻开中…',

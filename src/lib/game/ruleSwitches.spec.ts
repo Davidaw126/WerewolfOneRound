@@ -33,11 +33,13 @@ describe('rule switches', () => {
 				'idiot',
 				'winCondition',
 				'witch',
+				'wildChild',
 				'wolf'
 			].sort()
 		);
 		expect(s.wolf).toEqual({ allowEmptyKill: true, blackWolfKingCanShootWhenLoverSuicide: false });
 		expect(s.cupidPoisonBlocksHunter).toBe(false);
+		expect(s.wildChild).toEqual({ joinsPack: false });
 	});
 
 	it('merging the defaults’ own switches changes nothing', () => {

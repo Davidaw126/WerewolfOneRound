@@ -5,6 +5,7 @@
 import { hostVoice } from './hostVoice';
 
 const LS_EFFECTS = 'wolf.audio.effects';
+const LS_NUDGE = 'wolf.audio.nudge';
 
 /** localStorage throws in Safari private mode, and doesn't exist during SSR -
  * a lost preference is never worth breaking the page over. */
@@ -32,6 +33,9 @@ function persist(key: string, value: boolean): void {
 class AudioSettings {
 	/** sound effects, and (on the host's device) spoken narration. */
 	effects = $state(true);
+	/** The Host phone's 请尽快操作 after a minute on one night turn - off
+	 * unless the Host turns it on. */
+	nudge = $state(false);
 
 	/**
 	 * Loads the stored preference and pushes it into the voice (hostVoice.ts).
@@ -46,6 +50,7 @@ class AudioSettings {
 	init(): void {
 		const effects = readStored(LS_EFFECTS);
 		if (effects !== null) this.effects = effects;
+		this.nudge = readStored(LS_NUDGE) ?? false;
 		hostVoice.setMuted(!this.effects);
 	}
 
@@ -57,6 +62,11 @@ class AudioSettings {
 
 	toggleEffects(): void {
 		this.setEffects(!this.effects);
+	}
+
+	toggleNudge(): void {
+		this.nudge = !this.nudge;
+		persist(LS_NUDGE, this.nudge);
 	}
 }
 

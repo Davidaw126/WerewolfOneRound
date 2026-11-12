@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { hostVoice } from '$lib/client/hostVoice';
+	import { audioSettings } from '$lib/client/audioSettings.svelte';
 	import { cuesFor, QUIET, type Cue, type VoiceView } from '$lib/client/narrationCues';
 	import { sendAction } from '$lib/client/socket';
 	import { i18n } from '$lib/client/i18n.svelte';
@@ -38,7 +39,7 @@
 		};
 	});
 
-	// A turn that drags: the Host's eyes are shut too, so nobody would think
+	// A turn that drags (only with the Host's 超时提醒 on): the Host's eyes are shut too, so nobody would think
 	// to tap 强制继续 while a player has dozed off. One neutral reminder, the
 	// same words whatever the turn - it says no more than the wait itself
 	// does. A 假环节 is over long before this.
@@ -51,7 +52,7 @@
 			: null
 	);
 	$effect(() => {
-		if (!stageKey) return;
+		if (!stageKey || !audioSettings.nudge) return;
 		const timer = setTimeout(
 			() =>
 				hostVoice.say({

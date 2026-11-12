@@ -29,7 +29,8 @@ const SWITCH_KEYS: KeysOf<RuleSwitches> = {
 		canRunForSheriffAfterReveal: true,
 		tearsBadgeIfSheriff: true,
 		diesNormallyAtNight: true
-	}
+	},
+	wildChild: { joinsPack: true }
 };
 
 /** The switches' current values in a full RuleConfig - the panel starts

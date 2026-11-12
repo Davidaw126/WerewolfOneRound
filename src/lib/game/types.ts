@@ -234,6 +234,11 @@ export interface RuleConfig {
 	wildChild: {
 		wolvesSeeConvertedChild: boolean; // default true
 		childSeesWolvesAfterConvert: boolean; // default true
+		/** House rule (default false): when the idol dies the child's card
+		 * really becomes 狼人 - told once the death is public, wakes with the
+		 * pack, the wolves see them. Off, only their camp changes (the win
+		 * count), and they keep playing as 野孩子 without being told. */
+		joinsPack: boolean;
 	};
 
 	// ===== Not in the spec's RuleConfig, but referenced by nightRules.ts

@@ -189,6 +189,8 @@ export interface Strings {
 		hunterHeader: string;
 		blackWolfKingHeader: string;
 		blackWolfKingCanShootWhenLoverSuicide: string;
+		wildChildHeader: string;
+		wildChildJoinsPack: string;
 		hunterCanShootWhenPoisoned: string;
 		hunterCanShootWhenWolfKilled: string;
 		hunterCanShootWhenLoverSuicide: string;
@@ -296,6 +298,8 @@ export interface Strings {
 	audioToggle: {
 		sfxOn: string;
 		sfxOff: string;
+		nudgeOn: string;
+		nudgeOff: string;
 	};
 	roleReveal: {
 		revealing: string;

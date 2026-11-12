@@ -157,6 +157,8 @@ function tellConvertedChild(result: EngineResult): EngineResult {
 	const { wildChildSeat: seat, wildChildIdol: idol, pendingNightDeaths } = result.state;
 	const child = seat === null ? undefined : result.state.players[seat];
 	if (seat === null || !child || !child.convertedToWolf || child.conversionTold) return result;
+	// Switch off: only the camp changed, and nobody is told.
+	if (!result.state.ruleConfig.wildChild?.joinsPack) return result;
 	if ((pendingNightDeaths ?? []).some((d) => d.seat === idol)) return result;
 	const told = withEffects(result.state, (draft, effects) => {
 		draft.players[seat].conversionTold = true;

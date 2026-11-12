@@ -283,6 +283,19 @@
 					)}
 				</div>
 			{/if}
+
+			{#if (counts['WILD_CHILD'] ?? 0) > 0}
+				<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
+					<div class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+						{t.roleConfig.wildChildHeader}
+					</div>
+					{@render toggle(
+						t.roleConfig.wildChildJoinsPack,
+						rules.wildChild.joinsPack,
+						() => (rules.wildChild.joinsPack = !rules.wildChild.joinsPack)
+					)}
+				</div>
+			{/if}
 		</div>
 
 		{#if issues.length > 0}
