@@ -3,8 +3,9 @@
 	import { gameStore } from '$lib/client/gameStore.svelte';
 	import { i18n } from '$lib/client/i18n.svelte';
 	import ScrollArea from '$lib/components/ScrollArea.svelte';
-	import { strings, formatGameOverText, seatLabel } from '$lib/shared/i18n';
-	import RoleFace from './RoleFace.svelte';
+	import { strings, formatGameOverText, roleName } from '$lib/shared/i18n';
+	import { roleTeam } from '$lib/shared/roles';
+	import PixelSprite from './PixelSprite.svelte';
 
 	const t = $derived(strings(i18n.lang));
 	const result = $derived(gameStore.gameOverView);
@@ -14,6 +15,22 @@
 	// through the whole game; surfacing it here means nobody has to dig for
 	// "房间动态" separately right when it matters most.
 	const timeline = $derived(gameStore.roomLog);
+
+	// One row per seat, the wolves together and the good side together, each
+	// marked alive or out - the table checks the reveal against what it saw.
+	const camps = $derived.by(() => {
+		if (!result) return [];
+		const seated = seats.filter((s) => s.sessionId !== null || result.identities[s.seatNumber]);
+		const wolves = seated.filter((s) => {
+			const r = result.identities[s.seatNumber];
+			return r && roleTeam(r) === 'wolf';
+		});
+		const good = seated.filter((s) => !wolves.includes(s));
+		return [
+			{ wolf: true, title: t.roleConfig.wolfCamp, seats: wolves },
+			{ wolf: false, title: t.roleConfig.goodCamp, seats: good }
+		];
+	});
 </script>
 
 {#if result}
@@ -33,33 +50,53 @@
 			{formatGameOverText(result.winner, i18n.lang, false)}
 		</h2>
 
-		<div class="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
-			{#each seats as seat (seat.seatNumber)}
-				{@const role = result.identities[seat.seatNumber]}
-				{@const isCouple = result.coupleSeats?.includes(seat.seatNumber) ?? false}
-				<div class="relative space-y-1.5">
-					{#if isCouple}
-						<span class="absolute -top-1.5 -right-1 z-10 text-[13px]" title={t.gameOver.couple}
-							>💕</span
-						>
-					{/if}
-					<div class="line-clamp-2 min-h-8 text-xs text-zinc-500">
-						{seatLabel(seat.seatNumber, i18n.lang)}
-						{seat.username ?? ''}
-					</div>
-					{#if role}
-						<RoleFace {role} size="sm" />
-					{:else}
-						<div class="panel px-2 py-3 text-sm text-zinc-500">{t.gameOver.unknownRole}</div>
-					{/if}
+		{#each camps as camp (camp.wolf)}
+			<div class="space-y-1.5 text-left">
+				<div
+					class="flex items-center justify-between border-[3px] border-line px-2 py-1 text-xs font-bold tracking-widest {camp.wolf
+						? 'bg-wolf-deep text-bone'
+						: 'bg-village text-black'}"
+				>
+					<span>{camp.wolf ? '☾' : '☀'} {camp.title}</span>
+					<span class="tabular-nums">{camp.seats.length}</span>
 				</div>
-			{/each}
-		</div>
+				{#each camp.seats as seat (seat.seatNumber)}
+					{@const role = result.identities[seat.seatNumber]}
+					{@const isCouple = result.coupleSeats?.includes(seat.seatNumber) ?? false}
+					<div
+						class="flex items-center gap-3 border-2 border-line bg-surface-2 px-2 py-1.5 {seat.isDead
+							? 'opacity-60'
+							: ''}"
+					>
+						<span class="w-7 text-center font-display text-xl font-bold text-bone tabular-nums"
+							>{seat.seatNumber}</span
+						>
+						{#if role}<PixelSprite {role} px={28} idle={false} />{/if}
+						<div class="min-w-0 flex-1">
+							<div
+								class="truncate text-sm font-semibold {camp.wolf ? 'text-wolf' : 'text-village'}"
+							>
+								{role ? roleName(role, i18n.lang) : t.gameOver.unknownRole}
+								{#if isCouple}<span title={t.gameOver.couple}>💕</span>{/if}
+							</div>
+							<div class="truncate text-xs text-zinc-400">{seat.username ?? ''}</div>
+						</div>
+						<span
+							class="shrink-0 border px-1.5 py-0.5 text-xs {seat.isDead
+								? 'border-line text-zinc-400'
+								: 'border-village/60 text-village'}"
+						>
+							{seat.isDead ? `💀 ${t.seatCircle.dead}` : t.gameOver.alive}
+						</span>
+					</div>
+				{/each}
+			</div>
+		{/each}
 
 		{#if timeline.length > 0}
 			<div class="space-y-2 text-left">
 				<h3 class="font-display text-sm font-bold tracking-widest text-ember uppercase">
-					本局回顾
+					{t.gameOver.timeline}
 				</h3>
 				<ScrollArea class="max-h-[40dvh] space-y-2 overflow-y-auto">
 					{#each timeline as entry, i (i)}

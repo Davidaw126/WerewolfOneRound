@@ -267,6 +267,7 @@ export interface Strings {
 		unknownRole: string;
 		timeline: string;
 		couple: string;
+		alive: string;
 	};
 	seatCircle: {
 		host: string;

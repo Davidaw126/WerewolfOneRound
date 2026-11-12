@@ -310,7 +310,8 @@ export const zh: Strings = {
 		villageWin: '好人阵营胜利',
 		unknownRole: '未知',
 		timeline: '本局回顾',
-		couple: '情侣'
+		couple: '情侣',
+		alive: '存活'
 	},
 	seatCircle: {
 		host: '房主',

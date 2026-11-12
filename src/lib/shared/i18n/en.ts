@@ -318,7 +318,8 @@ export const en: Strings = {
 		villageWin: 'The Village Wins',
 		unknownRole: 'Unknown',
 		timeline: 'Game Recap',
-		couple: 'Lovers'
+		couple: 'Lovers',
+		alive: 'Alive'
 	},
 	seatCircle: {
 		host: 'Host',
