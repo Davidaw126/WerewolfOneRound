@@ -1271,6 +1271,50 @@ describe('night action guards', () => {
 		});
 		expect(after.nightActions.wolfKillTarget).toBeUndefined();
 	});
+
+	it('rejects a night action from a dead player, even in their role’s 假环节', () => {
+		let { state } = start({
+			1: 'WEREWOLF',
+			2: 'SEER',
+			3: 'VILLAGER',
+			4: 'VILLAGER',
+			5: 'WEREWOLF'
+		});
+		state = { ...kill(structuredClone(state), 2), currentStepKey: 'role:SEER' };
+		const { state: after, effects } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 2,
+			role: 'SEER',
+			action: { seerCheckTarget: 1 }
+		});
+		expect(effectsOfKind(effects, 'SeerResult')).toHaveLength(0);
+		expect(payload(effectsOfKind(effects, 'NightActionRejected')[0])).toMatchObject({
+			error: 'not_your_turn'
+		});
+		expect(after.submittedRoles).not.toContain('SEER');
+	});
+});
+
+describe('a stage whose last holder is removed mid-turn (上帝之手)', () => {
+	it('moves on to the next stage instead of starting the night over', () => {
+		const state = makeState(
+			{
+				1: 'WEREWOLF',
+				2: 'WOLF_BEAUTY',
+				3: 'SEER',
+				4: 'WITCH',
+				5: 'VILLAGER',
+				6: 'VILLAGER',
+				7: 'VILLAGER'
+			},
+			{ phase: 'NIGHT', round: 2, currentStepKey: 'role:WOLF_BEAUTY' }
+		);
+		const before = reduce(state, { type: 'ADVANCE_STAGE' }).state.currentStepKey;
+		const killed = reduce(state, { type: 'HOST_OVERRIDE', kind: 'KILL', seat: 2 }).state;
+		expect(killed.currentStepKey).toBe('role:WOLF_BEAUTY');
+		const after = reduce(killed, { type: 'ADVANCE_STAGE' }).state;
+		expect(after.currentStepKey).toBe(before);
+	});
 });
 
 describe('上帝之手 edge cases', () => {

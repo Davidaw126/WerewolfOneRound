@@ -11,7 +11,13 @@ import type {
 	RoleId,
 	Seat
 } from '../types';
-import { stageKey, currentStage, currentStageRole, roleHasLivingHolder } from '../rules/stage';
+import {
+	stageKey,
+	stageOfKey,
+	currentStage,
+	currentStageRole,
+	roleHasLivingHolder
+} from '../rules/stage';
 import {
 	buildNight1Order,
 	buildRepeatingOrder,
@@ -70,7 +76,21 @@ export function nextStageAfter(
 	order: NightStage[],
 	fromKey: string | null
 ): NightStage | null {
-	const fromIndex = fromKey === null ? -1 : order.findIndex((s) => stageKey(s) === fromKey);
+	let fromIndex = fromKey === null ? -1 : order.findIndex((s) => stageKey(s) === fromKey);
+	if (fromKey !== null && fromIndex === -1) {
+		// The stage we're on is no longer in tonight's order: 上帝之手 killed or
+		// recast its last holder mid-turn, and the order is rebuilt from who is
+		// alive. Carry on from where that stage stood, not from the top - that
+		// replayed every turn already taken tonight.
+		const from = stageOfKey(fromKey);
+		const stood = from?.kind === 'ROLE_TURN' ? ROLE_META[from.role].nightOrder : null;
+		if (stood !== null) {
+			const next = order.findIndex(
+				(s) => s.kind === 'ROLE_TURN' && (ROLE_META[s.role].nightOrder ?? Infinity) > stood
+			);
+			fromIndex = (next === -1 ? order.length : next) - 1;
+		}
+	}
 	for (let i = fromIndex + 1; i < order.length; i++) {
 		const stage = order[i];
 		if (
@@ -235,6 +255,11 @@ export function handleSubmitNightAction(
 	return withEffects(state, (draft, effects) => {
 		const { seat, action: a } = action;
 		const cfg = draft.ruleConfig;
+
+		// The dead take no turn. Their role's stage may still be running as a
+		// 假环节, and the phone never offers it - but a hand-made message would
+		// otherwise give a dead 预言家 a real check, or a dead 女巫 her poison.
+		if (draft.players[seat]?.isDead) return reject(effects, seat, 'not_your_turn');
 
 		// Which turn this is decides what the submission means, not just the
 		// submitter's card: a 狼美人 in the pack's WEREWOLF stage is choosing
