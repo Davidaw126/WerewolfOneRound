@@ -9,13 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { redis } from '../redis';
-import {
-	ROOM_TTL_SECONDS,
-	gameStateKey,
-	gameLockKey,
-	gameActionsKey,
-	roomKey
-} from '../rooms/keys';
+import { ROOM_TTL_SECONDS, gameStateKey, gameLockKey, roomKey } from '../rooms/keys';
 import { reduce, startGame, type StartGameParams } from '../../game/engine';
 import type { EngineAction, EngineResult, GameState } from '../../game/types';
 import { ActionError } from '../socket/actionError';
@@ -89,15 +83,6 @@ export async function deleteGameState(code: string): Promise<void> {
 	await redis.del(gameStateKey(code));
 }
 
-async function appendGameAction(code: string, action: EngineAction, at: number): Promise<void> {
-	await redis.rpush(gameActionsKey(code), JSON.stringify({ action, at }));
-	await redis.expire(gameActionsKey(code), ROOM_TTL_SECONDS);
-}
-
-export async function clearGameActions(code: string): Promise<void> {
-	await redis.del(gameActionsKey(code));
-}
-
 /** Deals the opening GameState (via the engine's own `startGame`) and
  * persists it - the one-time counterpart of `applyGameAction`. `prepare`
  * runs under the room lock first: it checks who is asking and builds the
@@ -131,7 +116,7 @@ export type ApplyResult =
 	  };
 
 /** The engine's steady-state entry point from the IO shell: load -> decide
- * -> reduce -> save -> log, all under one lock acquisition so the read and
+ * -> reduce -> save, all under one lock acquisition so the read and
  * the write can never straddle someone else's write. A refusal saves
  * nothing. `authorize` (e.g. a Host check) runs under the same lock first.
  * Throws ActionError('game_not_started') if this room has no game in
@@ -139,7 +124,6 @@ export type ApplyResult =
 export async function applyGameAction(
 	code: string,
 	input: ActionInput,
-	now: number,
 	authorize?: () => Promise<Refusal | null>
 ): Promise<ApplyResult> {
 	return withRoomLock(code, async () => {
@@ -151,7 +135,6 @@ export async function applyGameAction(
 		if ('ok' in action) return { refused: action };
 		const result = reduce(state, action);
 		await saveGameState(code, result.state);
-		await appendGameAction(code, action, now);
 		return { previous: state, result };
 	});
 }

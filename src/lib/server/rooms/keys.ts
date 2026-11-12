@@ -11,7 +11,6 @@ export const revealedKey = (code: string) => `wolf:room:${code}:revealed`;
 // were - only "what phase the game itself is in" moves into a single blob). --
 export const gameStateKey = (code: string) => `wolf:room:${code}:gameState`;
 export const gameLockKey = (code: string) => `wolf:room:${code}:lock`;
-export const gameActionsKey = (code: string) => `wolf:room:${code}:actions`;
 
 /** Every per-room key. Used to re-arm TTL in one pipeline and to close a room. */
 export function fixedRoomKeys(code: string): string[] {
@@ -21,8 +20,7 @@ export function fixedRoomKeys(code: string): string[] {
 		playersKey(code),
 		identitiesKey(code),
 		revealedKey(code),
-		gameStateKey(code),
-		gameActionsKey(code)
+		gameStateKey(code)
 	];
 }
 

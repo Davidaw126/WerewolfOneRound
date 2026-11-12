@@ -41,16 +41,7 @@ import {
 import { dealCards, type DealResult } from '../../game/rules/deal';
 import type { RuleConfigOverrides } from '../../game/ruleSwitches';
 import type { GameState, RoleId } from '../../game/types';
-import { ALL_ROLE_IDS } from '../../game/roleMeta';
-import {
-	loadGameState,
-	deleteGameState,
-	clearGameActions,
-	withRoomLock,
-	type Refusal
-} from '../game/gameStateRepo';
-import { legacyToRoleId } from '../../game/roleBridge';
-import type { Role } from '../../shared/roles';
+import { loadGameState, deleteGameState, withRoomLock, type Refusal } from '../game/gameStateRepo';
 import { refuse, type AckResponse } from '../../shared/events';
 import {
 	stageOf,
@@ -118,53 +109,17 @@ export interface RoomHashData {
 
 const isPreGame = (phase: Phase) => PRE_GAME_PHASES.includes(phase);
 
-/** The room's phase is mirrored as the engine's own. A game running across
- * the deploy that changed that still has the older names stored until its
- * next action - read them as the nearest engine phase. */
-const LEGACY_PHASE: Record<string, Phase> = {
-	NIGHT_ACTIONS: 'NIGHT',
-	NIGHT_HUNTER_SHOT: 'HUNTER_SHOOT',
-	DAY_HUNTER_SHOT: 'HUNTER_SHOOT',
-	DAY_VOTE: 'VOTE'
-};
-
-/** Roles are stored as RoleId. A room set up before that change (still in
- * Redis across a deploy) has Chinese role names instead - read those too. */
-function asRoleId(value: string): RoleId | null {
-	return (ALL_ROLE_IDS as readonly string[]).includes(value)
-		? (value as RoleId)
-		: legacyToRoleId(value as Role);
-}
-
-function toRoleIdKeys(config: Record<string, number>): Partial<Record<RoleId, number>> {
-	const out: Partial<Record<RoleId, number>> = {};
-	for (const [role, count] of Object.entries(config)) {
-		const id = asRoleId(role);
-		if (id) out[id] = (out[id] ?? 0) + count;
-	}
-	return out;
-}
-
-/** A room set up before the 丘比特 poison rule joined the other switches
- * stored it as its own field - fold that in. */
-function readRuleOverrides(data: Record<string, string>): RuleConfigOverrides {
-	const overrides: RuleConfigOverrides = data.ruleOverrides ? JSON.parse(data.ruleOverrides) : {};
-	if (data.cupidPoisonBlocksHunter === '1' && overrides.cupidPoisonBlocksHunter === undefined)
-		overrides.cupidPoisonBlocksHunter = true;
-	return overrides;
-}
-
 export async function readRoomHash(code: string): Promise<RoomHashData | null> {
 	const data = await redis.hgetall(roomKey(code));
 	if (!data.phase) return null;
 	return {
-		phase: LEGACY_PHASE[data.phase] ?? ((data.phase || 'LOBBY') as Phase),
+		phase: data.phase as Phase,
 		hostSessionId: data.hostSessionId || '',
-		roleConfig: data.roleConfig ? toRoleIdKeys(JSON.parse(data.roleConfig)) : {},
+		roleConfig: data.roleConfig ? JSON.parse(data.roleConfig) : {},
 		numberOfSeats: Number(data.numberOfSeats || 0),
 		lockStatus: data.lockStatus === '1',
 		nightNumber: Number(data.nightNumber || 0),
-		ruleOverrides: readRuleOverrides(data)
+		ruleOverrides: data.ruleOverrides ? JSON.parse(data.ruleOverrides) : {}
 	};
 }
 
@@ -359,12 +314,7 @@ export async function setSeatsLocked(code: string, locked: boolean): Promise<voi
 // -- Roles -------------------------------------------------------------------
 
 async function dealtIdentities(code: string): Promise<Record<string, RoleId>> {
-	const out: Record<string, RoleId> = {};
-	for (const [slot, role] of Object.entries(await redis.hgetall(identitiesKey(code)))) {
-		const id = asRoleId(role);
-		if (id) out[slot] = id;
-	}
-	return out;
+	return (await redis.hgetall(identitiesKey(code))) as Record<string, RoleId>;
 }
 
 function flattenDeal(deal: DealResult): Record<string, RoleId> {
@@ -477,13 +427,12 @@ export async function recordGamePhase(code: string, phase: Phase, round: number)
 
 /** Ends the current round (or a finished one) and returns the room to
  * SEATING with the same setup: whoever is seated stays seated, the game
- * state and its action log go, and the roles are re-dealt - a new round
+ * state goes, and the roles are re-dealt - a new round
  * should never silently replay the old one's roles. */
 export async function resetToSeating(code: string): Promise<void> {
 	await redis.hset(roomKey(code), { phase: 'SEATING', lockStatus: '0', nightNumber: '0' });
 	await redis.expire(roomKey(code), ROOM_TTL_SECONDS);
 	await deleteGameState(code);
-	await clearGameActions(code);
 	await redeal(code);
 }
 

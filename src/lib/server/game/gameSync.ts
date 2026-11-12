@@ -213,7 +213,7 @@ export async function runGameAction(
 	options: RunOptions = {}
 ): Promise<AckResponse> {
 	const authorize = options.host === undefined ? undefined : hostCheck(code, options.host);
-	const applied = await applyGameAction(code, input, Date.now(), authorize);
+	const applied = await applyGameAction(code, input, authorize);
 	if ('refused' in applied) return applied.refused;
 	const { previous, result } = applied;
 

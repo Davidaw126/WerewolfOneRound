@@ -93,36 +93,6 @@ describe('creating and setting up a room', () => {
 		expect(roles.sort()).toEqual(['SEER', 'VILLAGER', 'WEREWOLF']);
 	});
 
-	it('reads the 丘比特 poison rule a room stored as its own field before', async () => {
-		const code = await room.createRoom(HOST);
-		await room.submitRoomConfigAtomic(code, HOST, config);
-		await redis.hset(`wolf:room:${code}`, { cupidPoisonBlocksHunter: '1' });
-		expect((await room.readRoomHash(code))?.ruleOverrides).toEqual({
-			cupidPoisonBlocksHunter: true
-		});
-	});
-
-	it('still reads a room saved with Chinese role names before roles were stored as ids', async () => {
-		const code = await room.createRoom(HOST);
-		await redis.hset(`wolf:room:${code}`, {
-			phase: 'SEATING',
-			numberOfSeats: '2',
-			roleConfig: JSON.stringify({ 普通狼人: 1, 预言家: 1 })
-		});
-		await redis.hset(`wolf:room:${code}:identities`, { '1': '预言家', '2': '普通狼人' });
-		expect((await room.readRoomHash(code))?.roleConfig).toEqual({ WEREWOLF: 1, SEER: 1 });
-		expect(await room.currentRoleOfSeat(code, 1)).toBe('SEER');
-		await room.redeal(code);
-		const roles = await Promise.all([1, 2].map((s) => room.currentRoleOfSeat(code, s)));
-		expect(roles.sort()).toEqual(['SEER', 'WEREWOLF']);
-	});
-
-	it('reads a game phase stored under its pre-engine name as in progress', async () => {
-		const code = await room.createRoom(HOST);
-		await redis.hset(`wolf:room:${code}`, { phase: 'DAY_VOTE' });
-		expect((await room.readRoomHash(code))?.phase).toBe('VOTE');
-	});
-
 	it('lets only the Host submit the setup, and never changes who the Host is', async () => {
 		const code = await room.createRoom(HOST);
 		expect(await room.submitRoomConfigAtomic(code, 's1', config)).toEqual({

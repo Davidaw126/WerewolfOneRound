@@ -261,12 +261,14 @@ describe('answering the caller', () => {
 		expect((await loadGameState(code))?.submittedRoles).not.toContain('SEER');
 	});
 
-	it("a refusal from the caller's check changes and logs nothing", async () => {
+	it("a refusal from the caller's check changes nothing and tells nobody", async () => {
 		const code = await startedGame();
-		const logged = await redis.llen(`wolf:room:${code}:actions`);
+		const before = await redis.get(`wolf:room:${code}:gameState`);
+		sent = [];
 		const ack = await runGameAction(code, () => ({ ok: false, error: 'not_your_role' }));
 		expect(ack).toEqual({ ok: false, error: 'not_your_role' });
-		expect(await redis.llen(`wolf:room:${code}:actions`)).toBe(logged);
+		expect(await redis.get(`wolf:room:${code}:gameState`)).toBe(before);
+		expect(sent).toEqual([]);
 	});
 
 	it('an action the engine ignored answers the given error', async () => {
