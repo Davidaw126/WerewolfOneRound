@@ -76,7 +76,7 @@
 				onclick={scrollDown}
 				class="pointer-events-auto border border-ember/50 bg-ink/40 px-2 py-0.5 text-xs font-bold text-ember/80"
 			>
-				<span class="inline-block motion-safe:animate-bounce">↓</span>
+				<span class="inline-block">↓</span>
 				{t.room.scrollMore}
 			</button>
 		</div>
