@@ -27,7 +27,7 @@
 	import DayNightTransition from '$lib/components/DayNightTransition.svelte';
 	import ActivityLogButton from '$lib/components/ActivityLogButton.svelte';
 	import RoomLogButton from '$lib/components/RoomLogButton.svelte';
-	import InfoPopupHost from '$lib/components/InfoPopupHost.svelte';
+	import NoticeLayer from '$lib/components/NoticeLayer.svelte';
 	import ScrollArea from '$lib/components/ScrollArea.svelte';
 	import ShareRoom from '$lib/components/ShareRoom.svelte';
 	import HostNightStrip from '$lib/components/HostNightStrip.svelte';
@@ -179,7 +179,7 @@
 {/if}
 
 <DayNightTransition />
-<InfoPopupHost />
+<NoticeLayer />
 
 <div
 	class="flex h-dvh flex-col overflow-hidden bg-gradient-to-b {phaseBg} text-zinc-100 transition-colors duration-700"
@@ -230,18 +230,6 @@
 					>
 						<span aria-hidden="true">📢</span>
 						{formatDayResult({ ...gameStore.state.lastDayResult, lang: i18n.lang })}
-					</div>
-				{/if}
-
-				{#if gameStore.toast}
-					<div class="panel border-wolf/40 px-4 py-2 text-sm text-wolf">
-						{gameStore.toast}
-					</div>
-				{/if}
-
-				{#if gameStore.confirmToast}
-					<div class="panel border-village/40 px-4 py-2 text-sm text-village">
-						{gameStore.confirmToast}
 					</div>
 				{/if}
 

@@ -161,13 +161,10 @@ export class GameStore {
 	pendingTurnRole = $state<RoleId | null>(null);
 	pendingTurnContext = $state<TurnContext | null>(null);
 
-	/** Centered, auto-dismissing popup for a private role result (seer check,
-	 * hunter authorization/denial, couple reveal) - same overlay treatment as
-	 * the confirm/role-reveal dialogs (a neighbor glancing at the screen
-	 * shouldn't see it either), but never blocks on a tap since it's only
-	 * information, not a decision. Separate from confirmToast/toast (the
-	 * top-of-page banners), which are easy to miss while scrolled down into a
-	 * night-action prompt. */
+	/** Auto-dismissing notice for a private result (seer check, hunter
+	 * authorization/denial, couple reveal). Shown with confirmToast/toast in
+	 * NoticeLayer, floating under the header: never moves the page, never
+	 * blocks a tap - it's information, not a decision. */
 	infoPopup = $state<{ message: string; tone: 'good' | 'bad' | 'neutral' } | null>(null);
 	private infoPopupToken = 0;
 
@@ -231,7 +228,7 @@ export class GameStore {
 		}, ms);
 	}
 
-	/** Lets the popup be dismissed early (tapping the backdrop) instead of
+	/** Lets the popup be dismissed early (tapping it) instead of
 	 * always waiting out its auto-close timer. */
 	dismissInfoPopup(): void {
 		this.infoPopup = null;
