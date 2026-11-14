@@ -226,14 +226,16 @@ export class GameStore {
 		}, ms);
 	}
 
-	/** Same token-guarded auto-clear as showConfirm/showToast, for the
-	 * centered infoPopup. */
+	/** The centered dialog (InfoDialog). `ms` 0 keeps it until tapped away -
+	 * for a private result the player must not miss; otherwise the same
+	 * token-guarded auto-clear as showConfirm/showToast. */
 	showInfoPopup(message: string, tone: 'good' | 'bad' | 'neutral' = 'neutral', ms = 3000): void {
 		this.infoPopup = { message, tone };
 		const token = ++this.infoPopupToken;
-		setTimeout(() => {
-			if (this.infoPopupToken === token) this.infoPopup = null;
-		}, ms);
+		if (ms > 0)
+			setTimeout(() => {
+				if (this.infoPopupToken === token) this.infoPopup = null;
+			}, ms);
 	}
 
 	/** Lets the popup be dismissed early (tapping it) instead of
@@ -758,7 +760,7 @@ export class GameStore {
 			case 'RoleChangedByHost': {
 				if (event.forYou) {
 					this.logActivity(logLine('text', 'nightPrompt', 'roleChangedForYou'));
-					this.showInfoPopup(strings(i18n.lang).nightPrompt.roleChangedForYou, 'neutral', 6000);
+					this.showInfoPopup(strings(i18n.lang).nightPrompt.roleChangedForYou, 'neutral', 0);
 				} else {
 					this.logActivity(logLine('hostOverride', event.seat, 'SET_ROLE'));
 				}
@@ -766,7 +768,7 @@ export class GameStore {
 			}
 			case 'WildChildConverted': {
 				this.logActivity(logLine('text', 'nightPrompt', 'wildChildConverted'));
-				this.showInfoPopup(strings(i18n.lang).nightPrompt.wildChildConverted, 'bad', 8000);
+				this.showInfoPopup(strings(i18n.lang).nightPrompt.wildChildConverted, 'bad', 0);
 				break;
 			}
 			case 'RoleDoneByOther': {
@@ -810,9 +812,12 @@ export class GameStore {
 				// lastSeerResult above is the lasting record (shown inline in the
 				// prompt/activity log) - the popup is just the "here's the answer"
 				// moment, same treatment as the role-reveal card.
+				// A replay already in the diary stopped above; one that wasn't
+				// (missed while the phone slept) is news, so it pops up too.
 				this.showInfoPopup(
 					strings(i18n.lang).nightPrompt.checkResult(event.targetSeat, event.isWolf),
-					event.isWolf ? 'bad' : 'good'
+					event.isWolf ? 'bad' : 'good',
+					0
 				);
 				break;
 			case 'CoupleRevealed':
@@ -854,7 +859,7 @@ export class GameStore {
 			}
 			case 'HunterAuthorized':
 				this.hunterAuthorized = true;
-				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good');
+				this.showInfoPopup(formatHunterAuthorized(i18n.lang), 'good', 0);
 				break;
 			case 'ShotStatus': {
 				const told = logLine('shotStatus', event.canShoot);
@@ -863,13 +868,13 @@ export class GameStore {
 				this.showInfoPopup(
 					formatShotStatus(event.canShoot, i18n.lang),
 					event.canShoot ? 'good' : 'bad',
-					8000
+					0
 				);
 				break;
 			}
 			case 'HunterDenied':
 				this.logActivity(logLine('hunterDenied'));
-				this.showInfoPopup(formatHunterDenied(i18n.lang), 'bad');
+				this.showInfoPopup(formatHunterDenied(i18n.lang), 'bad', 0);
 				break;
 			case 'HostStageChanged':
 				this.hostStage = event.stage;

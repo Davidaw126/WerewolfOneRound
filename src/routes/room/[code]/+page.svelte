@@ -24,6 +24,7 @@
 	import NightActionPrompt from '$lib/components/NightActionPrompt.svelte';
 	import VoteBoard from '$lib/components/VoteBoard.svelte';
 	import CoupleHoldButton from '$lib/components/CoupleHoldButton.svelte';
+	import InfoDialog from '$lib/components/InfoDialog.svelte';
 	import DiscussionPanel from '$lib/components/DiscussionPanel.svelte';
 	import HunterShotPrompt from '$lib/components/HunterShotPrompt.svelte';
 	import GameOverScreen from '$lib/components/GameOverScreen.svelte';
@@ -187,6 +188,7 @@
 
 <DayNightTransition />
 <NoticeLayer />
+<InfoDialog />
 
 <div
 	class="flex h-dvh flex-col overflow-hidden bg-gradient-to-b {phaseBg} text-zinc-100 transition-colors duration-700"

@@ -1,20 +1,12 @@
 <script lang="ts">
-	// Every short notice - a private result (seer check, 情侣, hunter),
-	// "you picked 7, close your eyes", an error - in one small layer floating
-	// under the header. It never pushes the page around, and taps go through
+	// The short notices - "you picked 7, close your eyes", an error - in one
+	// small layer floating under the header. (Private results are a dialog:
+	// InfoDialog.) It never pushes the page around, and taps go through
 	// it to the seats and buttons underneath; tapping a notice itself just
 	// dismisses it early. A plain fade, nothing that draws the eye across
 	// the table.
 	import { fade } from 'svelte/transition';
 	import { gameStore } from '$lib/client/gameStore.svelte';
-
-	const toneClass = $derived(
-		gameStore.infoPopup?.tone === 'bad'
-			? 'text-wolf'
-			: gameStore.infoPopup?.tone === 'good'
-				? 'text-village'
-				: 'text-bone'
-	);
 </script>
 
 <div
@@ -22,15 +14,6 @@
 	style="top: calc(env(safe-area-inset-top, 0px) + 4.75rem)"
 	aria-live="polite"
 >
-	{#if gameStore.infoPopup}
-		<button
-			transition:fade={{ duration: 150 }}
-			onclick={() => gameStore.dismissInfoPopup()}
-			class="panel pointer-events-auto px-4 py-3 text-center text-base font-semibold shadow-[0_6px_18px_rgba(0,0,0,0.55)] {toneClass}"
-		>
-			{gameStore.infoPopup.message}
-		</button>
-	{/if}
 	{#if gameStore.confirmToast}
 		<button
 			transition:fade={{ duration: 150 }}
