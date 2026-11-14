@@ -161,9 +161,6 @@ export function handleNextSpeaker(state: GameState): EngineResult {
 export function handleBeginVote(state: GameState): EngineResult {
 	return withEffects(state, (draft, effects) => {
 		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
-		// The table flow votes by hand unless the room turned the phone vote
-		// on (the legacy in-app shot flow always had it).
-		if (draft.ruleConfig.shotsAtTable && !draft.ruleConfig.inAppVote) return;
 		draft.phase = 'VOTE';
 		draft.votes = {};
 		draft.pkCandidates = [];
@@ -355,10 +352,10 @@ export function handleTallyVotes(
 		if (draft.phase !== 'VOTE' && draft.phase !== 'VOTE_PK') return;
 		const cfg = draft.ruleConfig;
 		const inPk = draft.phase === 'VOTE_PK';
-		// The table flow's phone vote: like the Host's EXILE, the result
-		// returns to the Host's day console, settled - shots happen at the
-		// table. (Without inAppVote this is the legacy in-app flow.)
-		const atTable = cfg.inAppVote && cfg.shotsAtTable;
+		// The table flow: like the Host's EXILE, the result returns to the
+		// Host's day console, settled - shots happen at the table. (With
+		// shotsAtTable off this is the legacy in-app flow.)
+		const atTable = cfg.shotsAtTable;
 
 		// Ballots are public once the vote closes; each seat's picks are kept
 		// for 潜行者 tonight.

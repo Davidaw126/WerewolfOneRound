@@ -162,13 +162,12 @@ async function setupGame(
 }
 
 async function basicGame() {
-	// The phone vote is a room rule (off by default); this game turns it on.
-	const { players, host, code } = await setupGame(
-		'b',
-		6,
-		{ WEREWOLF: 2, SEER: 1, WITCH: 1, VILLAGER: 2 },
-		{ inAppVote: true }
-	);
+	const { players, host, code } = await setupGame('b', 6, {
+		WEREWOLF: 2,
+		SEER: 1,
+		WITCH: 1,
+		VILLAGER: 2
+	});
 	const seatOf = (p: Phone) => players.indexOf(p) + 1;
 	const byRole = (role: RoleId) => players.filter((p) => p.role === role);
 	console.log('roles:', players.map((p) => `${seatOf(p)}=${p.role}`).join(' '));

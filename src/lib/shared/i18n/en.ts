@@ -258,12 +258,6 @@ export const en: Strings = {
 		cardCountWithThief: (total, seats) =>
 			`${total} cards total (incl. Thief - ${seats} actual seats)`,
 		houseRuleHeader: 'House Rules',
-		stalkerTurnsOnVote:
-			'Stalker chosen: Vote on phones is now on — the Stalker may only kill someone they voted for that day',
-		stalkerNeedsVote:
-			"With a Stalker, turn on Vote on phones — otherwise the app can't check they kill only someone they voted for",
-		inAppVote:
-			'Vote on phones · by day the host opens a vote, everyone votes on their phone, and who voted for whom is shown when it closes',
 		cupidPoisonBlocksHunter:
 			"Lover's-suicide counts as poison · a hunter whose lover died of poison and then followed in suicide can't shoot either",
 		winConditionLabel: 'Win Condition',
@@ -299,8 +293,6 @@ export const en: Strings = {
 		next: 'Next',
 		dayTitle: 'Day',
 		outHeader: 'Who left the table today?',
-		outHint:
-			"Exiles, self-destructs and shots all happen openly at the table — just tick the seats that left (several at once is fine). Don't tick a flipped Idiot; anyone who falls with them (e.g. a lover) is handled automatically.",
 		outButton: (seats) => `Seat ${seats.join(', ')} out`,
 		outPickFirst: 'Tick who is out first',
 		confirmOut: (seats) => `Confirm seat ${seats.join(', ')} out? This can't be undone.`,
@@ -308,9 +300,8 @@ export const en: Strings = {
 		enterNight: '🌙 Start the Next Night',
 		confirmEnterNight: 'No one has been exiled today. Start the next night anyway?',
 		confirmEnterNightPlain: 'Start the next night?',
-		playerWaiting: 'The day plays out at the table — waiting for the host to record who left…',
-		playerWaitingVote: 'The day plays out at the table — waiting for the host to open the vote…',
-		beginVote: '🗳 Start the vote',
+		playerWaiting: 'The day plays out at the table — waiting for the host to open the vote…',
+		beginVote: '🗳 Go to the vote',
 		knightDuelButton: '⚔️ Knight duel',
 		selectKnightSeat: 'Choose the knight:',
 		selectDuelTargetSeat: 'Choose the duel target:',

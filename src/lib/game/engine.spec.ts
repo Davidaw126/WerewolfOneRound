@@ -511,7 +511,9 @@ describe('§9.4 平票处理: a tied vote opens VOTE_PK (tieBreak=PK_THEN_NO_EXI
 	});
 
 	it("tieBreak='NO_EXILE': a first-round tie skips PK entirely, straight to night", () => {
-		const cfg = { ...defaultRuleConfig(), tieBreak: 'NO_EXILE' as const };
+		// The legacy in-app flow (shotsAtTable off), where the vote's result
+		// starts the night itself.
+		const cfg = { ...defaultRuleConfig(), tieBreak: 'NO_EXILE' as const, shotsAtTable: false };
 		let state = toDayVote();
 		state = { ...state, ruleConfig: cfg };
 
@@ -546,10 +548,13 @@ describe('CAST_VOTE guards', () => {
 });
 
 describe('IDIOT reveal-on-exile (§9.5, B16-B19, UT-10)', () => {
+	/** The legacy in-app flow, where the vote's result starts the night. */
+	const legacy = () => ({ ...defaultRuleConfig(), shotsAtTable: false });
+
 	it('an exiled idiot reveals instead of dying, loses their vote, keeps their seat, and the day skips straight to the next night', () => {
 		const state = makeState(
 			{ 1: 'IDIOT', 2: 'WEREWOLF', 3: 'VILLAGER', 4: 'VILLAGER' },
-			{ phase: 'VOTE', votes: { 2: 1, 3: 1, 4: 1 } }
+			{ phase: 'VOTE', votes: { 2: 1, 3: 1, 4: 1 }, ruleConfig: legacy() }
 		);
 		const { state: after, effects } = reduce(state, { type: 'TALLY_VOTES' });
 
@@ -570,7 +575,7 @@ describe('IDIOT reveal-on-exile (§9.5, B16-B19, UT-10)', () => {
 	it('UT-11: a revealed, still-alive idiot still counts as a living god - SIDE_KILL does not trigger', () => {
 		let state = makeState(
 			{ 1: 'WEREWOLF', 2: 'IDIOT', 3: 'SEER', 4: 'VILLAGER' },
-			{ phase: 'VOTE', votes: { 1: 2, 3: 2, 4: 2 } } // everyone votes out the idiot
+			{ phase: 'VOTE', votes: { 1: 2, 3: 2, 4: 2 }, ruleConfig: legacy() } // everyone votes out the idiot
 		);
 		state = kill(structuredClone(state), 3); // the seer already died earlier - idiot is now the only living god
 
@@ -582,6 +587,17 @@ describe('IDIOT reveal-on-exile (§9.5, B16-B19, UT-10)', () => {
 		// living gods and hand the wolves an immediate win - it must not.
 		expect(after.winner).toBeNull();
 		expect(after.phase).toBe('NIGHT');
+	});
+
+	it('at the table: the flip settles the day and returns to the Host', () => {
+		const state = makeState(
+			{ 1: 'IDIOT', 2: 'WEREWOLF', 3: 'VILLAGER', 4: 'VILLAGER' },
+			{ phase: 'VOTE', votes: { 2: 1, 3: 1, 4: 1 } }
+		);
+		const { state: after } = reduce(state, { type: 'TALLY_VOTES' });
+		expect(after.players[1].isRevealedIdiot).toBe(true);
+		expect(after.phase).toBe('DISCUSSION');
+		expect(after.dayDecided).toBe(true);
 	});
 
 	it('a revealed idiot exiled again later has no further effect (B19) - falls through to a normal VOTE_OUT death, since a second reveal never happens here', () => {
@@ -1834,7 +1850,7 @@ describe('潜行者', () => {
 	});
 });
 
-describe('in-app day vote (inAppVote switch)', () => {
+describe('the day vote on the phones', () => {
 	const board = {
 		1: 'WEREWOLF',
 		2: 'VILLAGER',
@@ -1845,14 +1861,13 @@ describe('in-app day vote (inAppVote switch)', () => {
 		7: 'SEER'
 	} as const;
 
-	/** The table flow's own rules (shots at the table, no 遗言), vote on or off. */
-	function dayOne(inAppVote = true): GameState {
+	/** The table flow's own rules (shots at the table, no 遗言). */
+	function dayOne(): GameState {
 		const s = start(board).state;
 		let state: GameState = {
 			...s,
 			ruleConfig: {
 				...s.ruleConfig,
-				inAppVote,
 				shotsAtTable: true,
 				lastWords: {
 					firstNightVictim: false,
@@ -1873,11 +1888,11 @@ describe('in-app day vote (inAppVote switch)', () => {
 		return state;
 	}
 
-	it('is off by default: the Host cannot open a vote', () => {
-		expect(reduce(dayOne(false), { type: 'BEGIN_VOTE' }).state.phase).toBe('DISCUSSION');
+	it('the Host can always open it - no setting', () => {
+		expect(reduce(dayOne(), { type: 'BEGIN_VOTE' }).state.phase).toBe('VOTE');
 	});
 
-	it('on: the exile, then back to the Host’s day console with the day settled', () => {
+	it('the exile, then back to the Host’s day console with the day settled', () => {
 		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
 		expect(state.phase).toBe('VOTE');
 		state = vote(state, { 1: 2, 2: 6, 3: 6, 4: 6, 5: 'ABSTAIN', 6: 2, 7: 6 });
@@ -1978,8 +1993,8 @@ describe('in-app day vote (inAppVote switch)', () => {
 		expect(stalk(2).state.nightActions.stalkerKillTarget).toBe(2);
 	});
 
-	it('with the vote off, 潜行者 is trusted to follow the rule', () => {
-		let state = dayOne(false);
+	it('a day without a phone vote (voted by hand): 潜行者 is trusted to follow the rule', () => {
+		let state = dayOne();
 		({ state } = reduce(state, { type: 'END_DAY' }));
 		state = toStageOf(state, 'STALKER');
 		const ctx = payload<{ context: { stalker: { votedSeats?: number[] } } }>(
@@ -1993,5 +2008,17 @@ describe('in-app day vote (inAppVote switch)', () => {
 			action: { stalkerKillTarget: 7 }
 		});
 		expect(r.state.nightActions.stalkerKillTarget).toBe(7);
+	});
+
+	it('a skipped vote counts as no phone vote that day', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 3: 6 });
+		({ state } = reduce(state, { type: 'SKIP_VOTE' }));
+		({ state } = reduce(state, { type: 'END_DAY' }));
+		state = toStageOf(state, 'STALKER');
+		const ctx = payload<{ context: { stalker: { votedSeats?: number[] } } }>(
+			notifyRoleHolders(state, 'STALKER')[0]
+		);
+		expect(ctx.context.stalker.votedSeats).toBeUndefined();
 	});
 });

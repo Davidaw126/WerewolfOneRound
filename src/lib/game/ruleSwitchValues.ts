@@ -13,7 +13,6 @@ type KeysOf<T> = {
 const SWITCH_KEYS: KeysOf<RuleSwitches> = {
 	winCondition: true,
 	cupidPoisonBlocksHunter: true,
-	inAppVote: true,
 	wolf: { allowEmptyKill: true, blackWolfKingCanShootWhenLoverSuicide: true },
 	guard: { sameGuardSameSave: true, allowEmptyGuard: true },
 	witch: { selfRescue: true, canPoisonSelf: true, bothPotionsSameNight: true },

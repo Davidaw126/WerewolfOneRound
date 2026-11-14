@@ -530,7 +530,7 @@ export function handleSubmitNightAction(
 				if (target !== null) {
 					if (draft.stalkerUsed) return reject(effects, seat, 'stalker_used');
 					if (target === seat) return reject(effects, seat, 'invalid_target');
-					if (cfg.inAppVote && !stalkerTargets(draft, seat).includes(target))
+					if (draft.dayVotes && !stalkerTargets(draft, seat).includes(target))
 						return reject(effects, seat, 'stalker_not_voted');
 					draft.stalkerUsed = true;
 				}

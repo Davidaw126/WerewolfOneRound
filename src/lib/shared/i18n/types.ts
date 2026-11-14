@@ -197,9 +197,6 @@ export interface Strings {
 		cardCountWithThief: (total: number, seats: number) => string;
 		houseRuleHeader: string;
 		cupidPoisonBlocksHunter: string;
-		inAppVote: string;
-		stalkerTurnsOnVote: string;
-		stalkerNeedsVote: string;
 		winConditionLabel: string;
 		winConditionSideKill: string;
 		winConditionTotalKill: string;
@@ -232,7 +229,6 @@ export interface Strings {
 		next: string;
 		dayTitle: string;
 		outHeader: string;
-		outHint: string;
 		outButton: (seats: number[]) => string;
 		outPickFirst: string;
 		confirmOut: (seats: number[]) => string;
@@ -241,7 +237,6 @@ export interface Strings {
 		confirmEnterNight: string;
 		confirmEnterNightPlain: string;
 		playerWaiting: string;
-		playerWaitingVote: string;
 		beginVote: string;
 		knightDuelButton: string;
 		selectKnightSeat: string;

@@ -49,9 +49,7 @@ const TOP = {
 	winCondition: z.enum(['SIDE_KILL', 'TOTAL_KILL']),
 	/** A lover who dies of 殉情 after their partner was poisoned counts as
 	 * poisoned too, for the 猎人's shot. */
-	cupidPoisonBlocksHunter: z.boolean(),
-	/** The day's vote happens on the phones instead of by hand. */
-	inAppVote: z.boolean()
+	cupidPoisonBlocksHunter: z.boolean()
 };
 
 /** Every switch, each with a value - what the panel edits. */

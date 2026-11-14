@@ -10,7 +10,6 @@
 	import { strings, roleName, presetName, formatSetupIssue } from '$lib/shared/i18n';
 	import type { ValidationIssue } from '$lib/game/rules/setup';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import { gameStore } from '$lib/client/gameStore.svelte';
 	import PixelSprite from './PixelSprite.svelte';
 	import ScrollArea from './ScrollArea.svelte';
 
@@ -58,20 +57,6 @@
 	// The Host's rule switches, starting from the engine's own defaults so an
 	// untouched toggle shows the real default.
 	const rules = $state(switchesOf(defaultRuleConfig()));
-
-	// 潜行者 may only kill someone they voted for that day - only the phone
-	// vote lets the app check that. Choosing the card turns the vote on (and
-	// says so); the Host can still turn it back off.
-	const hasStalker = $derived((counts.STALKER ?? 0) > 0);
-	let stalkerWas = false;
-	$effect(() => {
-		const on = hasStalker;
-		if (on && !stalkerWas && !rules.inAppVote) {
-			rules.inAppVote = true;
-			gameStore.showConfirm(t.roleConfig.stalkerTurnsOnVote, 5000);
-		}
-		stalkerWas = on;
-	});
 
 	async function submit() {
 		error = null;
@@ -235,15 +220,6 @@
 					rules.cupidPoisonBlocksHunter,
 					() => (rules.cupidPoisonBlocksHunter = !rules.cupidPoisonBlocksHunter)
 				)}
-			{/if}
-
-			{@render toggle(
-				t.roleConfig.inAppVote,
-				rules.inAppVote,
-				() => (rules.inAppVote = !rules.inAppVote)
-			)}
-			{#if hasStalker && !rules.inAppVote}
-				<p class="text-[13px] text-ember">{t.roleConfig.stalkerNeedsVote}</p>
 			{/if}
 
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">

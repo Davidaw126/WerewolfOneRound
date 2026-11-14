@@ -1280,7 +1280,10 @@ describe('黑狼王', () => {
 		for (const seat of [2, 3, 4, 5, 6, 7]) voted.votes[seat] = 1;
 		const r = reduce(voted, { type: 'TALLY_VOTES' });
 		expect(r.state.players[1].isDead).toBe(true);
-		expect(r.state.pendingShoots).toContain(1);
+		// The shot happens at the table; he is told he may take it.
+		const status = r.effects.find((e) => kindOf(e) === 'ShotStatus');
+		expect(status?.seat).toBe(1);
+		expect((status?.payload as { canShoot: boolean }).canShoot).toBe(true);
 
 		const poisoned = makeState(roles, { phase: 'NIGHT', round: 2 });
 		const deaths = cascadeDeaths(poisoned, [{ seat: 1, cause: 'WITCH_POISON' }], {

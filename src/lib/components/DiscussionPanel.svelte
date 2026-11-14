@@ -18,8 +18,6 @@
 	/** Someone was exiled, or a self-explosion / duel ended the day. */
 	const dayDecided = $derived(roomState?.dayDecided ?? false);
 	// Hidden once the duel is spent - the server would only refuse it.
-	// The room's rule: the vote happens on the phones, opened by the Host.
-	const inAppVote = $derived(roomState?.inAppVote === true);
 	const hasKnight = $derived(
 		(roomState?.roleConfig?.['KNIGHT'] ?? 0) > 0 && !(roomState?.knightUsed ?? false)
 	);
@@ -176,25 +174,17 @@
 		{/if}
 	{:else if !isHost}
 		<p class="text-center text-sm text-zinc-500">
-			{dayDecided
-				? t.discussion.dayDecided
-				: inAppVote
-					? t.discussion.playerWaitingVote
-					: t.discussion.playerWaiting}
+			{dayDecided ? t.discussion.dayDecided : t.discussion.playerWaiting}
 		</p>
 	{:else}
-		{#if inAppVote && !dayDecided && mode === 'out'}
-			<!-- The day's main move with the phone vote on. -->
+		{#if !dayDecided && mode === 'out'}
+			<!-- The day's main move: the vote on the phones. (Skipping it, or a
+			     vote by hand, the Host still marks who left below.) -->
 			<button onclick={beginVote} disabled={busy} class="btn-primary w-full">
 				{t.discussion.beginVote}
 			</button>
 		{/if}
 		<p class="font-display text-base font-semibold text-ember">{prompt}</p>
-		{#if mode === 'out' && !inAppVote}
-			<!-- With the phone vote on, the exile is the vote's; the hint (and its
-			     space) would only crowd the circle. -->
-			<p class="text-[11px] leading-snug text-zinc-500">{t.discussion.outHint}</p>
-		{/if}
 		<p class="text-base font-semibold text-bone">{pickedLine}</p>
 		<div class="flex gap-2">
 			<button

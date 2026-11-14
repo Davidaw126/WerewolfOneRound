@@ -511,7 +511,6 @@ export async function getPublicState(
 		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {}),
 		lastNightDeaths: gameState?.announcedNightDeaths ?? null,
 		lastSilenced: gameState?.announcedSilenced ?? null,
-		inAppVote: gameState?.ruleConfig.inAppVote ?? room.ruleOverrides.inAppVote ?? false,
 		lastDayResult: gameState?.announcedDayResult ?? null
 	};
 

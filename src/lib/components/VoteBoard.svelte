@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The day's ballot (the room's inAppVote rule): tap a seat on the circle,
+	// The day's ballot, opened by the Host: tap a seat on the circle,
 	// confirm, or abstain. One vote per round. The Host also closes the vote,
 	// or calls it off and goes to night. Nobody sees a running tally - only how
 	// many have voted (S11); who voted for whom is told when it closes.

@@ -148,10 +148,6 @@ export interface RuleConfig {
 	 * and the host records the victim with DAY_OUT, instead of the app
 	 * stopping in HUNTER_SHOOT for the shooter to pick on their phone. */
 	shotsAtTable: boolean;
-	/** default false - the table votes by hand and the host records the
-	 * exile. On, the Host opens a vote and everyone votes on their phone;
-	 * who voted for whom is told once it closes. */
-	inAppVote: boolean;
 
 	// ===== C. 夜晚 =====
 	stepTimeoutSec: number; // default 30, 0 = unlimited

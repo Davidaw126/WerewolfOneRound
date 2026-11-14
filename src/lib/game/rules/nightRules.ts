@@ -37,8 +37,8 @@ export type NightRuleError =
 	| 'silence_repeat_target'
 	/** 潜行者 has already made their one kill. */
 	| 'stalker_used'
-	/** 潜行者 (in-app vote on) chose someone they didn't vote for today, or
-	 * who was exiled. */
+	/** 潜行者 (after a phone vote) chose someone they didn't vote for today,
+	 * or who was exiled. */
 	| 'stalker_not_voted';
 
 export interface WitchRuleState {
