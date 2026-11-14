@@ -70,11 +70,9 @@
 				? 'border-wolf bg-wolf/25 text-wolf'
 				: tone === 'ember'
 					? 'border-ember bg-ember/25 text-ember'
-					: seat.seatNumber === mySeat
-						? 'border-ember bg-ember/20 text-ember'
-						: seat.sessionId
-							? 'border-line bg-surface-2 text-bone'
-							: 'border-dashed border-line bg-surface text-zinc-500 hover:border-ember/60'}
+					: seat.sessionId
+						? 'border-line bg-surface-2 text-bone'
+						: 'border-dashed border-line bg-surface text-zinc-500 hover:border-ember/60'}
 				{picking && canPick && tone === null ? 'border-bone/70' : ''}
 				{picking && !canPick && tone === null ? 'opacity-35' : ''}
 				{seat.isDead && !inNews ? 'dead-pop opacity-55 grayscale saturate-0' : ''}
