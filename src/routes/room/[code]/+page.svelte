@@ -23,6 +23,7 @@
 	import RoleRevealCard from '$lib/components/RoleRevealCard.svelte';
 	import NightActionPrompt from '$lib/components/NightActionPrompt.svelte';
 	import VoteBoard from '$lib/components/VoteBoard.svelte';
+	import CoupleHoldButton from '$lib/components/CoupleHoldButton.svelte';
 	import DiscussionPanel from '$lib/components/DiscussionPanel.svelte';
 	import HunterShotPrompt from '$lib/components/HunterShotPrompt.svelte';
 	import GameOverScreen from '$lib/components/GameOverScreen.svelte';
@@ -283,7 +284,6 @@
 							{mySeat}
 							onTake={takeSeat}
 							disabled={roomState.lockStatus}
-							hostSessionId={roomState.hostSessionId}
 						/>
 					</div>
 				{:else if group === 'night'}
@@ -296,20 +296,13 @@
 							seats={roomState.seats}
 							{mySeat}
 							disabled={true}
-							hostSessionId={roomState.hostSessionId}
 							highlight={newsSeats}
 							fit
 						/>
 					</div>
 				{:else if group === 'hunter'}
 					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
-						<SeatCircle
-							seats={roomState.seats}
-							{mySeat}
-							disabled={true}
-							hostSessionId={roomState.hostSessionId}
-							highlight={newsSeats}
-						/>
+						<SeatCircle seats={roomState.seats} {mySeat} disabled={true} highlight={newsSeats} />
 						<div class="w-full">
 							<HunterShotPrompt />
 						</div>
@@ -322,7 +315,6 @@
 							seats={roomState.seats}
 							{mySeat}
 							disabled={true}
-							hostSessionId={roomState.hostSessionId}
 							highlight={newsSeats}
 							fit
 						/>
@@ -335,7 +327,6 @@
 							seats={roomState.seats}
 							{mySeat}
 							disabled={true}
-							hostSessionId={roomState.hostSessionId}
 							highlight={newsSeats}
 							fit
 						/>
@@ -426,17 +417,7 @@
 								{#if gameStore.coupleConfirmed}
 									<p class="text-center text-sm text-zinc-500">{t.room.stageConfirmedWait}</p>
 								{:else}
-									<button
-										onclick={() =>
-											gameStore.showInfoPopup(
-												gameStore.myPartnerSeat !== null
-													? t.room.coupleLinked(gameStore.myPartnerSeat)
-													: t.room.coupleNotLinked
-											)}
-										class="btn-primary w-full"
-									>
-										{t.room.viewCouple}
-									</button>
+									<CoupleHoldButton />
 									<!-- The lovers move the night on themselves once both have
 									     tapped; on every other phone it's the same button doing
 									     nothing, so screens can't give the couple away. -->

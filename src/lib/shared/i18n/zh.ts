@@ -56,7 +56,7 @@ export const zh: Strings = {
 		backToLobby: '返回大厅',
 		leavingBack: '返回中…',
 		waitingOthers: '等待其他玩家行动…',
-		viewCouple: '查看情侣',
+		holdToViewCouple: '按住查看是否为情侣',
 		coupleLinked: (partnerSeat) => `你的情侣是 ${partnerSeat} 号`,
 		coupleNotLinked: '你没有被选为情侣',
 		continueButton: '继续',
@@ -356,6 +356,7 @@ export const zh: Strings = {
 	},
 	seatCircle: {
 		host: '房主',
+		me: '我',
 		dead: '出局',
 		empty: '空位'
 	},

@@ -11,7 +11,6 @@
 		mySeat,
 		onTake = () => {},
 		disabled = false,
-		hostSessionId = null,
 		highlight = [],
 		fit = false
 	}: {
@@ -20,7 +19,6 @@
 		/** Seating only: a tap takes the seat. */
 		onTake?: (seat: number) => void;
 		disabled?: boolean;
-		hostSessionId?: string | null;
 		/** Seats the latest news is about (last night's dead, today's exits). */
 		highlight?: number[];
 		/** Shrink to the height left too, not only the width - for the night,
@@ -84,8 +82,14 @@
 				{inNews ? 'shadow-[0_0_0_3px_rgba(220,38,38,0.85)]' : ''}
 "
 		>
-			{#if seat.sessionId === hostSessionId}
-				<span class="absolute -top-2 -right-1.5 text-xs" title={t.seatCircle.host}>👑</span>
+			{#if seat.seatNumber === mySeat}
+				<!-- Which seat is yours, at a glance. Static, like everything on
+				     the circle (see the quiet-screens rule). -->
+				<span
+					class="pointer-events-none absolute -top-2.5 -right-2 border-2 border-ink bg-ember px-1 text-[11px] leading-tight font-bold text-black"
+				>
+					{t.seatCircle.me}
+				</span>
 			{/if}
 			{#if tone !== null}
 				<span

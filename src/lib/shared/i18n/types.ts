@@ -64,7 +64,7 @@ export interface Strings {
 		backToLobby: string;
 		leavingBack: string;
 		waitingOthers: string;
-		viewCouple: string;
+		holdToViewCouple: string;
 		coupleLinked: (partnerSeat: number) => string;
 		coupleNotLinked: string;
 		continueButton: string;
@@ -301,6 +301,7 @@ export interface Strings {
 	};
 	seatCircle: {
 		host: string;
+		me: string;
 		dead: string;
 		empty: string;
 	};

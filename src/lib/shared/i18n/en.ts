@@ -54,7 +54,7 @@ export const en: Strings = {
 		backToLobby: 'Back to Lobby',
 		leavingBack: 'Leaving…',
 		waitingOthers: 'Waiting for other players…',
-		viewCouple: 'View Couple',
+		holdToViewCouple: 'Hold to see if you’re a lover',
 		coupleLinked: (partnerSeat) => `Your lover is seat ${partnerSeat}`,
 		coupleNotLinked: "You weren't chosen as a lover",
 		continueButton: 'Continue',
@@ -371,6 +371,7 @@ export const en: Strings = {
 	},
 	seatCircle: {
 		host: 'Host',
+		me: 'Me',
 		dead: 'Eliminated',
 		empty: 'Empty'
 	},
