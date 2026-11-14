@@ -33,6 +33,15 @@ export async function handleEndDay(socket: GameSocket): Promise<AckResponse> {
 	);
 }
 
+export async function handleSkipVote(socket: GameSocket): Promise<AckResponse> {
+	const code = await requireRoomCode(socket);
+	return runGameAction(
+		code,
+		{ type: 'SKIP_VOTE' },
+		{ ignored: 'invalid_phase', host: socket.data.sessionId }
+	);
+}
+
 export async function handleExile(socket: GameSocket, seat: number): Promise<AckResponse> {
 	const code = await requireRoomCode(socket);
 	// The engine ignores an exile it can't apply (already decided today, a

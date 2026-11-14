@@ -91,6 +91,8 @@ export const ClientActionSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('DayBeginVote') }),
 	// Host-only "进入黑夜": skip (the rest of) today's vote and start the night.
 	z.object({ kind: z.literal('DayEndDay') }),
+	// Phone vote: the Host drops the vote and returns to the day console.
+	z.object({ kind: z.literal('DaySkipVote') }),
 	// Host-only: record who the table voted out by hand (once per day).
 	z.object({ kind: z.literal('DayExile'), seat: z.number().int().positive() }),
 	// Host-only: the seats that left the table today (exile, self-explode,

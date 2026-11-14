@@ -481,6 +481,9 @@ export type EngineAction =
 	 * self-exploded at the table. DISCUSSION/VOTE/VOTE_PK -> NIGHT, after
 	 * the usual winner check. */
 	| { type: 'END_DAY' }
+	/** Host-only, phone vote: drop the vote (or its PK) and go back to the
+	 * day console - not to night. Nothing is counted. */
+	| { type: 'SKIP_VOTE' }
 	/** Host-only: the table voted by hand and the host records who is
 	 * exiled (DISCUSSION, once per day). Same consequences as a tallied vote
 	 * - 白痴 flip, 殉情, hunter/wolf-king shot, winner check - but the day

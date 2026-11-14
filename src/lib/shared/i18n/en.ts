@@ -258,6 +258,10 @@ export const en: Strings = {
 		cardCountWithThief: (total, seats) =>
 			`${total} cards total (incl. Thief - ${seats} actual seats)`,
 		houseRuleHeader: 'House Rules',
+		stalkerTurnsOnVote:
+			'Stalker chosen: Vote on phones is now on — the Stalker may only kill someone they voted for that day',
+		stalkerNeedsVote:
+			"With a Stalker, turn on Vote on phones — otherwise the app can't check they kill only someone they voted for",
 		inAppVote:
 			'Vote on phones · by day the host opens a vote, everyone votes on their phone, and who voted for whom is shown when it closes',
 		cupidPoisonBlocksHunter:
@@ -332,8 +336,9 @@ export const en: Strings = {
 		voteFor: (seat) => `Vote for seat ${seat}`,
 		pickFirst: 'Pick a player first',
 		cannotVote: "You can't vote this round",
-		cancelVote: 'Call off the vote and go to night',
-		confirmCancelVote: 'Call off this vote? Nobody is exiled today and the night begins.'
+		skipVote: 'Skip the vote',
+		confirmSkipVote:
+			'Skip this vote? Votes cast are discarded and you return to the day screen, where you can open the vote again or start the night.'
 	},
 	hostOverride: {
 		toggle: '🔧 God Mode',

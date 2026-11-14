@@ -61,9 +61,13 @@
 		busy = false;
 	}
 
-	async function enterNight() {
-		if (!(await askConfirm(t.vote.confirmCancelVote))) return;
-		await sendAction({ kind: 'DayEndDay' });
+	// Back to the day console (not night): nothing counted, and the Host can
+	// mark who left, open the vote again, or start the night from there.
+	async function skipVote() {
+		if (!(await askConfirm(t.vote.confirmSkipVote))) return;
+		busy = true;
+		await sendAction({ kind: 'DaySkipVote' });
+		busy = false;
 	}
 
 	const mine = $derived(draft.mine(view.alreadyVoted));
@@ -114,8 +118,8 @@
 			<button onclick={endVote} disabled={busy} class="btn-primary w-full">
 				{t.vote.endVote}
 			</button>
-			<button onclick={enterNight} disabled={busy} class="btn-ghost w-full py-2 text-sm">
-				{t.vote.cancelVote}
+			<button onclick={skipVote} disabled={busy} class="btn-ghost w-full py-2 text-sm">
+				{t.vote.skipVote}
 			</button>
 		</div>
 	{/if}

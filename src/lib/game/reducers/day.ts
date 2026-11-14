@@ -186,6 +186,27 @@ export function handleEndDay(state: GameState): EngineResult {
 	});
 }
 
+export function handleSkipVote(state: GameState): EngineResult {
+	return withEffects(state, (draft, effects) => {
+		if (draft.phase !== 'VOTE' && draft.phase !== 'VOTE_PK') return;
+		// A skipped PK still leaves the tie standing: nobody is exiled - say
+		// so, or the banner keeps announcing a PK that never happens.
+		if (draft.phase === 'VOTE_PK') {
+			announceDayResult(draft, effects, {
+				eliminatedSeat: null,
+				identity: null,
+				tie: true,
+				followDeathSeat: null,
+				followDeathIdentity: null,
+				idiotRevealed: false
+			});
+		}
+		draft.votes = {};
+		draft.pkCandidates = [];
+		enterDiscussion(draft, effects);
+	});
+}
+
 export function handleCastVote(
 	state: GameState,
 	action: Extract<EngineAction, { type: 'CAST_VOTE' }>

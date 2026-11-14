@@ -1920,6 +1920,39 @@ describe('in-app day vote (inAppVote switch)', () => {
 		expect(Object.values(state.players).every((p) => !p.isDead)).toBe(true);
 	});
 
+	it('the Host can skip the vote: back to the day console, not to night, nothing counted', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 1: 2, 2: 6, 3: 6 });
+		const skipped = reduce(state, { type: 'SKIP_VOTE' });
+		expect(skipped.state.phase).toBe('DISCUSSION');
+		expect(skipped.state.dayDecided).toBe(false);
+		expect(skipped.state.votes).toEqual({});
+		expect(skipped.state.dayVotes ?? {}).toEqual({});
+		expect(Object.values(skipped.state.players).every((p) => !p.isDead)).toBe(true);
+		// The day goes on: the vote can be opened again.
+		expect(reduce(skipped.state, { type: 'BEGIN_VOTE' }).state.phase).toBe('VOTE');
+	});
+
+	it('skipping a PK says nobody was exiled, and the day goes on', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 1: 2, 2: 6 });
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		expect(state.phase).toBe('VOTE_PK');
+		const skipped = reduce(state, { type: 'SKIP_VOTE' });
+		expect(skipped.state.phase).toBe('DISCUSSION');
+		expect(skipped.state.pkCandidates).toEqual([]);
+		const result = payload<{ eliminatedSeat: number | null; pkCandidates?: number[] }>(
+			effectsOfKind(skipped.effects, 'DayResolved')[0]
+		);
+		expect(result.eliminatedSeat).toBeNull();
+		expect(result.pkCandidates).toBeUndefined();
+		expect(skipped.state.announcedDayResult?.pkCandidates).toBeUndefined();
+	});
+
+	it('SKIP_VOTE outside a vote does nothing', () => {
+		expect(reduce(dayOne(), { type: 'SKIP_VOTE' }).effects).toEqual([]);
+	});
+
 	it('潜行者 may only kill a player they voted for today who survived it', () => {
 		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
 		// Round 1 ties 2 and 4; the stalker (3) voted 4. PK: they vote 2, and 4 is exiled.

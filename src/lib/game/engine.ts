@@ -35,6 +35,7 @@ import {
 	handleNextSpeaker,
 	handleBeginVote,
 	handleEndDay,
+	handleSkipVote,
 	handleCastVote,
 	handleExile,
 	handleDayOut,
@@ -182,6 +183,8 @@ function apply(state: GameState, action: EngineAction): EngineResult {
 			return handleBeginVote(state);
 		case 'END_DAY':
 			return handleEndDay(state);
+		case 'SKIP_VOTE':
+			return handleSkipVote(state);
 		case 'DAY_OUT':
 			return handleDayOut(state, action);
 		case 'CONFIRM_STAGE':

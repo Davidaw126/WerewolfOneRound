@@ -198,6 +198,8 @@ export interface Strings {
 		houseRuleHeader: string;
 		cupidPoisonBlocksHunter: string;
 		inAppVote: string;
+		stalkerTurnsOnVote: string;
+		stalkerNeedsVote: string;
 		winConditionLabel: string;
 		winConditionSideKill: string;
 		winConditionTotalKill: string;
@@ -265,8 +267,8 @@ export interface Strings {
 		voteFor: (seat: number) => string;
 		pickFirst: string;
 		cannotVote: string;
-		cancelVote: string;
-		confirmCancelVote: string;
+		skipVote: string;
+		confirmSkipVote: string;
 	};
 	hostOverride: {
 		toggle: string;

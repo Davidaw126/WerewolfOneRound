@@ -252,6 +252,8 @@ export const zh: Strings = {
 		houseRuleHeader: '规则 · House Rule',
 		cupidPoisonBlocksHunter: '情侣殉情算中毒 · 猎人被毒死的情侣因殉情死亡时，也不能开枪',
 		inAppVote: '手机投票 · 白天由房主开始投票，大家在手机上投，结束后公布谁投了谁',
+		stalkerTurnsOnVote: '已选潜行者，已自动开启「手机投票」：潜行者只能暗杀当天投过票的人',
+		stalkerNeedsVote: '有潜行者时建议开启手机投票，否则系统无法检查他暗杀的是不是他投过票的人',
 		winConditionLabel: '胜利条件',
 		winConditionSideKill: '屠边（神/民其一死绝）',
 		winConditionTotalKill: '屠城（狼人数 ≥ 好人数）',
@@ -321,8 +323,8 @@ export const zh: Strings = {
 		voteFor: (seat) => `投给 ${seat} 号`,
 		pickFirst: '先选择要投的玩家',
 		cannotVote: '你本轮不能投票',
-		cancelVote: '取消投票，直接进入下一夜',
-		confirmCancelVote: '取消这次投票，今天无人出局，直接进入下一夜？'
+		skipVote: '跳过投票',
+		confirmSkipVote: '跳过这次投票？已投的票作废，回到白天界面，可以再开投票或进入下一夜。'
 	},
 	hostOverride: {
 		toggle: '🔧 上帝之手',
