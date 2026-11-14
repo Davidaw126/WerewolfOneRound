@@ -97,6 +97,7 @@ const ART: Partial<Record<Role, string[]>> = {
 	白痴: bust({ hat: 'b', cloth: 'e', accent: 'g' }),
 	禁言长老: bust({ hat: 'w', cloth: 'n', accent: 'w' }),
 	摄梦人: bust({ hat: 'P', cloth: 'n', accent: 'p' }),
+	潜行者: bust({ hat: 'k', cloth: 'n', accent: 'g' }),
 	野孩子: bust({ hat: 'b', cloth: 'e', accent: 'b' }),
 	盗贼: bust({ hat: 'k', cloth: 'n', accent: 'g' }),
 

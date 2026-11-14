@@ -142,6 +142,7 @@ export function advanceToNextNight(draft: GameState, effects: EngineEffect[]): v
 	draft.currentStepKey = null;
 	draft.dayDecided = false;
 	delete draft.announcedNightDeaths;
+	delete draft.announcedSilenced;
 	delete draft.announcedDayResult;
 	effects.push({
 		kind: 'BROADCAST',
@@ -176,6 +177,8 @@ export function resolveNightPhase(draft: GameState, effects: EngineEffect[]): vo
 	// two-nights-running check (§10.2 Step 3) - must be updated after
 	// resolveNight reads the OLD value via ctx above, not before.
 	draft.lastDreamTarget = draft.nightActions.dreamWeaverTarget ?? null;
+	// Same for 禁言长老's no-repeat rule: a night without a pick breaks it.
+	draft.lastSilenceTarget = draft.nightActions.silenceTarget ?? null;
 
 	draft.pendingNightDeaths = resolved;
 	draft.phase = 'DAWN';
@@ -195,12 +198,19 @@ export function handleAnnounceNightResults(state: GameState): EngineResult {
 		// comment above on why a draft-derived array of OBJECTS (each Death a
 		// nested proxy) can't be handed to `effects` as-is.
 		const deaths: Death[] = draft.pendingNightDeaths.map((d) => ({ seat: d.seat, cause: d.cause }));
+		// 禁言长老's pick, told with the deaths - unless they died tonight.
+		const silenceTarget = draft.nightActions.silenceTarget ?? null;
+		const silenced =
+			silenceTarget !== null && draft.players[silenceTarget] && !draft.players[silenceTarget].isDead
+				? silenceTarget
+				: null;
 		effects.push({
 			kind: 'BROADCAST',
-			payload: { kind: 'NightResultsAnnounced', deaths, nightNumber: draft.round }
+			payload: { kind: 'NightResultsAnnounced', deaths, nightNumber: draft.round, silenced }
 		});
 		draft.pendingNightDeaths = null;
 		draft.announcedNightDeaths = deaths.map((d) => d.seat).sort((a, b) => a - b);
+		draft.announcedSilenced = silenced;
 
 		// A hunter who died tonight but isn't in pendingShoots was denied a shot
 		// by cascadeDeaths' own canTriggerShoot filter (T5) - under today's
@@ -332,6 +342,8 @@ export function handleSubmitNightAction(
 			a.wildChildIdol,
 			a.dreamWeaverTarget,
 			a.nightmareFearTarget,
+			a.silenceTarget,
+			a.stalkerKillTarget,
 			...(a.cupidLinks ?? [])
 		].filter((t): t is Seat => typeof t === 'number');
 		if (targets.some((t) => !draft.players[t] || draft.players[t].isDead))
@@ -500,6 +512,25 @@ export function handleSubmitNightAction(
 				const target = a.dreamWeaverTarget;
 				if (target === undefined) return;
 				draft.nightActions.dreamWeaverTarget = target;
+				break;
+			}
+			case 'SILENCE_ELDER': {
+				const target = a.silenceTarget;
+				if (target === undefined) return;
+				if (target !== null && target === (draft.lastSilenceTarget ?? null))
+					return reject(effects, seat, 'silence_repeat_target');
+				draft.nightActions.silenceTarget = target;
+				break;
+			}
+			case 'STALKER': {
+				const target = a.stalkerKillTarget;
+				if (target === undefined) return;
+				if (target !== null) {
+					if (draft.stalkerUsed) return reject(effects, seat, 'stalker_used');
+					if (target === seat) return reject(effects, seat, 'invalid_target');
+					draft.stalkerUsed = true;
+				}
+				draft.nightActions.stalkerKillTarget = target;
 				break;
 			}
 			case 'NIGHTMARE': {

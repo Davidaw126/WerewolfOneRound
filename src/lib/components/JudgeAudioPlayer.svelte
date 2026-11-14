@@ -71,6 +71,7 @@
 			awaitingNightAnnounce: gameStore.awaitingNightAnnounce,
 			hostStage: gameStore.hostStage,
 			nightDeaths: gameStore.lastNightDeaths,
+			silenced: gameStore.lastSilenced,
 			dayResult: gameStore.lastDayResult,
 			gameOver: gameStore.gameOverResult
 		};

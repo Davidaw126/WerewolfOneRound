@@ -35,7 +35,9 @@ const ROLE_NIGHT: Partial<Record<RoleId, RoleNight>> = {
 	BLACK_WOLF_KING: { narration: 'blackWolfKingTurn', statusLabel: 'statusNoActionNeeded' },
 	WILD_CHILD: { narration: 'wildChildTurn', selectLabel: 'selectWildChildTarget' },
 	DREAM_WEAVER: { narration: 'dreamWeaverTurn', selectLabel: 'selectDreamWeaverTarget' },
-	NIGHTMARE: { narration: 'nightmareTurn', selectLabel: 'selectNightmareTarget' }
+	NIGHTMARE: { narration: 'nightmareTurn', selectLabel: 'selectNightmareTarget' },
+	SILENCE_ELDER: { narration: 'silenceElderTurn', selectLabel: 'selectSilenceTarget' },
+	STALKER: { narration: 'stalkerTurn', selectLabel: 'selectStalkerTarget' }
 };
 
 /** The Host's call-out for a role's turn, if it has one. */

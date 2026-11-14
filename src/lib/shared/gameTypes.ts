@@ -130,6 +130,8 @@ export interface RoomPublicState {
 	/** The last announced night's deaths and day's outcome - public already,
 	 * here so the banners come back after a reload. */
 	lastNightDeaths: number[] | null;
+	/** Who 禁言长老 silenced for today, announced with the deaths. */
+	lastSilenced?: number | null;
 	lastDayResult: DayResultRecord | null;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
 	identities?: Record<number, RoleId>;

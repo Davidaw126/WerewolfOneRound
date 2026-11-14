@@ -249,7 +249,8 @@ describe('full game: night action -> witch save -> seer check -> vote -> GOOD wi
 		expect(payload(effectsOfKind(effects, 'NightResultsAnnounced')[0])).toEqual({
 			kind: 'NightResultsAnnounced',
 			deaths: [],
-			nightNumber: 1
+			nightNumber: 1,
+			silenced: null
 		});
 		// No deaths -> nobody needs last words - straight to DISCUSSION.
 		expect(state.phase).toBe('DISCUSSION');
@@ -1663,5 +1664,172 @@ describe('自爆 at dawn, before the night news (the table is electing a 警长)
 	it('a second explosion the same dawn is ignored', () => {
 		const exploded = reduce(dawn(), { type: 'SELF_EXPLODE', seat: 1 }).state;
 		expect(reduce(exploded, { type: 'SELF_EXPLODE', seat: 2 }).effects).toHaveLength(0);
+	});
+});
+
+/** Steps the night on until `done` holds - bounded, so a stage that never
+ * comes fails the test instead of hanging it. */
+function advanceUntil(state: GameState, done: (s: GameState) => boolean): GameState {
+	for (let i = 0; i < 40 && !done(state); i++)
+		({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
+	if (!done(state)) throw new Error(`stuck at ${state.phase} ${state.currentStepKey}`);
+	return state;
+}
+const toDawnOf = (state: GameState) => advanceUntil(state, (s) => s.phase === 'DAWN');
+const toStageOf = (state: GameState, role: RoleId) =>
+	advanceUntil(state, (s) => s.currentStepKey === `role:${role}`);
+/** DAWN -> announce -> through 遗言 -> the next night. */
+function nextNightOf(state: GameState): GameState {
+	({ state } = reduce(state, { type: 'ANNOUNCE_NIGHT_RESULTS' }));
+	for (let i = 0; i < 20 && state.phase === 'LAST_WORDS'; i++)
+		({ state } = reduce(state, { type: 'NEXT_SPEAKER' }));
+	({ state } = reduce(state, { type: 'END_DAY' }));
+	return state;
+}
+const rejection = (effects: EngineEffect[]) =>
+	effectsOfKind(effects, 'NightActionRejected').map((e) => payload<{ error: string }>(e).error);
+
+describe('禁言长老', () => {
+	const board = {
+		1: 'WEREWOLF',
+		2: 'VILLAGER',
+		3: 'SILENCE_ELDER',
+		4: 'VILLAGER',
+		5: 'SEER'
+	} as const;
+
+	/** Plays the night up to the elder's turn, then has them silence `target`. */
+	const silence = (state: GameState, target: number | null) =>
+		reduce(toStageOf(state, 'SILENCE_ELDER'), {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 3,
+			role: 'SILENCE_ELDER',
+			action: { silenceTarget: target }
+		});
+
+	it('wakes on the first night too', () => {
+		expect(silence(start(board).state, 2).state.nightActions.silenceTarget).toBe(2);
+	});
+
+	it('the silenced seat is announced with the night’s news, and only then', () => {
+		const dawn = toDawnOf(silence(start(board).state, 4).state);
+		expect(dawn.announcedSilenced).toBeUndefined();
+		const announced = reduce(dawn, { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		const news = payload<{ silenced: number | null }>(
+			effectsOfKind(announced.effects, 'NightResultsAnnounced')[0]
+		);
+		expect(news.silenced).toBe(4);
+		expect(announced.state.announcedSilenced).toBe(4);
+		// A new night forgets it.
+		expect(nextNightOf(dawn).announcedSilenced).toBeUndefined();
+	});
+
+	it('a silenced seat who died in the night is not announced as silenced', () => {
+		let { state } = start(board);
+		state = toStageOf(state, 'WEREWOLF');
+		({ state } = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 1,
+			role: 'WEREWOLF',
+			action: { wolfKillTarget: 4 }
+		}));
+		const announced = reduce(toDawnOf(silence(state, 4).state), {
+			type: 'ANNOUNCE_NIGHT_RESULTS'
+		});
+		const news = payload<{ silenced: number | null }>(
+			effectsOfKind(announced.effects, 'NightResultsAnnounced')[0]
+		);
+		expect(news.silenced).toBeNull();
+	});
+
+	it('may silence themself or nobody, but not the same seat two nights running', () => {
+		expect(silence(start(board).state, 3).state.nightActions.silenceTarget).toBe(3);
+
+		const night2 = nextNightOf(toDawnOf(silence(start(board).state, 2).state));
+		expect(rejection(silence(night2, 2).effects)).toEqual(['silence_repeat_target']);
+		expect(silence(night2, 4).state.nightActions.silenceTarget).toBe(4);
+		expect(silence(night2, null).state.submittedRoles).toContain('SILENCE_ELDER');
+
+		// A night without a silence breaks the chain.
+		const skipped = nextNightOf(toDawnOf(silence(night2, null).state));
+		expect(silence(skipped, 2).state.nightActions.silenceTarget).toBe(2);
+	});
+
+	it('the elder’s prompt says whom they silenced last night', () => {
+		const night2 = toStageOf(
+			nextNightOf(toDawnOf(silence(start(board).state, 2).state)),
+			'SILENCE_ELDER'
+		);
+		const ctx = payload<{ context: { silence: { lastSilencedSeat: number | null } } }>(
+			notifyRoleHolders(night2, 'SILENCE_ELDER')[0]
+		);
+		expect(ctx.context.silence.lastSilencedSeat).toBe(2);
+	});
+});
+
+describe('潜行者', () => {
+	const board = {
+		1: 'WEREWOLF',
+		2: 'VILLAGER',
+		3: 'STALKER',
+		4: 'VILLAGER',
+		5: 'HUNTER'
+	} as const;
+
+	const stalk = (state: GameState, target: number | null) =>
+		reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 3,
+			role: 'STALKER',
+			action: { stalkerKillTarget: target }
+		});
+	const usedFlag = (state: GameState) =>
+		payload<{ context: { stalker: { used: boolean } } }>(notifyRoleHolders(state, 'STALKER')[0])
+			.context.stalker.used;
+
+	it('has no turn on the first night (nobody has voted yet)', () => {
+		let { state } = start(board);
+		const order: (string | null)[] = [];
+		for (let i = 0; i < 40 && state.phase !== 'DAWN'; i++) {
+			order.push(state.currentStepKey);
+			({ state } = reduce(state, { type: 'ADVANCE_STAGE' }));
+		}
+		expect(state.phase).toBe('DAWN');
+		expect(order).not.toContain('role:STALKER');
+	});
+
+	it('kills once from night 2: the seat dies at dawn, and the skill is spent', () => {
+		let state = toStageOf(nextNightOf(toDawnOf(start(board).state)), 'STALKER');
+		expect(usedFlag(state)).toBe(false);
+		({ state } = stalk(state, 2));
+		expect(state.stalkerUsed).toBe(true);
+		state = toDawnOf(state);
+		expect(state.pendingNightDeaths).toEqual([{ seat: 2, cause: 'STALKER_KILL' }]);
+
+		// Night 3: the turn still runs (its absence would give the role away),
+		// but only a pass is accepted.
+		state = toStageOf(nextNightOf(state), 'STALKER');
+		expect(usedFlag(state)).toBe(true);
+		expect(rejection(stalk(state, 4).effects)).toEqual(['stalker_used']);
+		expect(stalk(state, null).state.submittedRoles).toContain('STALKER');
+	});
+
+	it('passing keeps the skill for a later night', () => {
+		const state = toStageOf(nextNightOf(toDawnOf(start(board).state)), 'STALKER');
+		const passed = stalk(state, null).state;
+		expect(passed.stalkerUsed ?? false).toBe(false);
+		expect(toDawnOf(passed).pendingNightDeaths).toEqual([]);
+	});
+
+	it('a hunter the stalker kills may still shoot', () => {
+		const cfg = start(board).state;
+		let state: GameState = { ...cfg, ruleConfig: { ...cfg.ruleConfig, shotsAtTable: true } };
+		state = toStageOf(nextNightOf(toDawnOf(state)), 'STALKER');
+		({ state } = stalk(state, 5));
+		const announced = reduce(toDawnOf(state), { type: 'ANNOUNCE_NIGHT_RESULTS' });
+		const status = effectsOfKind(announced.effects, 'ShotStatus');
+		expect(status.map((e) => [e.seat, payload<{ canShoot: boolean }>(e).canShoot])).toEqual([
+			[5, true]
+		]);
 	});
 });

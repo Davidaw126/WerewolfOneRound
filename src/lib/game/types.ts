@@ -9,10 +9,10 @@ import type { TurnContext } from './rules/turnContext';
 import type { NightRuleError } from './rules/nightRules';
 
 // ---------------------------------------------------------------------------
-// §4.1 Roles - the spec's 15-role roster, adopted exactly (a deliberate,
-// user-confirmed decision to drop the current app's 8 extra mechanics-less
-// roles: 禁言长老/高级村民/老流氓/隐狼/恶魔/机械狼, and to merge 梦魇
-// into NIGHTMARE). Dropping 隐狼 also retires the open "hidden wolf leaks
+// §4.1 Roles - the spec's 15-role roster (a deliberate, user-confirmed
+// decision to drop the old app's mechanics-less roles: 高级村民/老流氓/隐狼/
+// 恶魔/机械狼, and to merge 梦魇 into NIGHTMARE), plus two added later at the
+// user's request: 禁言长老 and 潜行者. Dropping 隐狼 also retires the open "hidden wolf leaks
 // into the visible teammate list" concern from the old roleTeam()-based
 // model - there's no longer a role that needs to be wolf-team for counting
 // purposes but hidden from the wolf teammate reveal.
@@ -27,6 +27,8 @@ export type RoleId =
 	| 'IDIOT' // 白痴
 	| 'KNIGHT' // 骑士
 	| 'DREAM_WEAVER' // 摄梦人
+	| 'SILENCE_ELDER' // 禁言长老
+	| 'STALKER' // 潜行者
 	| 'CUPID' // 丘比特
 	| 'THIEF' // 盗贼
 	| 'WILD_CHILD' // 野孩子
@@ -60,6 +62,7 @@ export type DeathCause =
 	| 'KNIGHT_DUEL'
 	| 'KNIGHT_DUEL_FAIL'
 	| 'DREAM_WEAVER'
+	| 'STALKER_KILL'
 	| 'HOST_OVERRIDE'
 	| 'DAY_OUT';
 
@@ -306,6 +309,10 @@ export interface NightActions {
 	witchPoisonTarget?: Seat;
 	seerCheckTarget?: Seat;
 	dreamWeaverTarget?: Seat;
+	/** 禁言长老: who may not speak tomorrow. null = nobody tonight. */
+	silenceTarget?: Seat | null;
+	/** 潜行者's one kill (null = not tonight). */
+	stalkerKillTarget?: Seat | null;
 	// First-night-only
 	cupidLinks?: [Seat, Seat];
 	wildChildIdol?: Seat;
@@ -367,6 +374,11 @@ export interface GameState {
 	submittedRoles: RoleId[];
 	lastGuardTarget: Seat | null;
 	lastDreamTarget: Seat | null;
+	/** 禁言长老's pick last night - they can't pick the same seat twice in a
+	 * row. Optional like the fields below, so older saves still load. */
+	lastSilenceTarget?: Seat | null;
+	/** 潜行者 has made their one kill. */
+	stalkerUsed?: boolean;
 	charmedSeat: Seat | null;
 	fearedSeat: Seat | null;
 
@@ -399,6 +411,8 @@ export interface GameState {
 	/** The last announcements, for a phone that reloads after them. Optional
 	 * so a game saved before these fields existed still loads. */
 	announcedNightDeaths?: Seat[];
+	/** Who 禁言长老 silenced for today, told with the night's deaths. */
+	announcedSilenced?: Seat | null;
 	announcedDayResult?: DayResultRecord;
 
 	// --- Records ---
@@ -509,7 +523,13 @@ export type EnginePayload =
 			targetWasWolf: boolean;
 			deaths: Seat[];
 	  }
-	| { kind: 'NightResultsAnnounced'; deaths: Death[]; nightNumber: number }
+	| {
+			kind: 'NightResultsAnnounced';
+			deaths: Death[];
+			nightNumber: number;
+			/** 禁言长老's target, if they're alive to be silenced today. */
+			silenced: Seat | null;
+	  }
 	| { kind: 'HunterPending'; hunterSeat: Seat }
 	| { kind: 'HunterAuthorized' }
 	| { kind: 'HunterDenied'; reason: 'poison' }

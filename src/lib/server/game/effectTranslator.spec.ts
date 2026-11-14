@@ -72,14 +72,18 @@ describe('delivery', () => {
 						deaths: [
 							{ seat: 3, cause: 'WITCH_POISON' },
 							{ seat: 1, cause: 'WOLF_KILL' }
-						]
+						],
+						silenced: 5
 					}
 				}
 			],
 			TO
 		);
 		expect(sent).toEqual([
-			{ channel: ROOM(), event: { kind: 'NightResolved', nightNumber: 1, deaths: [1, 3] } }
+			{
+				channel: ROOM(),
+				event: { kind: 'NightResolved', nightNumber: 1, deaths: [1, 3], silenced: 5 }
+			}
 		]);
 	});
 

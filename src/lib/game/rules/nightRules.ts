@@ -32,7 +32,11 @@ export type NightRuleError =
 	| 'feared'
 	/** §D thief.mustTakeWolfIfBothWolf (UT-24) - both buried cards are wolf
 	 * roles, so "keep original identity" isn't an option this time. */
-	| 'thief_must_take_wolf';
+	| 'thief_must_take_wolf'
+	/** 禁言长老 picked last night's seat again. */
+	| 'silence_repeat_target'
+	/** 潜行者 has already made their one kill. */
+	| 'stalker_used';
 
 export interface WitchRuleState {
 	/** The acting witch's own seat, taken from the server-side seat lookup -

@@ -53,6 +53,10 @@ function buildNightAction(action: NightActionSubmission, player: Player): Partia
 			return { dreamWeaverTarget: action.targetSeat };
 		case 'NIGHTMARE':
 			return { nightmareFearTarget: action.targetSeat ?? undefined };
+		case 'SILENCE_ELDER':
+			return { silenceTarget: action.targetSeat };
+		case 'STALKER':
+			return { stalkerKillTarget: action.targetSeat };
 	}
 }
 

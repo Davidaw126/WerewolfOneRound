@@ -194,13 +194,16 @@ describe('events', () => {
 
 	it('night results log one public line, in either language', () => {
 		const store = phoneOf('s1', room({ phase: 'DAWN' }));
-		store.applyServerEvent({ kind: 'NightResolved', nightNumber: 1, deaths: [2] });
+		store.applyServerEvent({ kind: 'NightResolved', nightNumber: 1, deaths: [2], silenced: 4 });
 		expect(store.activityLog).toHaveLength(1);
+		expect(store.lastSilenced).toBe(4);
+		expect(store.state?.lastSilenced).toBe(4);
 		expect(store.roomLog).toHaveLength(1);
 		const [entry] = store.activityLog;
 		expect(entry.public).toBe(true);
 		// Stored as data, so the same entry reads in whichever language is on.
 		expect(renderLine(entry.line, 'zh')).toContain('2');
+		expect(renderLine(entry.line, 'zh')).toContain('4 号今天被禁言');
 		expect(renderLine(entry.line, 'zh')).not.toBe(renderLine(entry.line, 'en'));
 		expect(renderRound(entry.round, 'en')).toBe('Night 1');
 	});

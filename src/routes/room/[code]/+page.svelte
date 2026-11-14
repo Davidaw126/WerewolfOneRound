@@ -220,7 +220,11 @@
 							: 'border-village/50 text-village'}"
 					>
 						<span aria-hidden="true">📢</span>
-						{formatNightDeaths(gameStore.state.lastNightDeaths, i18n.lang)}
+						{formatNightDeaths(
+							gameStore.state.lastNightDeaths,
+							i18n.lang,
+							gameStore.state.lastSilenced ?? null
+						)}
 					</div>
 				{/if}
 

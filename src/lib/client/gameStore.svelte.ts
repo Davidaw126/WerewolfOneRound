@@ -46,6 +46,10 @@ export interface TurnRules {
 	packTurn: boolean;
 	killedSeat: number | null;
 	guardLastSeat: number | null;
+	/** 禁言长老's pick last night - not pickable again tonight. */
+	silenceLastSeat: number | null;
+	/** 潜行者's one kill is spent: only the pass is left. */
+	stalkerUsed: boolean;
 	wolfTeammates: number[];
 	isSelfKill: boolean;
 	noSelfPick: boolean;
@@ -111,6 +115,8 @@ export class GameStore {
 	hostStage = $state<NightStage | null>(null);
 
 	lastNightDeaths = $state<number[] | null>(null);
+	/** 禁言长老's pick, said with lastNightDeaths. */
+	lastSilenced = $state<number | null>(null);
 	lastDayResult = $state<{
 		eliminatedSeat: number | null;
 		identity: RoleId | null;
@@ -355,13 +361,15 @@ export class GameStore {
 			packTurn,
 			killedSeat,
 			guardLastSeat: ctx?.guard?.lastProtectedSeat ?? null,
+			silenceLastSeat: ctx?.silence?.lastSilencedSeat ?? null,
+			stalkerUsed: ctx?.stalker?.used === true,
 			wolfTeammates: ctx?.wolf?.teammateSeats ?? [],
 			// The witch was the one attacked tonight and tonight's rules don't
 			// let her save herself (selfRescue is often FIRST_NIGHT_ONLY).
 			isSelfKill: killedSeat !== null && killedSeat === ctx?.seat && !witch?.selfRescueAllowed,
 			// Checking or idolising yourself makes no sense; the pack's kill
 			// turn keeps every seat.
-			noSelfPick: !packTurn && (role === 'SEER' || role === 'WILD_CHILD'),
+			noSelfPick: !packTurn && (role === 'SEER' || role === 'WILD_CHILD' || role === 'STALKER'),
 			onePotionOnly: !witch?.bothPotionsSameNight
 		};
 	}
@@ -500,6 +508,7 @@ export class GameStore {
 	 * change - either way, all of this is equally stale. */
 	resetPrivateState(): void {
 		this.lastNightDeaths = null;
+		this.lastSilenced = null;
 		this.lastDayResult = null;
 		this.lastHunterResult = null;
 		this.gameOverResult = null;
@@ -552,7 +561,12 @@ export class GameStore {
 				break;
 			case 'GameReset':
 				this.resetPrivateState();
-				this.state = { ...this.state, lastNightDeaths: null, lastDayResult: null };
+				this.state = {
+					...this.state,
+					lastNightDeaths: null,
+					lastSilenced: null,
+					lastDayResult: null
+				};
 				break;
 			case 'PhaseChanged':
 				// The news banners stay up through the day - their events fire just
@@ -571,6 +585,7 @@ export class GameStore {
 					// day must not.
 					dayDecided: phaseGroup(event.phase) === 'night' ? false : this.state.dayDecided,
 					lastNightDeaths: event.phase === 'NIGHT' ? null : this.state.lastNightDeaths,
+					lastSilenced: event.phase === 'NIGHT' ? null : this.state.lastSilenced,
 					lastDayResult: event.phase === 'NIGHT' ? null : this.state.lastDayResult
 				};
 				this.myTurnRole = null;
@@ -588,9 +603,14 @@ export class GameStore {
 				this.endTurn();
 				break;
 			case 'NightResolved':
+				this.lastSilenced = event.silenced;
 				this.lastNightDeaths = event.deaths;
-				this.state = { ...this.state, lastNightDeaths: event.deaths };
-				this.logPublic(logLine('nightDeaths', event.deaths));
+				this.state = {
+					...this.state,
+					lastNightDeaths: event.deaths,
+					lastSilenced: event.silenced
+				};
+				this.logPublic(logLine('nightDeaths', event.deaths, event.silenced));
 				break;
 			case 'DeathsUpdated': {
 				this.state = {

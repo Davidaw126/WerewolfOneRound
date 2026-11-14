@@ -37,7 +37,8 @@ const LINES = {
 		const value = (strings(lang)[section] as Record<string, unknown>)[name];
 		return typeof value === 'function' ? value(...params) : String(value);
 	},
-	nightDeaths: (lang: Lang, deaths: number[]) => formatNightDeaths(deaths, lang),
+	nightDeaths: (lang: Lang, deaths: number[], silenced: number | null = null) =>
+		formatNightDeaths(deaths, lang, silenced),
 	dayResult: (lang: Lang, result: Omit<Parameters<typeof formatDayResult>[0], 'lang'>) =>
 		formatDayResult({ ...result, lang }),
 	hunterResult: (lang: Lang, result: Omit<Parameters<typeof formatHunterResult>[0], 'lang'>) =>

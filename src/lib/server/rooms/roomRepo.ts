@@ -510,6 +510,7 @@ export async function getPublicState(
 		knightUsed: gameState?.knightUsed ?? false,
 		...(gameState?.startedAt ? { gameId: String(gameState.startedAt) } : {}),
 		lastNightDeaths: gameState?.announcedNightDeaths ?? null,
+		lastSilenced: gameState?.announcedSilenced ?? null,
 		lastDayResult: gameState?.announcedDayResult ?? null
 	};
 

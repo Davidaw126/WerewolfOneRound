@@ -136,6 +136,17 @@ export interface Strings {
 		selectWildChildTarget: string;
 		selectDreamWeaverTarget: string;
 		selectNightmareTarget: string;
+		selectSilenceTarget: string;
+		silenceLastSilenced: (seat: number) => string;
+		skipSilence: string;
+		descSkipSilence: string;
+		descSilenced: (seat: number) => string;
+		selectStalkerTarget: string;
+		stalkerRule: string;
+		stalkerUsed: string;
+		skipStalker: string;
+		descSkipStalker: string;
+		descStalked: (seat: number) => string;
 		confirm: string;
 		witchAntidoteLabel: string;
 		witchPoisonLabel: string;
@@ -334,6 +345,8 @@ export interface Strings {
 		blackWolfKingTurn: string;
 		wildChildTurn: string;
 		dreamWeaverTurn: string;
+		silenceElderTurn: string;
+		stalkerTurn: string;
 		nightmareTurn: string;
 		cupidClose: string;
 		coupleReveal: string;

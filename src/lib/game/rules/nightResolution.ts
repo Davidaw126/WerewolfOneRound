@@ -33,9 +33,12 @@ export interface NightResolutionContext {
 // downstream consequence - WITCH_POISON blocks a hunter shot, the others
 // listed here don't, so it stays on top regardless of what else collides).
 // SPEC-GAP: DREAM_WEAVER's rank relative to the other three isn't specified.
+// STALKER_KILL sits under the poison (which blocks a shot; the stalker's
+// kill doesn't) and above the wolf kill.
 const RESOLVE_NIGHT_SEVERITY: Partial<Record<DeathCause, number>> = {
-	WITCH_POISON: 4,
-	LOVER_SUICIDE: 3,
+	WITCH_POISON: 5,
+	LOVER_SUICIDE: 4,
+	STALKER_KILL: 3,
 	WOLF_KILL: 2,
 	VOTE_OUT: 1,
 	DREAM_WEAVER: 0
@@ -96,6 +99,11 @@ export function resolveNight(
 		upsertDeath(pending, { seat: a.dreamWeaverTarget, cause: 'DREAM_WEAVER' });
 	}
 
+	// ---- Step 4: 潜行者's kill - no guard, potion or dream stops it ----
+	if (a.stalkerKillTarget != null) {
+		upsertDeath(pending, { seat: a.stalkerKillTarget, cause: 'STALKER_KILL' });
+	}
+
 	return pending;
 }
 
@@ -135,6 +143,8 @@ export function canTriggerShoot(cfg: RuleConfig, state: GameState, d: Death): bo
 		switch (d.cause) {
 			case 'WOLF_KILL':
 				return cfg.hunter.canShootWhenWolfKilled;
+			case 'STALKER_KILL':
+				return true; // not a poison: the shot stands
 			case 'VOTE_OUT':
 				return cfg.hunter.canShootWhenExiled;
 			case 'WITCH_POISON':
@@ -173,6 +183,7 @@ export function canTriggerShoot(cfg: RuleConfig, state: GameState, d: Death): bo
 		if (d.cause === 'LOVER_SUICIDE') return cfg.wolf.blackWolfKingCanShootWhenLoverSuicide;
 		return (
 			d.cause === 'WOLF_KILL' ||
+			d.cause === 'STALKER_KILL' ||
 			d.cause === 'VOTE_OUT' ||
 			d.cause === 'HUNTER_SHOT' ||
 			d.cause === 'WOLF_KING_SHOT'

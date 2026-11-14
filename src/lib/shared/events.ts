@@ -56,7 +56,13 @@ export const NightActionSubmissionSchema = z.discriminatedUnion('role', [
 	// M7
 	z.object({ role: z.literal('WILD_CHILD'), targetSeat: z.number().int().positive() }),
 	z.object({ role: z.literal('DREAM_WEAVER'), targetSeat: z.number().int().positive() }),
-	z.object({ role: z.literal('NIGHTMARE'), targetSeat: z.number().int().positive().nullable() })
+	z.object({ role: z.literal('NIGHTMARE'), targetSeat: z.number().int().positive().nullable() }),
+	// null: nobody silenced / no kill tonight.
+	z.object({
+		role: z.literal('SILENCE_ELDER'),
+		targetSeat: z.number().int().positive().nullable()
+	}),
+	z.object({ role: z.literal('STALKER'), targetSeat: z.number().int().positive().nullable() })
 ]);
 export type NightActionSubmission = z.infer<typeof NightActionSubmissionSchema>;
 
@@ -159,7 +165,8 @@ export type ServerEvent =
 	| { kind: 'PhaseChanged'; phase: Phase; nightNumber: number; gameId?: string }
 	// S4: room-wide - never carries which role is acting, see PublicNightStage.
 	| { kind: 'StageChanged'; stage: PublicNightStage | null }
-	| { kind: 'NightResolved'; nightNumber: number; deaths: number[] }
+	/** silenced: 禁言长老's pick, who may not speak today. */
+	| { kind: 'NightResolved'; nightNumber: number; deaths: number[]; silenced: number | null }
 	/** Who is dead and which 白痴 have flipped, as the room may know it -
 	 * sent whenever an action changes either. Night deaths only appear once
 	 * the Host has announced them. The one source phones take this from. */

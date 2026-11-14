@@ -44,6 +44,10 @@ export interface TurnContext {
 	/** Living wolf-team seats other than the recipient's own. allowEmptyKill:
 	 * only on the pack's kill turn, when the room allows 空刀. */
 	wolf?: { teammateSeats: Seat[]; allowEmptyKill?: boolean };
+	/** 禁言长老: last night's pick, which can't be picked again tonight. */
+	silence?: { lastSilencedSeat: Seat | null };
+	/** 潜行者: whether their one kill is already spent. */
+	stalker?: { used: boolean };
 	/** 恶灵骑士 feared this seat tonight: no skill, the prompt only offers a
 	 * pass (NightPass) so the turn can still end. */
 	feared?: boolean;
@@ -129,6 +133,9 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		if (role === 'HUNTER' || role === 'BLACK_WOLF_KING') {
 			context.hunter = { canShoot: predictCanShootTonight(state, player.seat) };
 		}
+		if (role === 'SILENCE_ELDER')
+			context.silence = { lastSilencedSeat: state.lastSilenceTarget ?? null };
+		if (role === 'STALKER') context.stalker = { used: state.stalkerUsed === true };
 		if (role === 'GUARD') {
 			context.guard = { lastProtectedSeat: state.lastGuardTarget };
 			if (state.ruleConfig.guard.allowEmptyGuard) context.guard.allowEmptyGuard = true;

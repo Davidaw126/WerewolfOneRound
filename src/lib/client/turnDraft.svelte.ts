@@ -30,9 +30,15 @@ export class PickDraft {
 
 	submission(role: RoleId): Submission | null {
 		if (this.target === null) return null;
+		const desc =
+			role === 'SILENCE_ELDER'
+				? 'descSilenced'
+				: role === 'STALKER'
+					? 'descStalked'
+					: 'descSelectedSeat';
 		return {
 			action: nightAction({ role, targetSeat: this.target } as NightActionSubmission),
-			entry: line('text', 'nightPrompt', 'descSelectedSeat', this.target)
+			entry: line('text', 'nightPrompt', desc, this.target)
 		};
 	}
 
@@ -41,6 +47,18 @@ export class PickDraft {
 		return {
 			action: nightAction({ role, targetSeat: null } as NightActionSubmission),
 			entry: line('text', 'nightPrompt', 'descEmptyKill')
+		};
+	}
+
+	/** 禁言长老 silences nobody, or 潜行者 kills nobody, tonight. */
+	static skip(role: 'SILENCE_ELDER' | 'STALKER'): Submission {
+		return {
+			action: nightAction({ role, targetSeat: null }),
+			entry: line(
+				'text',
+				'nightPrompt',
+				role === 'SILENCE_ELDER' ? 'descSkipSilence' : 'descSkipStalker'
+			)
 		};
 	}
 

@@ -582,6 +582,20 @@ class Sim {
 				return { dreamWeaverTarget: pick(this.rng, others) };
 			case 'WILD_CHILD':
 				return { wildChildIdol: pick(this.rng, others) };
+			case 'SILENCE_ELDER':
+				return {
+					silenceTarget:
+						this.rng() < 0.2
+							? null
+							: pick(
+									this.rng,
+									any.filter((x) => x !== s.lastSilenceTarget)
+								)
+				};
+			case 'STALKER':
+				return {
+					stalkerKillTarget: !s.stalkerUsed && this.rng() < 0.4 ? pick(this.rng, others) : null
+				};
 			case 'CUPID': {
 				const a = pick(this.rng, any)!;
 				const b = pick(
@@ -727,6 +741,17 @@ const CUSTOM_BOARDS: { name: string; roleConfig: RoleConfig }[] = [
 		}
 	},
 	{
+		name: 'silencer elder + stalker',
+		roleConfig: {
+			WEREWOLF: 3,
+			SEER: 1,
+			WITCH: 1,
+			SILENCE_ELDER: 1,
+			STALKER: 1,
+			VILLAGER: 3
+		}
+	},
+	{
 		name: 'thief',
 		roleConfig: { WEREWOLF: 2, SEER: 1, WITCH: 1, HUNTER: 1, THIEF: 1, VILLAGER: 3 }
 	},
@@ -748,6 +773,8 @@ const CUSTOM_BOARDS: { name: string; roleConfig: RoleConfig }[] = [
 			THIEF: 1,
 			WILD_CHILD: 1,
 			DREAM_WEAVER: 1,
+			SILENCE_ELDER: 1,
+			STALKER: 1,
 			VILLAGER: 4
 		}
 	}
@@ -805,7 +832,9 @@ describe('whole-game simulation', () => {
 			'CUPID',
 			'THIEF',
 			'WILD_CHILD',
-			'DREAM_WEAVER'
+			'DREAM_WEAVER',
+			'SILENCE_ELDER',
+			'STALKER'
 		] as RoleId[]) {
 			expect(seen.has(role), `${role} never got a turn`).toBe(true);
 		}
@@ -827,6 +856,8 @@ function randomBoard(n: number, rng: () => number): RoleConfig {
 		'CUPID',
 		'WILD_CHILD',
 		'DREAM_WEAVER',
+		'SILENCE_ELDER',
+		'STALKER',
 		'THIEF'
 	];
 	for (;;) {

@@ -23,6 +23,7 @@ export const ALL_ROLES = [
 	'骑士',
 	'禁言长老',
 	'摄梦人',
+	'潜行者',
 	'高级村民',
 	'老流氓',
 	'普通村民',
@@ -90,8 +91,8 @@ export const NIGHT1_ORDER: Role[] = [
 export const REPEATING_ORDER: Role[] = ['普通狼人', '守卫', '预言家', '女巫', '猎人', '狼美人'];
 
 /** The roles a room can be set up with, in the original room-settings
- * screen's order: the 15 the engine implements. The other 7 names above
- * (禁言长老/高级村民/老流氓/隐狼/恶魔/机械狼/梦魇) have no RoleId. */
+ * screen's order: the 17 the engine implements. The other 6 names above
+ * (高级村民/老流氓/隐狼/恶魔/机械狼/梦魇) have no RoleId. */
 export const PICKABLE_ROLES: readonly RoleId[] = ALL_ROLES.map(legacyToRoleId).filter(
 	(r): r is RoleId => r !== null
 );

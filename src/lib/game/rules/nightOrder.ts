@@ -28,7 +28,11 @@ export const ALWAYS_ANNOUNCED_ROLES: ReadonlySet<RoleId> = new Set([
 	'HUNTER',
 	// 黑狼王's 确认开枪状态 stage: once configured it must keep running after
 	// he dies, or its disappearance would reveal which dead seat he was.
-	'BLACK_WOLF_KING'
+	'BLACK_WOLF_KING',
+	// Same for these two: a stage that stops once its holder dies would mark
+	// which dead seat held it.
+	'SILENCE_ELDER',
+	'STALKER'
 ]);
 
 function nightActiveRolesInOrder(
@@ -58,6 +62,7 @@ export function buildNight1Order(roleConfig: Partial<Record<RoleId, number>>): N
 	const inPlay = ALL_ROLE_IDS.filter((id) => (roleConfig[id] ?? 0) > 0);
 	const stages: NightStage[] = [];
 	for (const id of nightActiveRolesInOrder(inPlay, roleConfig)) {
+		if (!ROLE_META[id].actsOnFirstNight) continue; // 潜行者: nobody has voted yet
 		stages.push({ kind: 'ROLE_TURN', role: id });
 		if (id === 'CUPID') stages.push({ kind: 'COUPLE_REVEAL' });
 	}

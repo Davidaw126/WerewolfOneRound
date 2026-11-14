@@ -73,7 +73,9 @@ const UNIQUE_ROLES: ReadonlySet<RoleId> = new Set([
 	'WILD_CHILD',
 	'WOLF_KING',
 	'BLACK_WOLF_KING',
-	'WOLF_BEAUTY'
+	'WOLF_BEAUTY',
+	'SILENCE_ELDER',
+	'STALKER'
 ]);
 
 export function validateSetup(setup: Setup, playerCount: number): ValidationResult {

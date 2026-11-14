@@ -28,6 +28,9 @@
 	const rules = $derived(gameStore.turnRules);
 	const killedSeat = $derived(rules.killedSeat);
 	const guardLastSeat = $derived(rules.guardLastSeat);
+	const silenceLastSeat = $derived(rules.silenceLastSeat);
+	// 潜行者 after their one kill: the turn still runs, with only 确认 left.
+	const stalkerSpent = $derived(role === 'STALKER' && rules.stalkerUsed);
 	const wolfTeammates = $derived(rules.wolfTeammates);
 	const packTurn = $derived(rules.packTurn);
 	const isSelfKill = $derived(rules.isSelfKill);
@@ -49,12 +52,13 @@
 		if (!role || d.sent || gameStore.packKill || gameStore.roleDoneByOther) return;
 		if (ctx?.feared && role !== 'NIGHTMARE') return;
 		let picking: SeatPicking | null = null;
-		if (prompt === 'pick') {
+		if (prompt === 'pick' && !stalkerSpent) {
 			picking = {
 				pickable: (n) =>
 					isLiving(n) &&
 					!(noSelfPick && n === ctx?.seat) &&
-					!(role === 'GUARD' && n === guardLastSeat),
+					!(role === 'GUARD' && n === guardLastSeat) &&
+					!(role === 'SILENCE_ELDER' && n === silenceLastSeat),
 				picked: (n) => (d.pick.target === n ? 'ember' : null),
 				tap: (n) => d.pick.tap(n)
 			};
@@ -172,6 +176,11 @@
 					{t.statusConfirm}
 				</button>
 			{/if}
+		{:else if stalkerSpent}
+			<p class="text-sm text-zinc-400">{t.stalkerUsed}</p>
+			<button onclick={() => submit(PickDraft.skip('STALKER'))} class="btn-primary w-full">
+				{t.confirm}
+			</button>
 		{:else if prompt === 'pick'}
 			{#if PACK_MEMBER_ROLES.has(role)}
 				<p class="text-sm text-wolf">
@@ -185,9 +194,16 @@
 					{t.guardLastProtected(guardLastSeat)}
 				</p>
 			{/if}
+			{#if role === 'SILENCE_ELDER' && silenceLastSeat !== null}
+				<p class="text-sm text-zinc-400">{t.silenceLastSilenced(silenceLastSeat)}</p>
+			{/if}
 			<p class="text-sm text-zinc-400">
 				{#if selectLabel}{t[selectLabel]}{/if}
 			</p>
+			{#if role === 'STALKER'}
+				<!-- The table votes by hand, so the app can't check this part. -->
+				<p class="text-sm text-bone">{t.stalkerRule}</p>
+			{/if}
 			<p class="text-base font-semibold text-bone">{pickedLine([draft.pick.target])}</p>
 			<button
 				onclick={() => submit(draft.pick.submission(role))}
@@ -205,6 +221,11 @@
 					class="btn-ghost w-full py-2 text-sm"
 				>
 					{t.emptyKill}
+				</button>
+			{/if}
+			{#if role === 'SILENCE_ELDER' || role === 'STALKER'}
+				<button onclick={() => submit(PickDraft.skip(role))} class="btn-ghost w-full py-2 text-sm">
+					{role === 'SILENCE_ELDER' ? t.skipSilence : t.skipStalker}
 				</button>
 			{/if}
 			{#if role === 'GUARD' && ctx?.guard?.allowEmptyGuard}

@@ -15,6 +15,7 @@ export const ROLE_ICON: Record<Role, string> = {
 	白痴: '🃏',
 	骑士: '⚔️',
 	禁言长老: '🤐',
+	潜行者: '🗡️',
 	摄梦人: '💤',
 	高级村民: '🌾',
 	老流氓: '🥃',

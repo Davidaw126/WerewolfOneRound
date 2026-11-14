@@ -208,6 +208,47 @@ export const ROLE_META: Record<RoleId, RoleMeta> = {
 		implemented: true,
 		nightTurn: 'pick'
 	},
+	// 禁言长老: each night picks one player (themself allowed, not the same
+	// seat two nights running) who may not speak the next day - told to the
+	// table with the night's deaths.
+	SILENCE_ELDER: {
+		id: 'SILENCE_ELDER',
+		name: '禁言长老',
+		legacyRole: '禁言长老',
+		camp: 'GOOD',
+		isGod: true,
+		nightOrder: 42,
+		firstNightOnly: false,
+		actsOnFirstNight: true,
+		targetCount: 1,
+		canTargetSelf: true,
+		canTargetDead: false,
+		visibleTeammates: [],
+		maxUses: null,
+		implemented: true,
+		nightTurn: 'pick'
+	},
+	// 潜行者: once a game, at night, kills a player they voted for that day who
+	// wasn't exiled. Votes are by hand at the table, so the app can't check
+	// that part - the prompt states it and the table holds them to it. No
+	// turn on night 1: nobody has voted yet.
+	STALKER: {
+		id: 'STALKER',
+		name: '潜行者',
+		legacyRole: '潜行者',
+		camp: 'GOOD',
+		isGod: true,
+		nightOrder: 46,
+		firstNightOnly: false,
+		actsOnFirstNight: false,
+		targetCount: 1,
+		canTargetSelf: false,
+		canTargetDead: false,
+		visibleTeammates: [],
+		maxUses: 1,
+		implemented: true,
+		nightTurn: 'pick'
+	},
 	CUPID: {
 		id: 'CUPID',
 		name: '丘比特',
@@ -417,4 +458,11 @@ export function actsInStage(stageRole: RoleId, playerRole: RoleId): boolean {
 		playerRole === stageRole || (stageRole === 'WEREWOLF' && PACK_MEMBER_ROLES.has(playerRole))
 	);
 }
-export const P2_ROLES: RoleId[] = ['THIEF', 'WILD_CHILD', 'DREAM_WEAVER', 'NIGHTMARE'];
+export const P2_ROLES: RoleId[] = [
+	'THIEF',
+	'WILD_CHILD',
+	'DREAM_WEAVER',
+	'NIGHTMARE',
+	'SILENCE_ELDER',
+	'STALKER'
+];

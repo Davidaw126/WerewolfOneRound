@@ -122,7 +122,8 @@ export function translateEffects(code: string, effects: EngineEffect[], to: Reci
 				emitToRoom(code, {
 					kind: 'NightResolved',
 					nightNumber: payload.nightNumber,
-					deaths: payload.deaths.map((d) => d.seat).sort((a, b) => a - b)
+					deaths: payload.deaths.map((d) => d.seat).sort((a, b) => a - b),
+					silenced: payload.silenced
 				});
 				continue;
 

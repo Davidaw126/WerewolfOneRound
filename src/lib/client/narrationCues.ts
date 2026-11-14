@@ -23,6 +23,8 @@ export interface VoiceView {
 	/** The real stage (the Host's own channel). */
 	hostStage: NightStage | null;
 	nightDeaths: number[] | null;
+	/** 禁言长老's pick, said with the deaths. */
+	silenced?: number | null;
 	dayResult: Omit<Parameters<typeof formatDayResult>[0], 'lang'> | null;
 	gameOver: { winner: Winner } | null;
 }
@@ -57,7 +59,7 @@ export function cuesFor(before: VoiceView, now: VoiceView, lang: Lang): Cue[] {
 	const say = (text: string) => cues.push({ kind: 'say', text });
 
 	if (now.nightDeaths !== before.nightDeaths && now.nightDeaths !== null)
-		say(formatNightDeaths(now.nightDeaths, lang));
+		say(formatNightDeaths(now.nightDeaths, lang, now.silenced ?? null));
 	if (now.dayResult !== before.dayResult && now.dayResult)
 		say(formatDayResult({ ...now.dayResult, lang }));
 	if (now.gameOver !== before.gameOver && now.gameOver)

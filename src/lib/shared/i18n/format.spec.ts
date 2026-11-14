@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatRefusal } from './format';
+import { formatRefusal, formatNightDeaths } from './format';
 import { en } from './en';
 import type { ActionErrorCode } from '../actionErrors';
 
@@ -30,5 +30,13 @@ describe('formatRefusal', () => {
 	it('falls back for a code from a newer server', () => {
 		const unknown = 'kicked_by_future' as ActionErrorCode;
 		expect(formatRefusal({ ok: false, error: unknown }, 'en')).toBe(en.errors.fallback);
+	});
+});
+
+describe('formatNightDeaths', () => {
+	it('adds 禁言长老’s pick after the deaths', () => {
+		expect(formatNightDeaths([3], 'zh', 5)).toBe('昨晚 3 号玩家死亡。5 号今天被禁言');
+		expect(formatNightDeaths([], 'zh', 5)).toBe('昨晚是平安夜。5 号今天被禁言');
+		expect(formatNightDeaths([], 'en', null)).toBe('It was a peaceful night — no one died.');
 	});
 });

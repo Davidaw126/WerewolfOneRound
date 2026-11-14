@@ -34,13 +34,25 @@ function joinSeatsEn(seats: number[]): string {
 	return `seats ${seats.slice(0, -1).join(', ')}, and ${seats[seats.length - 1]}`;
 }
 
-export function formatNightDeaths(deaths: number[], lang: Lang): string {
-	if (deaths.length === 0) {
-		return lang === 'zh' ? '昨晚是平安夜' : 'It was a peaceful night — no one died.';
-	}
+/** `silenced`: 禁言长老's pick, who may not speak today - told with the
+ * deaths. */
+export function formatNightDeaths(
+	deaths: number[],
+	lang: Lang,
+	silenced: number | null = null
+): string {
+	const news =
+		deaths.length === 0
+			? lang === 'zh'
+				? '昨晚是平安夜'
+				: 'It was a peaceful night — no one died.'
+			: lang === 'zh'
+				? `昨晚 ${joinSeatsZh(deaths)} 号玩家死亡`
+				: `Last night, ${joinSeatsEn(deaths)} died.`;
+	if (silenced === null) return news;
 	return lang === 'zh'
-		? `昨晚 ${joinSeatsZh(deaths)} 号玩家死亡`
-		: `Last night, ${joinSeatsEn(deaths)} died.`;
+		? `${news}。${silenced} 号今天被禁言`
+		: `${news} Seat ${silenced} is silenced today.`;
 }
 
 function appendFollowDeath(base: string, followDeathSeat: number | null, lang: Lang): string {
