@@ -1993,6 +1993,18 @@ describe('the day vote on the phones', () => {
 		expect(stalk(2).state.nightActions.stalkerKillTarget).toBe(2);
 	});
 
+	it('潜行者 who voted for themself is not offered their own seat', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 3: 3, 1: 4, 2: 4, 6: 4 }); // 4 is exiled
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		({ state } = reduce(state, { type: 'END_DAY' }));
+		state = toStageOf(state, 'STALKER');
+		const ctx = payload<{ context: { stalker: { votedSeats?: number[] } } }>(
+			notifyRoleHolders(state, 'STALKER')[0]
+		);
+		expect(ctx.context.stalker.votedSeats).toEqual([]);
+	});
+
 	it('a day without a phone vote (voted by hand): 潜行者 is trusted to follow the rule', () => {
 		let state = dayOne();
 		({ state } = reduce(state, { type: 'END_DAY' }));

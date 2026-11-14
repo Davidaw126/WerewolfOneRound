@@ -78,11 +78,16 @@ const WOLF_TEAM_TURN_ROLES: ReadonlySet<RoleId> = new Set([
  * computed.
  */
 /** After a phone vote: whom 潜行者 may kill tonight - a living player they voted
- * for today (the exiled one is dead; a flipped 白痴 was voted out too). */
+ * for today (the exiled one is dead; a flipped 白痴 was voted out too), never
+ * themself (a vote for oneself is allowed). */
 export function stalkerTargets(state: GameState, seat: Seat): Seat[] {
 	return [...new Set(state.dayVotes?.[seat] ?? [])]
 		.filter(
-			(s) => state.players[s] && !state.players[s].isDead && !state.players[s].isRevealedIdiot
+			(s) =>
+				s !== seat &&
+				state.players[s] &&
+				!state.players[s].isDead &&
+				!state.players[s].isRevealedIdiot
 		)
 		.sort((a, b) => a - b);
 }
