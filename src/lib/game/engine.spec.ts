@@ -2022,3 +2022,20 @@ describe('the day vote on the phones', () => {
 		expect(ctx.context.stalker.votedSeats).toBeUndefined();
 	});
 });
+
+describe('a 猎人 feared by 恶灵骑士', () => {
+	it('still gets the plain 确认开枪状态 turn, not the feared pass the server would refuse', () => {
+		const state = makeState(
+			{ 1: 'NIGHTMARE', 2: 'HUNTER', 3: 'VILLAGER', 4: 'VILLAGER', 5: 'WEREWOLF' },
+			{ phase: 'NIGHT', round: 2, fearedSeat: 2, currentStepKey: 'role:HUNTER' }
+		);
+		const prompt = payload<{ context: { feared?: boolean; hunter?: { canShoot: boolean } } }>(
+			notifyRoleHolders(state, 'HUNTER').find((e) => e.seat === 2)
+		);
+		expect(prompt.context.feared).toBeUndefined();
+		expect(prompt.context.hunter).toBeDefined();
+		// And the confirm the prompt then offers is taken.
+		const r = reduce(state, { type: 'CONFIRM_STAGE', seat: 2 });
+		expect(r.state.stageConfirms).toEqual([2]);
+	});
+});

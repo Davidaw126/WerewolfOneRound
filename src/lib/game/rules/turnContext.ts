@@ -8,7 +8,7 @@
 
 import type { EngineEffect, GameState, RoleId, Seat } from '../types';
 import { predictCanShootTonight } from './nightResolution';
-import { actsInStage } from '../roleMeta';
+import { actsInStage, STATUS_STAGE_ROLES } from '../roleMeta';
 
 /**
  * Everything the acting player needs that only the server knows, delivered
@@ -119,12 +119,13 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		const promptRole = player.role;
 		const context: TurnContext = { seat: player.seat };
 		if (role === 'WEREWOLF') context.packKill = true;
-		// Not on 黑狼王's status stage: confirming his shot isn't a skill use,
-		// and a pass there would be read as the pack's kill submission.
+		// Not on a 确认开枪状态 stage (猎人 / 黑狼王): confirming a shot isn't a
+		// skill use, and that stage takes only 确认 - a feared pass there was
+		// refused, so a feared 猎人 froze the night until force-continue.
 		if (
 			state.fearedSeat === player.seat &&
 			player.role !== 'NIGHTMARE' &&
-			role !== 'BLACK_WOLF_KING'
+			!STATUS_STAGE_ROLES.has(role)
 		)
 			context.feared = true;
 		if (role === 'WITCH') {
