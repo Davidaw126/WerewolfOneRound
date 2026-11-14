@@ -31,6 +31,7 @@ describe('rule switches', () => {
 				'guard',
 				'hunter',
 				'idiot',
+				'inAppVote',
 				'winCondition',
 				'witch',
 				'wildChild',
@@ -40,6 +41,7 @@ describe('rule switches', () => {
 		expect(s.wolf).toEqual({ allowEmptyKill: true, blackWolfKingCanShootWhenLoverSuicide: false });
 		expect(s.cupidPoisonBlocksHunter).toBe(false);
 		expect(s.wildChild).toEqual({ joinsPack: false });
+		expect(s.inAppVote).toBe(false);
 	});
 
 	it('merging the defaults’ own switches changes nothing', () => {

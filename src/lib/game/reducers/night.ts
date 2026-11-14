@@ -25,7 +25,7 @@ import {
 	ALWAYS_ANNOUNCED_ROLES,
 	type NightStage
 } from '../rules/nightOrder';
-import { notifyRoleHolders } from '../rules/turnContext';
+import { notifyRoleHolders, stalkerTargets } from '../rules/turnContext';
 import { resolveNight, cascadeDeaths, type NightResolutionContext } from '../rules/nightResolution';
 import {
 	validateWitchAction,
@@ -211,6 +211,8 @@ export function handleAnnounceNightResults(state: GameState): EngineResult {
 		draft.pendingNightDeaths = null;
 		draft.announcedNightDeaths = deaths.map((d) => d.seat).sort((a, b) => a - b);
 		draft.announcedSilenced = silenced;
+		// A new day: yesterday's ballots no longer bind 潜行者.
+		delete draft.dayVotes;
 
 		// A hunter who died tonight but isn't in pendingShoots was denied a shot
 		// by cascadeDeaths' own canTriggerShoot filter (T5) - under today's
@@ -528,6 +530,8 @@ export function handleSubmitNightAction(
 				if (target !== null) {
 					if (draft.stalkerUsed) return reject(effects, seat, 'stalker_used');
 					if (target === seat) return reject(effects, seat, 'invalid_target');
+					if (cfg.inAppVote && !stalkerTargets(draft, seat).includes(target))
+						return reject(effects, seat, 'stalker_not_voted');
 					draft.stalkerUsed = true;
 				}
 				draft.nightActions.stalkerKillTarget = target;

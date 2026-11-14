@@ -222,6 +222,12 @@
 				)}
 			{/if}
 
+			{@render toggle(
+				t.roleConfig.inAppVote,
+				rules.inAppVote,
+				() => (rules.inAppVote = !rules.inAppVote)
+			)}
+
 			<div class="space-y-1.5 border-t-2 border-line/50 pt-2">
 				<label class="flex items-center justify-between gap-2 text-[13px] text-bone">
 					<span>{t.roleConfig.winConditionLabel}</span>

@@ -144,6 +144,8 @@ export interface Strings {
 		selectStalkerTarget: string;
 		stalkerRule: string;
 		stalkerUsed: string;
+		stalkerNoTargets: string;
+		stalkerVotedTargets: (seats: string) => string;
 		skipStalker: string;
 		descSkipStalker: string;
 		descStalked: (seat: number) => string;
@@ -195,6 +197,7 @@ export interface Strings {
 		cardCountWithThief: (total: number, seats: number) => string;
 		houseRuleHeader: string;
 		cupidPoisonBlocksHunter: string;
+		inAppVote: string;
 		winConditionLabel: string;
 		winConditionSideKill: string;
 		winConditionTotalKill: string;
@@ -236,6 +239,8 @@ export interface Strings {
 		confirmEnterNight: string;
 		confirmEnterNightPlain: string;
 		playerWaiting: string;
+		playerWaitingVote: string;
+		beginVote: string;
 		knightDuelButton: string;
 		selectKnightSeat: string;
 		selectDuelTargetSeat: string;
@@ -254,6 +259,14 @@ export interface Strings {
 		endVote: string;
 		myVoteAbstain: string;
 		myVoteFor: (seat: number) => string;
+		pkBetween: (seats: number[]) => string;
+		voted: string;
+		tapSeat: string;
+		voteFor: (seat: number) => string;
+		pickFirst: string;
+		cannotVote: string;
+		cancelVote: string;
+		confirmCancelVote: string;
 	};
 	hostOverride: {
 		toggle: string;

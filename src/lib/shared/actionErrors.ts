@@ -38,7 +38,8 @@ export type RoomErrorCode =
 	| 'cannot_mark_out'
 	| 'cannot_exile'
 	| 'cannot_self_explode'
-	| 'cannot_duel';
+	| 'cannot_duel'
+	| 'cannot_vote';
 
 export type ActionErrorCode = RoomErrorCode | NightRuleError | ValidationCode;
 

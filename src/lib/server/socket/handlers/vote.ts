@@ -22,7 +22,10 @@ export async function handleVoteCast(
 			nightAnnounced(state)
 				? { type: 'CAST_VOTE', seat, target: target === 'abstain' ? 'ABSTAIN' : target }
 				: NOT_ANNOUNCED
-		)
+		),
+		// Feared tonight, a flipped 白痴, a PK candidate, or the vote closed:
+		// say so, rather than a quiet ok that looks like a counted vote.
+		{ ignored: 'cannot_vote' }
 	);
 }
 

@@ -122,6 +122,7 @@ export const en: Strings = {
 		not_authorized_shooter: "It's not your turn to shoot",
 		nothing_to_announce: 'Nothing to announce',
 		night_not_announced: "Announce last night's results first",
+		cannot_vote: "You can't vote this round",
 		cannot_mark_out: "Those players are already out, or this can't be recorded right now",
 		cannot_exile:
 			"Can't exile that player (today is already settled, or they're out / already revealed)",
@@ -180,6 +181,10 @@ export const en: Strings = {
 		selectStalkerTarget: 'Choose a player to kill (once per game):',
 		stalkerRule: 'Only a player you voted for today who wasn’t exiled',
 		stalkerUsed: 'You’ve already used your kill. Confirm, then close your eyes',
+		stalkerNoTargets:
+			'Nobody you voted for today can be killed (they left, or you didn’t vote) — skip tonight',
+		stalkerVotedTargets: (seats) =>
+			`You voted for these today and they’re still in: seats ${seats}`,
 		skipStalker: 'No kill tonight',
 		descSkipStalker: 'You chose not to kill tonight',
 		descStalked: (seat) => `You killed seat ${seat}`,
@@ -222,6 +227,7 @@ export const en: Strings = {
 			thief_must_take_wolf: 'Both buried cards are werewolves — you must pick one',
 			silence_repeat_target: "You can't silence the same player two nights in a row",
 			stalker_used: 'Your one kill is already used',
+			stalker_not_voted: 'Only a player you voted for today who is still in the game',
 			witch_no_self_poison: "The witch can't poison herself",
 			guard_no_self_guard: "You can't protect yourself",
 			seer_no_self_check: "You can't check yourself",
@@ -252,6 +258,8 @@ export const en: Strings = {
 		cardCountWithThief: (total, seats) =>
 			`${total} cards total (incl. Thief - ${seats} actual seats)`,
 		houseRuleHeader: 'House Rules',
+		inAppVote:
+			'Vote on phones · by day the host opens a vote, everyone votes on their phone, and who voted for whom is shown when it closes',
 		cupidPoisonBlocksHunter:
 			"Lover's-suicide counts as poison · a hunter whose lover died of poison and then followed in suicide can't shoot either",
 		winConditionLabel: 'Win Condition',
@@ -297,6 +305,8 @@ export const en: Strings = {
 		confirmEnterNight: 'No one has been exiled today. Start the next night anyway?',
 		confirmEnterNightPlain: 'Start the next night?',
 		playerWaiting: 'The day plays out at the table — waiting for the host to record who left…',
+		playerWaitingVote: 'The day plays out at the table — waiting for the host to open the vote…',
+		beginVote: '🗳 Start the vote',
 		knightDuelButton: '⚔️ Knight duel',
 		selectKnightSeat: 'Choose the knight:',
 		selectDuelTargetSeat: 'Choose the duel target:',
@@ -315,7 +325,15 @@ export const en: Strings = {
 		abstain: 'Abstain',
 		endVote: 'End Vote & Announce Results',
 		myVoteAbstain: 'You abstained',
-		myVoteFor: (seat) => `You voted for seat ${seat}`
+		myVoteFor: (seat) => `You voted for seat ${seat}`,
+		pkBetween: (seats) => `Runoff: seats ${seats.join(', ')}`,
+		voted: 'You have voted',
+		tapSeat: '👆 Tap a seat above to vote',
+		voteFor: (seat) => `Vote for seat ${seat}`,
+		pickFirst: 'Pick a player first',
+		cannotVote: "You can't vote this round",
+		cancelVote: 'Call off the vote and go to night',
+		confirmCancelVote: 'Call off this vote? Nobody is exiled today and the night begins.'
 	},
 	hostOverride: {
 		toggle: '🔧 God Mode',

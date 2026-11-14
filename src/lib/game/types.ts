@@ -148,6 +148,10 @@ export interface RuleConfig {
 	 * and the host records the victim with DAY_OUT, instead of the app
 	 * stopping in HUNTER_SHOOT for the shooter to pick on their phone. */
 	shotsAtTable: boolean;
+	/** default false - the table votes by hand and the host records the
+	 * exile. On, the Host opens a vote and everyone votes on their phone;
+	 * who voted for whom is told once it closes. */
+	inAppVote: boolean;
 
 	// ===== C. 夜晚 =====
 	stepTimeoutSec: number; // default 30, 0 = unlimited
@@ -347,6 +351,10 @@ export interface DayResultRecord {
 	followDeathSeat: Seat | null;
 	followDeathIdentity: RoleId | null;
 	idiotRevealed: boolean;
+	/** An in-app vote's ballots, public once it closed. */
+	votes?: Record<Seat, Seat | 'ABSTAIN'>;
+	/** A first-round tie opened a PK between these seats. */
+	pkCandidates?: Seat[];
 }
 
 export interface GameState {
@@ -379,6 +387,9 @@ export interface GameState {
 	lastSilenceTarget?: Seat | null;
 	/** 潜行者 has made their one kill. */
 	stalkerUsed?: boolean;
+	/** Today's closed in-app votes: whom each seat voted for (PK included).
+	 * Cleared when the next day's news is told. */
+	dayVotes?: Record<Seat, Seat[]>;
 	charmedSeat: Seat | null;
 	fearedSeat: Seat | null;
 
@@ -552,6 +563,7 @@ export type EnginePayload =
 			followDeathIdentity: RoleId | null;
 			idiotRevealed?: boolean;
 			pkCandidates?: Seat[];
+			votes?: Record<Seat, Seat | 'ABSTAIN'>;
 	  }
 	| { kind: 'VoteUpdated'; votedSeats: Seat[]; totalVoters: number }
 	| {

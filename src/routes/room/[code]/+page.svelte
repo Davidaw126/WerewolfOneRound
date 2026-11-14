@@ -9,7 +9,13 @@
 	import { askConfirm, showAlert } from '$lib/client/confirmDialog.svelte';
 	import { leaveConfirmMessage } from '$lib/client/leaveRoom';
 	import { i18n } from '$lib/client/i18n.svelte';
-	import { strings, formatNightDeaths, formatDayResult, outMessage } from '$lib/shared/i18n';
+	import {
+		strings,
+		formatNightDeaths,
+		formatDayResult,
+		formatVotes,
+		outMessage
+	} from '$lib/shared/i18n';
 	import { phaseGroup } from '$lib/shared/gameTypes';
 	import type { PageData } from './$types';
 	import SeatCircle from '$lib/components/SeatCircle.svelte';
@@ -229,11 +235,20 @@
 				{/if}
 
 				{#if showNews && gameStore.state?.lastDayResult}
-					<div
-						class="panel flex items-center gap-2 border-wolf/60 px-4 py-3 text-base font-semibold text-bone"
-					>
+					{@const day = gameStore.state.lastDayResult}
+					<div class="panel flex gap-2 border-wolf/60 px-4 py-3 text-base font-semibold text-bone">
 						<span aria-hidden="true">📢</span>
-						{formatDayResult({ ...gameStore.state.lastDayResult, lang: i18n.lang })}
+						<div class="min-w-0">
+							{formatDayResult({ ...day, lang: i18n.lang })}
+							{#if day.votes}
+								<!-- Who voted for whom: public once the vote has closed. -->
+								<p class="mt-1 text-sm font-normal text-zinc-300">
+									{#each formatVotes(day.votes, i18n.lang).split(i18n.lang === 'zh' ? '；' : '; ') as group, i (i)}
+										<span class="mr-3 inline-block">{group}</span>
+									{/each}
+								</p>
+							{/if}
+						</div>
 					</div>
 				{/if}
 
@@ -313,23 +328,17 @@
 						/>
 					</div>
 				{:else if group === 'vote'}
-					<div class="flex min-h-0 flex-1 flex-col items-center justify-start gap-4">
+					<!-- The ballot is in the pinned footer; votes are tapped on the
+					     circle, like a night pick. -->
+					<div class="[container-type:size] flex min-h-0 flex-1 items-start justify-center">
 						<SeatCircle
 							seats={roomState.seats}
 							{mySeat}
 							disabled={true}
 							hostSessionId={roomState.hostSessionId}
 							highlight={newsSeats}
+							fit
 						/>
-						<div class="w-full">
-							{#if gameStore.awaitingNightAnnounce}
-								<p class="text-center text-sm text-zinc-500">
-									{isHost ? t.room.voteWaitAnnounceHost : t.room.voteWaitAnnouncePlayer}
-								</p>
-							{:else}
-								<VoteBoard />
-							{/if}
-						</div>
 					</div>
 				{:else if roomState.phase === 'GAME_OVER'}
 					<GameOverScreen />
@@ -394,6 +403,10 @@
 				{:else if group === 'speech'}
 					<ScrollArea class="max-h-[55vh] overflow-y-auto">
 						<DiscussionPanel />
+					</ScrollArea>
+				{:else if group === 'vote'}
+					<ScrollArea class="max-h-[55vh] overflow-y-auto">
+						<VoteBoard />
 					</ScrollArea>
 				{:else if group === 'night'}
 					<!-- max-h + its own scroll cap: NightActionPrompt's content

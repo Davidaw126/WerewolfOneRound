@@ -10,6 +10,7 @@ import {
 	roleName,
 	formatNightDeaths,
 	formatDayResult,
+	formatVotes,
 	formatHunterResult,
 	formatGameOverText,
 	formatSelfExplode,
@@ -41,6 +42,7 @@ const LINES = {
 		formatNightDeaths(deaths, lang, silenced),
 	dayResult: (lang: Lang, result: Omit<Parameters<typeof formatDayResult>[0], 'lang'>) =>
 		formatDayResult({ ...result, lang }),
+	votes: (lang: Lang, votes: Record<number, number | 'ABSTAIN'>) => formatVotes(votes, lang),
 	hunterResult: (lang: Lang, result: Omit<Parameters<typeof formatHunterResult>[0], 'lang'>) =>
 		formatHunterResult({ ...result, lang }),
 	gameOver: (lang: Lang, winner: Winner) => formatGameOverText(winner, lang, false),

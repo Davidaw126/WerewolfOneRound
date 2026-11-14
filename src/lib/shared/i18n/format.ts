@@ -62,15 +62,45 @@ function appendFollowDeath(base: string, followDeathSeat: number | null, lang: L
 		: `${base} Seat ${followDeathSeat} died alongside them, out of love.`;
 }
 
+/** A closed in-app vote, grouped by whom: "6 号 ← 2、3、4；弃票：5". */
+export function formatVotes(votes: Record<number, number | 'ABSTAIN'>, lang: Lang): string {
+	const by = new Map<number | 'ABSTAIN', number[]>();
+	for (const [voter, target] of Object.entries(votes)) {
+		by.set(target, [...(by.get(target) ?? []), Number(voter)]);
+	}
+	const targets = [...by.keys()]
+		.filter((t): t is number => t !== 'ABSTAIN')
+		.sort((a, b) => by.get(b)!.length - by.get(a)!.length || a - b);
+	const voters = (t: number | 'ABSTAIN') =>
+		by
+			.get(t)!
+			.sort((a, b) => a - b)
+			.join(lang === 'zh' ? '、' : ', ');
+	const parts = targets.map((t) =>
+		lang === 'zh' ? `${t} 号 ← ${voters(t)}` : `Seat ${t} ← ${voters(t)}`
+	);
+	if (by.has('ABSTAIN'))
+		parts.push(lang === 'zh' ? `弃票：${voters('ABSTAIN')}` : `Abstained: ${voters('ABSTAIN')}`);
+	if (parts.length === 0) return lang === 'zh' ? '无人投票' : 'Nobody voted';
+	return parts.join(lang === 'zh' ? '；' : '; ');
+}
+
 export function formatDayResult(params: {
 	tie: boolean;
 	eliminatedSeat: number | null;
 	identity: RoleId | null;
 	followDeathSeat: number | null;
 	idiotRevealed?: boolean;
+	pkCandidates?: number[];
 	lang: Lang;
 }): string {
 	const { tie, eliminatedSeat, identity, followDeathSeat, lang } = params;
+	const pk = params.pkCandidates ?? [];
+	if (pk.length > 0) {
+		return lang === 'zh'
+			? `${joinSeatsZh(pk)} 号平票，进入 PK`
+			: `A tie between ${joinSeatsEn(pk)} - they go to a PK vote.`;
+	}
 	if (params.idiotRevealed && eliminatedSeat !== null) {
 		return lang === 'zh'
 			? `${eliminatedSeat} 号被放逐，翻牌为白痴，免于出局，之后不能再投票`

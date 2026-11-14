@@ -26,7 +26,8 @@ import type {
 	ActionReply,
 	ServerEvent,
 	PrivateInfo,
-	NightActionSubmission
+	NightActionSubmission,
+	RuleConfigOverrides
 } from '../src/lib/shared/events.ts';
 import type { RoleId } from '../src/lib/game/types.ts';
 
@@ -126,7 +127,12 @@ if (MODE === 'resume') {
 
 /** Registers `seats` players, has the first create a room with `roles`, seats
  * everyone and starts the game. Returns the players (index = seat - 1). */
-async function setupGame(label: string, seats: number, roles: Partial<Record<RoleId, number>>) {
+async function setupGame(
+	label: string,
+	seats: number,
+	roles: Partial<Record<RoleId, number>>,
+	ruleOverrides?: RuleConfigOverrides
+) {
 	const tag = Date.now().toString(36).slice(-4);
 	const players = [];
 	for (let i = 0; i < seats; i++) {
@@ -138,7 +144,7 @@ async function setupGame(label: string, seats: number, roles: Partial<Record<Rol
 	if (!created.ok) throw new Error(`[${label}] room not created: ${created.error}`);
 	const code = created.roomCode;
 	check(/^\d{6}$/.test(code), `[${label}] room created ${code}`);
-	const cfg = await host.act({ kind: 'RoomSubmitConfig', roleConfig: roles });
+	const cfg = await host.act({ kind: 'RoomSubmitConfig', roleConfig: roles, ruleOverrides });
 	check(cfg.ok, `[${label}] config submitted ${JSON.stringify(cfg.ok ? '' : cfg.error)}`);
 	for (const p of players.slice(1)) await p.act({ kind: 'RoomJoin', roomCode: code });
 	for (const [i, p] of players.entries()) {
@@ -156,12 +162,13 @@ async function setupGame(label: string, seats: number, roles: Partial<Record<Rol
 }
 
 async function basicGame() {
-	const { players, host, code } = await setupGame('b', 6, {
-		WEREWOLF: 2,
-		SEER: 1,
-		WITCH: 1,
-		VILLAGER: 2
-	});
+	// The phone vote is a room rule (off by default); this game turns it on.
+	const { players, host, code } = await setupGame(
+		'b',
+		6,
+		{ WEREWOLF: 2, SEER: 1, WITCH: 1, VILLAGER: 2 },
+		{ inAppVote: true }
+	);
 	const seatOf = (p: Phone) => players.indexOf(p) + 1;
 	const byRole = (role: RoleId) => players.filter((p) => p.role === role);
 	console.log('roles:', players.map((p) => `${seatOf(p)}=${p.role}`).join(' '));
@@ -306,6 +313,16 @@ async function basicGame() {
 	check(
 		result?.kind === 'DayResolved' && result.eliminatedSeat === seatOf(accused),
 		`the vote put out seat ${seatOf(accused)} (${result?.kind === 'DayResolved' ? result.eliminatedSeat : 'no result'})`
+	);
+	check(
+		result?.kind === 'DayResolved' &&
+			result.votes?.[seatOf(voters[1])] === (voters[1] === accused ? 'ABSTAIN' : seatOf(accused)),
+		'once closed, the result says who voted for whom'
+	);
+	const after = await host.act({ kind: 'ResyncRequest' });
+	check(
+		after.ok && after.state.phase === 'DISCUSSION' && after.state.dayDecided,
+		`the day is settled and back with the Host (${after.ok ? after.state.phase : after.error})`
 	);
 
 	// --- Leaving mid-game ends the round for everyone ---------------------------

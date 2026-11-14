@@ -98,6 +98,7 @@ export function defaultRuleConfig(): RuleConfig {
 		},
 
 		cupidPoisonBlocksHunter: false,
+		inAppVote: false,
 		deadSeeAllRoles: true
 	};
 }

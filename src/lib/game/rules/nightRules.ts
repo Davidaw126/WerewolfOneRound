@@ -36,7 +36,10 @@ export type NightRuleError =
 	/** 禁言长老 picked last night's seat again. */
 	| 'silence_repeat_target'
 	/** 潜行者 has already made their one kill. */
-	| 'stalker_used';
+	| 'stalker_used'
+	/** 潜行者 (in-app vote on) chose someone they didn't vote for today, or
+	 * who was exiled. */
+	| 'stalker_not_voted';
 
 export interface WitchRuleState {
 	/** The acting witch's own seat, taken from the server-side seat lookup -

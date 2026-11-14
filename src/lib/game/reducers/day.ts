@@ -35,11 +35,9 @@ import { advanceToNextNight } from './night';
 function announceDayResult(
 	draft: GameState,
 	effects: EngineEffect[],
-	result: DayResultRecord & { pkCandidates?: Seat[] }
+	result: DayResultRecord
 ): void {
-	const record = { ...result };
-	delete record.pkCandidates;
-	draft.announcedDayResult = record;
+	draft.announcedDayResult = { ...result };
 	effects.push({ kind: 'BROADCAST', payload: { kind: 'DayResolved', ...result } });
 }
 
@@ -163,6 +161,9 @@ export function handleNextSpeaker(state: GameState): EngineResult {
 export function handleBeginVote(state: GameState): EngineResult {
 	return withEffects(state, (draft, effects) => {
 		if (draft.phase !== 'DISCUSSION' || draft.dayDecided) return;
+		// The table flow votes by hand unless the room turned the phone vote
+		// on (the legacy in-app shot flow always had it).
+		if (draft.ruleConfig.shotsAtTable && !draft.ruleConfig.inAppVote) return;
 		draft.phase = 'VOTE';
 		draft.votes = {};
 		draft.pkCandidates = [];
@@ -333,6 +334,20 @@ export function handleTallyVotes(
 		if (draft.phase !== 'VOTE' && draft.phase !== 'VOTE_PK') return;
 		const cfg = draft.ruleConfig;
 		const inPk = draft.phase === 'VOTE_PK';
+		// The table flow's phone vote: like the Host's EXILE, the result
+		// returns to the Host's day console, settled - shots happen at the
+		// table. (Without inAppVote this is the legacy in-app flow.)
+		const atTable = cfg.inAppVote && cfg.shotsAtTable;
+
+		// Ballots are public once the vote closes; each seat's picks are kept
+		// for 潜行者 tonight.
+		const votes: Record<Seat, Seat | 'ABSTAIN'> = { ...draft.votes };
+		const dayVotes = { ...draft.dayVotes };
+		for (const [seat, target] of Object.entries(votes)) {
+			if (target !== 'ABSTAIN')
+				dayVotes[Number(seat)] = [...(dayVotes[Number(seat)] ?? []), target];
+		}
+		draft.dayVotes = dayVotes;
 
 		const tally = new Map<Seat, number>();
 		for (const target of Object.values(draft.votes)) {
@@ -365,7 +380,8 @@ export function handleTallyVotes(
 						followDeathSeat: null,
 						followDeathIdentity: null,
 						idiotRevealed: false,
-						pkCandidates: [...leaders]
+						pkCandidates: [...leaders],
+						votes
 					});
 					effects.push({
 						kind: 'BROADCAST',
@@ -397,8 +413,21 @@ export function handleTallyVotes(
 			tie,
 			followDeathSeat,
 			followDeathIdentity: null,
-			idiotRevealed
+			idiotRevealed,
+			votes
 		});
+
+		if (atTable) {
+			draft.votes = {};
+			draft.pkCandidates = [];
+			draft.dayDecided = true;
+			pushShotStatus(draft, effects, exiledDeaths);
+			draft.pendingShoots = [];
+			effects.push({ kind: 'BROADCAST', payload: { kind: 'DayDecided' } });
+			const lastWordsSeats = lastWordsFrom(exiledDeaths, cfg.lastWords.exiledPlayer);
+			enterHunterShootOrContinue(draft, effects, lastWordsSeats, 'DISCUSSION');
+			return;
+		}
 
 		if (idiotRevealed) {
 			// B16: "当天不再重投" - nobody died, so no hunter-shoot to check;

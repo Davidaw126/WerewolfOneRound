@@ -31,6 +31,8 @@
 	const silenceLastSeat = $derived(rules.silenceLastSeat);
 	// 潜行者 after their one kill: the turn still runs, with only 确认 left.
 	const stalkerSpent = $derived(role === 'STALKER' && rules.stalkerUsed);
+	// With the phone vote on, the server knows whom 潜行者 voted for today.
+	const stalkerTargets = $derived(role === 'STALKER' ? (ctx?.stalker?.votedSeats ?? null) : null);
 	const wolfTeammates = $derived(rules.wolfTeammates);
 	const packTurn = $derived(rules.packTurn);
 	const isSelfKill = $derived(rules.isSelfKill);
@@ -58,7 +60,8 @@
 					isLiving(n) &&
 					!(noSelfPick && n === ctx?.seat) &&
 					!(role === 'GUARD' && n === guardLastSeat) &&
-					!(role === 'SILENCE_ELDER' && n === silenceLastSeat),
+					!(role === 'SILENCE_ELDER' && n === silenceLastSeat) &&
+					!(stalkerTargets !== null && !stalkerTargets.includes(n)),
 				picked: (n) => (d.pick.target === n ? 'ember' : null),
 				tap: (n) => d.pick.tap(n)
 			};
@@ -201,8 +204,14 @@
 				{#if selectLabel}{t[selectLabel]}{/if}
 			</p>
 			{#if role === 'STALKER'}
-				<!-- The table votes by hand, so the app can't check this part. -->
-				<p class="text-sm text-bone">{t.stalkerRule}</p>
+				{#if stalkerTargets === null}
+					<!-- The table votes by hand, so the app can't check this part. -->
+					<p class="text-sm text-bone">{t.stalkerRule}</p>
+				{:else if stalkerTargets.length === 0}
+					<p class="text-sm text-bone">{t.stalkerNoTargets}</p>
+				{:else}
+					<p class="text-sm text-bone">{t.stalkerVotedTargets(stalkerTargets.join('、'))}</p>
+				{/if}
 			{/if}
 			<p class="text-base font-semibold text-bone">{pickedLine([draft.pick.target])}</p>
 			<button

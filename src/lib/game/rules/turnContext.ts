@@ -46,8 +46,10 @@ export interface TurnContext {
 	wolf?: { teammateSeats: Seat[]; allowEmptyKill?: boolean };
 	/** 禁言长老: last night's pick, which can't be picked again tonight. */
 	silence?: { lastSilencedSeat: Seat | null };
-	/** 潜行者: whether their one kill is already spent. */
-	stalker?: { used: boolean };
+	/** 潜行者: whether their one kill is already spent. votedSeats, only
+	 * with the in-app vote on: the players they may kill (voted for today,
+	 * still alive). */
+	stalker?: { used: boolean; votedSeats?: Seat[] };
 	/** 恶灵骑士 feared this seat tonight: no skill, the prompt only offers a
 	 * pass (NightPass) so the turn can still end. */
 	feared?: boolean;
@@ -75,6 +77,16 @@ const WOLF_TEAM_TURN_ROLES: ReadonlySet<RoleId> = new Set([
  * aloud to that player alone. This is the single place any turn context is
  * computed.
  */
+/** In-app vote on: whom 潜行者 may kill tonight - a living player they voted
+ * for today (the exiled one is dead; a flipped 白痴 was voted out too). */
+export function stalkerTargets(state: GameState, seat: Seat): Seat[] {
+	return [...new Set(state.dayVotes?.[seat] ?? [])]
+		.filter(
+			(s) => state.players[s] && !state.players[s].isDead && !state.players[s].isRevealedIdiot
+		)
+		.sort((a, b) => a - b);
+}
+
 export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[] {
 	const effects: EngineEffect[] = [];
 
@@ -135,7 +147,11 @@ export function notifyRoleHolders(state: GameState, role: RoleId): EngineEffect[
 		}
 		if (role === 'SILENCE_ELDER')
 			context.silence = { lastSilencedSeat: state.lastSilenceTarget ?? null };
-		if (role === 'STALKER') context.stalker = { used: state.stalkerUsed === true };
+		if (role === 'STALKER') {
+			context.stalker = { used: state.stalkerUsed === true };
+			if (state.ruleConfig.inAppVote)
+				context.stalker.votedSeats = stalkerTargets(state, player.seat);
+		}
 		if (role === 'GUARD') {
 			context.guard = { lastProtectedSeat: state.lastGuardTarget };
 			if (state.ruleConfig.guard.allowEmptyGuard) context.guard.allowEmptyGuard = true;

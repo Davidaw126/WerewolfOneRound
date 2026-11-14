@@ -211,4 +211,9 @@ export class VoteDraft {
 	lit(target: number | 'abstain', alreadyVoted: boolean): boolean {
 		return alreadyVoted && this.cast === target;
 	}
+
+	/** What this phone voted, while the server still counts it. */
+	mine(alreadyVoted: boolean): number | 'abstain' | null {
+		return alreadyVoted ? this.cast : null;
+	}
 }

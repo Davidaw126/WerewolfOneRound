@@ -1833,3 +1833,132 @@ describe('潜行者', () => {
 		]);
 	});
 });
+
+describe('in-app day vote (inAppVote switch)', () => {
+	const board = {
+		1: 'WEREWOLF',
+		2: 'VILLAGER',
+		3: 'STALKER',
+		4: 'VILLAGER',
+		5: 'HUNTER',
+		6: 'WEREWOLF',
+		7: 'SEER'
+	} as const;
+
+	/** The table flow's own rules (shots at the table, no 遗言), vote on or off. */
+	function dayOne(inAppVote = true): GameState {
+		const s = start(board).state;
+		let state: GameState = {
+			...s,
+			ruleConfig: {
+				...s.ruleConfig,
+				inAppVote,
+				shotsAtTable: true,
+				lastWords: {
+					firstNightVictim: false,
+					exiledPlayer: false,
+					hunterShotVictim: false,
+					nightVictimAfterFirst: false
+				}
+			}
+		};
+		state = toDawnOf(state);
+		({ state } = reduce(state, { type: 'ANNOUNCE_NIGHT_RESULTS' }));
+		expect(state.phase).toBe('DISCUSSION');
+		return state;
+	}
+	function vote(state: GameState, votes: Record<number, number | 'ABSTAIN'>): GameState {
+		for (const [seat, target] of Object.entries(votes))
+			({ state } = reduce(state, { type: 'CAST_VOTE', seat: Number(seat), target }));
+		return state;
+	}
+
+	it('is off by default: the Host cannot open a vote', () => {
+		expect(reduce(dayOne(false), { type: 'BEGIN_VOTE' }).state.phase).toBe('DISCUSSION');
+	});
+
+	it('on: the exile, then back to the Host’s day console with the day settled', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		expect(state.phase).toBe('VOTE');
+		state = vote(state, { 1: 2, 2: 6, 3: 6, 4: 6, 5: 'ABSTAIN', 6: 2, 7: 6 });
+		const tallied = reduce(state, { type: 'TALLY_VOTES' });
+		expect(tallied.state.phase).toBe('DISCUSSION');
+		expect(tallied.state.dayDecided).toBe(true);
+		expect(tallied.state.players[6].isDead).toBe(true);
+		const result = payload<{ eliminatedSeat: number; votes: Record<number, unknown> }>(
+			effectsOfKind(tallied.effects, 'DayResolved')[0]
+		);
+		expect(result.eliminatedSeat).toBe(6);
+		// Who voted for whom is public once the vote has closed.
+		expect(result.votes).toEqual({ 1: 2, 2: 6, 3: 6, 4: 6, 5: 'ABSTAIN', 6: 2, 7: 6 });
+		expect(tallied.state.announcedDayResult?.votes).toEqual(result.votes);
+	});
+
+	it('an exiled 猎人 is told whether they may shoot, and the shot happens at the table', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 1: 5, 2: 5, 3: 5, 6: 5 });
+		const tallied = reduce(state, { type: 'TALLY_VOTES' });
+		expect(tallied.state.phase).toBe('DISCUSSION');
+		expect(
+			effectsOfKind(tallied.effects, 'ShotStatus').map((e) => [
+				e.seat,
+				payload<{ canShoot: boolean }>(e).canShoot
+			])
+		).toEqual([[5, true]]);
+		expect(tallied.state.pendingShoots).toEqual([]);
+	});
+
+	it('a tie goes to PK; a PK re-tie settles the day with nobody exiled', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		state = vote(state, { 1: 2, 2: 6 });
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		expect(state.phase).toBe('VOTE_PK');
+		state = vote(state, { 1: 2, 3: 6 });
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		expect(state.phase).toBe('DISCUSSION');
+		expect(state.dayDecided).toBe(true);
+		expect(Object.values(state.players).every((p) => !p.isDead)).toBe(true);
+	});
+
+	it('潜行者 may only kill a player they voted for today who survived it', () => {
+		let state = reduce(dayOne(), { type: 'BEGIN_VOTE' }).state;
+		// Round 1 ties 2 and 4; the stalker (3) voted 4. PK: they vote 2, and 4 is exiled.
+		state = vote(state, { 1: 2, 3: 4, 5: 4, 6: 2 });
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		state = vote(state, { 1: 4, 3: 2, 5: 4, 6: 4 });
+		({ state } = reduce(state, { type: 'TALLY_VOTES' }));
+		expect(state.players[4].isDead).toBe(true);
+		({ state } = reduce(state, { type: 'END_DAY' }));
+		state = toStageOf(state, 'STALKER');
+		const ctx = payload<{ context: { stalker: { votedSeats?: number[] } } }>(
+			notifyRoleHolders(state, 'STALKER')[0]
+		);
+		expect(ctx.context.stalker.votedSeats).toEqual([2]);
+		const stalk = (target: number) =>
+			reduce(state, {
+				type: 'SUBMIT_NIGHT_ACTION',
+				seat: 3,
+				role: 'STALKER',
+				action: { stalkerKillTarget: target }
+			});
+		expect(rejection(stalk(7).effects)).toEqual(['stalker_not_voted']);
+		expect(stalk(2).state.nightActions.stalkerKillTarget).toBe(2);
+	});
+
+	it('with the vote off, 潜行者 is trusted to follow the rule', () => {
+		let state = dayOne(false);
+		({ state } = reduce(state, { type: 'END_DAY' }));
+		state = toStageOf(state, 'STALKER');
+		const ctx = payload<{ context: { stalker: { votedSeats?: number[] } } }>(
+			notifyRoleHolders(state, 'STALKER')[0]
+		);
+		expect(ctx.context.stalker.votedSeats).toBeUndefined();
+		const r = reduce(state, {
+			type: 'SUBMIT_NIGHT_ACTION',
+			seat: 3,
+			role: 'STALKER',
+			action: { stalkerKillTarget: 7 }
+		});
+		expect(r.state.nightActions.stalkerKillTarget).toBe(7);
+	});
+});

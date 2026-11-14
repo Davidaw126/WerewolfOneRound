@@ -189,6 +189,9 @@ export type ServerEvent =
 			 * VOTE_PK re-vote (eliminatedSeat stays null in that case) - the tied
 			 * seats about to be re-voted on. */
 			pkCandidates?: number[];
+			/** An in-app vote's ballots (seat -> whom they voted for), public
+			 * once the vote has closed. */
+			votes?: Record<number, number | 'ABSTAIN'>;
 	  }
 	// M5 §9.1 - who's up next in the last-words queue; null once it's drained
 	// (the next PhaseChanged/StageChanged that follows says what comes after).

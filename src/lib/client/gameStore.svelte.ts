@@ -124,6 +124,8 @@ export class GameStore {
 		followDeathSeat: number | null;
 		followDeathIdentity: RoleId | null;
 		idiotRevealed: boolean;
+		pkCandidates?: number[];
+		votes?: Record<number, number | 'ABSTAIN'>;
 	} | null>(null);
 	lastHunterResult = $state<{
 		hunterSeat: number;
@@ -641,7 +643,9 @@ export class GameStore {
 					tie: event.tie,
 					followDeathSeat: event.followDeathSeat,
 					followDeathIdentity: event.followDeathIdentity,
-					idiotRevealed: event.idiotRevealed === true
+					idiotRevealed: event.idiotRevealed === true,
+					...(event.pkCandidates ? { pkCandidates: event.pkCandidates } : {}),
+					...(event.votes ? { votes: event.votes } : {})
 				};
 				this.state = {
 					...this.state,
@@ -654,9 +658,11 @@ export class GameStore {
 						eliminatedSeat: event.eliminatedSeat,
 						identity: event.identity,
 						followDeathSeat: event.followDeathSeat,
-						idiotRevealed: event.idiotRevealed === true
+						idiotRevealed: event.idiotRevealed === true,
+						pkCandidates: event.pkCandidates
 					})
 				);
+				if (event.votes) this.logPublic(logLine('votes', event.votes));
 				break;
 			case 'LastWordsSpeakerChanged':
 				this.state = { ...this.state, currentSpeaker: event.seat };

@@ -133,6 +133,8 @@ export interface RoomPublicState {
 	/** Who 禁言长老 silenced for today, announced with the deaths. */
 	lastSilenced?: number | null;
 	lastDayResult: DayResultRecord | null;
+	/** The room's rule: the day's vote happens on the phones. */
+	inAppVote?: boolean;
 	/** Only present once phase === 'GAME_OVER' - the full reveal. */
 	identities?: Record<number, RoleId>;
 	coupleSeats?: [number, number] | null;
